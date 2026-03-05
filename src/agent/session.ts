@@ -40,6 +40,7 @@ function createAgentOptions(mode: AgentMode, cwd: string | undefined, abortContr
     env: {
       ...process.env,
       ANTHROPIC_API_KEY: config.anthropicApiKey,
+      ...(config.anthropicBaseUrl ? { ANTHROPIC_BASE_URL: config.anthropicBaseUrl } : {}),
     },
     tools: toolsForMode(mode),
   };

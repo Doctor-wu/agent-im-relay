@@ -31,4 +31,5 @@ export const config = {
   streamUpdateIntervalMs: numberEnv('STREAM_UPDATE_INTERVAL_MS', 1000),
   discordMessageCharLimit: numberEnv('DISCORD_MESSAGE_CHAR_LIMIT', 1900),
   claudeModel: process.env['CLAUDE_MODEL'],
+  anthropicBaseUrl: process.env['ANTHROPIC_BASE_URL'],
 };
