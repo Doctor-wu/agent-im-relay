@@ -145,7 +145,7 @@ function extractEvents(payload: unknown): AgentStreamEvent[] {
 }
 
 function createClaudeArgs(options: AgentSessionOptions): string[] {
-  const args = ['-p', '--output-format', 'stream-json', '--include-partial-messages'];
+  const args = ['-p', '--output-format', 'stream-json', '--verbose'];
 
   if (config.claudeModel) {
     args.push('--model', config.claudeModel);
