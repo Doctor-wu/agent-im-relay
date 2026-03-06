@@ -13,18 +13,21 @@ import type { Message } from 'discord.js';
 import { streamAgentSession, type AgentStreamEvent } from './agent/session.js';
 import { config } from './config.js';
 import { askCommand, handleAskCommand } from './commands/ask.js';
+import { claudeControlCommandHandlers, claudeControlCommands } from './commands/claude-control.js';
 import { codeCommand, handleCodeCommand } from './commands/code.js';
 import { streamAgentToDiscord, type StreamTargetChannel } from './discord/stream.js';
 import { ensureMentionThread } from './discord/thread.js';
+import {
+  activeThreads,
+  pendingThreadCreation,
+  processedMessages,
+  threadCwd,
+  threadEffort,
+  threadModels,
+  threadSessions,
+} from './state.js';
 
 type CommandHandler = (interaction: ChatInputCommandInteraction) => Promise<void>;
-
-// --- Session store ---
-// Maps threadId → Claude Code session ID for --resume
-const threadSessions = new Map<string, string>();
-
-// Track active (in-progress) threads to prevent concurrent runs
-const activeThreads = new Set<string>();
 
 function endSession(threadId: string): boolean {
   const had = threadSessions.has(threadId);
@@ -59,9 +62,10 @@ const commandHandlers = new Map<string, CommandHandler>([
   ['code', handleCodeCommand],
   ['ask', handleAskCommand],
   ['done', handleDoneCommand],
+  ...claudeControlCommandHandlers.entries(),
 ]);
 
-const commandDefinitions = [codeCommand, askCommand, doneCommand];
+const commandDefinitions = [codeCommand, askCommand, doneCommand, ...claudeControlCommands];
 
 // --- Client ---
 const client = new Client({
@@ -145,7 +149,9 @@ async function runMentionConversation(thread: AnyThreadChannel, prompt: string, 
     const events = streamAgentSession({
       mode: 'code',
       prompt,
-      cwd: config.claudeCwd,
+      model: threadModels.get(thread.id),
+      effort: threadEffort.get(thread.id),
+      cwd: threadCwd.get(thread.id) ?? config.claudeCwd,
       ...(isResume
         ? { resumeSessionId: sessionId }
         : { sessionId }),
@@ -222,10 +228,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   }
 });
-
-// Dedup: track processed message IDs to prevent double-handling
-const processedMessages = new Set<string>();
-const pendingThreadCreation = new Set<string>();
 
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.inGuild()) return;

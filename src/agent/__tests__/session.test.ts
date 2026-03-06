@@ -77,6 +77,19 @@ describe('createClaudeArgs', () => {
     expect(args).not.toContain('--session-id');
     expect(args.at(-1)).toBe('why?');
   });
+
+  it('adds explicit model and effort arguments', () => {
+    const args = createClaudeArgs({
+      mode: 'code',
+      prompt: 'summarize',
+      model: 'sonnet',
+      effort: 'high',
+    });
+
+    expect(args).toEqual(expect.arrayContaining(['--model', 'sonnet']));
+    expect(args).toEqual(expect.arrayContaining(['--effort', 'high']));
+    expect(args.at(-1)).toBe('summarize');
+  });
 });
 
 describe('extractEvents', () => {

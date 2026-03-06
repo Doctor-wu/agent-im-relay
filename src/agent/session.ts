@@ -16,6 +16,8 @@ export type AgentSessionOptions = {
   mode: AgentMode;
   prompt: string;
   cwd?: string;
+  model?: string;
+  effort?: string;
   sessionId?: string;
   resumeSessionId?: string;
   abortSignal?: AbortSignal;
@@ -147,8 +149,13 @@ export function extractEvents(payload: unknown): AgentStreamEvent[] {
 export function createClaudeArgs(options: AgentSessionOptions): string[] {
   const args = ['-p', '--output-format', 'stream-json', '--verbose'];
 
-  if (config.claudeModel) {
-    args.push('--model', config.claudeModel);
+  const model = options.model ?? config.claudeModel;
+  if (model) {
+    args.push('--model', model);
+  }
+
+  if (options.effort) {
+    args.push('--effort', options.effort);
   }
 
   args.push(...toolsForMode(options.mode));
