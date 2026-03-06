@@ -1,5 +1,5 @@
 import type { Message } from 'discord.js';
-import type { AgentEnvironment, AgentStreamEvent } from '@agent-im-relay/core';
+import { stripArtifactManifest, type AgentEnvironment, type AgentStreamEvent } from '@agent-im-relay/core';
 import { config } from './config.js';
 
 export type StreamTargetChannel = {
@@ -423,7 +423,7 @@ export async function streamAgentToDiscord(
   const maxLength = Math.max(200, config.discordMessageCharLimit);
 
   const flush = async (): Promise<void> => {
-    const body = buffer.trim() || '⏳ Thinking...';
+    const body = stripArtifactManifest(buffer).trim() || '⏳ Thinking...';
     const converted = convertMarkdownForDiscord(body);
     const embeds = converted.embeds as any[];
     const embedsSignature = JSON.stringify(converted.embeds);

@@ -22,6 +22,13 @@ describe('handleCodeCommand', () => {
   });
 
   it('routes /code through the shared conversation runner', async () => {
+    const attachment = {
+      id: 'att-1',
+      name: 'spec.md',
+      url: 'https://example.com/spec.md',
+      contentType: 'text/markdown',
+      size: 12,
+    };
     const thread = {
       toString: () => '<#thread-1>',
       send: vi.fn().mockResolvedValue(undefined),
@@ -32,6 +39,7 @@ describe('handleCodeCommand', () => {
     const interaction = {
       options: {
         getString: vi.fn().mockReturnValue('Ship the feature'),
+        getAttachment: vi.fn((name: string) => name === 'file' ? attachment : null),
       },
       deferReply: vi.fn().mockResolvedValue(undefined),
       editReply: vi.fn().mockResolvedValue(undefined),
@@ -41,7 +49,9 @@ describe('handleCodeCommand', () => {
 
     expect(ensureCodeThread).toHaveBeenCalledWith(interaction, 'Ship the feature');
     expect(thread.send).toHaveBeenCalledWith('## /code\nShip the feature');
-    expect(runMentionConversation).toHaveBeenCalledWith(thread, 'Ship the feature');
+    expect(runMentionConversation).toHaveBeenCalledWith(thread, 'Ship the feature', undefined, {
+      attachments: [attachment],
+    });
     expect(interaction.editReply).toHaveBeenNthCalledWith(1, 'Started coding in <#thread-1>');
   });
 
@@ -56,6 +66,7 @@ describe('handleCodeCommand', () => {
     const interaction = {
       options: {
         getString: vi.fn().mockReturnValue('Retry later'),
+        getAttachment: vi.fn().mockReturnValue(null),
       },
       deferReply: vi.fn().mockResolvedValue(undefined),
       editReply: vi.fn().mockResolvedValue(undefined),
@@ -63,7 +74,9 @@ describe('handleCodeCommand', () => {
 
     await handleCodeCommand(interaction);
 
-    expect(runMentionConversation).toHaveBeenCalledWith(thread, 'Retry later');
+    expect(runMentionConversation).toHaveBeenCalledWith(thread, 'Retry later', undefined, {
+      attachments: [],
+    });
     expect(interaction.editReply).toHaveBeenNthCalledWith(2, 'Claude is already busy in <#thread-2>');
   });
 });

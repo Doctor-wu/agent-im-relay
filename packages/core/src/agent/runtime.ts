@@ -1,4 +1,9 @@
-import { streamAgentSession, type AgentSessionOptions, type AgentStreamEvent } from './session.js';
+import {
+  buildAgentPrompt,
+  streamAgentSession,
+  type AgentSessionOptions,
+  type AgentStreamEvent,
+} from './session.js';
 import type { AgentBackend, BackendName } from './backend.js';
 
 type RuntimeSessionOptions = AgentSessionOptions & {
@@ -55,10 +60,11 @@ export function runConversationSession(
   activeControllers.set(conversationId, controller);
 
   const { backend, ...sessionOptions } = options;
+  const prompt = buildAgentPrompt(sessionOptions);
 
   const stream = typeof backend === 'object' && backend
-    ? backend.stream({ ...sessionOptions, abortSignal })
-    : streamAgentSession({ ...sessionOptions, backend, abortSignal });
+    ? backend.stream({ ...sessionOptions, prompt, abortSignal })
+    : streamAgentSession({ ...sessionOptions, prompt, backend, abortSignal });
 
   return (async function* (): AsyncGenerator<AgentStreamEvent, void> {
     try {

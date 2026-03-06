@@ -74,6 +74,53 @@ describe('conversation runtime', () => {
   it('returns false when interrupting an idle conversation', () => {
     expect(interruptConversationRun('idle')).toBe(false);
   });
+
+  it('appends the artifacts block contract for code-mode runs', async () => {
+    let receivedPrompt = '';
+
+    const events = runConversationSession('conv-code', {
+      mode: 'code',
+      prompt: 'Build a report exporter',
+      backend: {
+        name: 'claude',
+        async *stream(options) {
+          receivedPrompt = options.prompt;
+          yield { type: 'done', result: 'ok' } as const;
+        },
+      },
+    });
+
+    for await (const _event of events) {
+      // exhaust stream
+    }
+
+    expect(receivedPrompt).toContain('Build a report exporter');
+    expect(receivedPrompt).toContain('```artifacts');
+    expect(receivedPrompt).toContain('"files"');
+  });
+
+  it('keeps ask-mode prompts free of artifact upload instructions', async () => {
+    let receivedPrompt = '';
+
+    const events = runConversationSession('conv-ask-prompt', {
+      mode: 'ask',
+      prompt: 'Explain the attached document',
+      backend: {
+        name: 'claude',
+        async *stream(options) {
+          receivedPrompt = options.prompt;
+          yield { type: 'done', result: 'ok' } as const;
+        },
+      },
+    });
+
+    for await (const _event of events) {
+      // exhaust stream
+    }
+
+    expect(receivedPrompt).toBe('Explain the attached document');
+    expect(receivedPrompt).not.toContain('```artifacts');
+  });
 });
 
 describe('core exports', () => {

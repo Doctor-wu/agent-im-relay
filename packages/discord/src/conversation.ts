@@ -14,6 +14,8 @@ import {
   persistState,
 } from '@agent-im-relay/core';
 import { config } from './config.js';
+import { publishConversationArtifacts } from './artifacts.js';
+import { prepareAttachmentPrompt, type DiscordAttachmentLike } from './files.js';
 import { streamAgentToDiscord, type StreamTargetChannel } from './stream.js';
 
 type ReactionPhase = 'received' | 'thinking' | 'tools' | 'done' | 'error';
@@ -26,6 +28,7 @@ type SetReaction = (
 
 type RunMentionConversationOptions = {
   backend?: BackendName | AgentBackend;
+  attachments?: DiscordAttachmentLike[];
   createSessionId?: () => string;
   persist?: () => Promise<void>;
   setReaction?: SetReaction;
@@ -66,20 +69,28 @@ export async function runMentionConversation(
     const isResume = !!existingSessionId;
     const showEnvironment = !existingSessionId;
     const sessionId = existingSessionId ?? options.createSessionId?.() ?? randomUUID();
+    const runCwd = conversationCwd.get(thread.id) ?? config.claudeCwd;
+    const preparedPrompt = await prepareAttachmentPrompt({
+      conversationId: thread.id,
+      prompt,
+      attachments: options.attachments ?? [],
+      sourceMessageId: triggerMsg?.id,
+    });
 
     conversationSessions.set(thread.id, sessionId);
 
     const events = runConversationSession(thread.id, {
       mode: 'code',
-      prompt,
+      prompt: preparedPrompt.prompt,
       model: conversationModels.get(thread.id),
       effort: conversationEffort.get(thread.id),
-      cwd: conversationCwd.get(thread.id) ?? config.claudeCwd,
+      cwd: runCwd,
       backend: options.backend ?? conversationBackend.get(thread.id),
       ...(isResume ? { resumeSessionId: sessionId } : { sessionId }),
     });
 
     let resolvedSessionId = sessionId;
+    let finalResult = '';
 
     await (options.streamToDiscord ?? streamAgentToDiscord)(
       { channel: thread, showEnvironment },
@@ -91,6 +102,7 @@ export async function runMentionConversation(
             void options.setReaction(triggerMsg, 'tools', previousPhase);
           }
         } else if (event.type === 'done') {
+          finalResult = event.result;
           if (event.sessionId) resolvedSessionId = event.sessionId;
         } else if (event.type === 'error') {
           const previousPhase = phase;
@@ -119,6 +131,16 @@ export async function runMentionConversation(
         }
       }),
     );
+
+    if (finalResult) {
+      await publishConversationArtifacts({
+        conversationId: thread.id,
+        cwd: runCwd,
+        resultText: finalResult,
+        channel: thread,
+        sourceMessageId: triggerMsg?.id,
+      });
+    }
 
     if (phase !== 'error' && triggerMsg && options.setReaction) {
       await options.setReaction(triggerMsg, 'done', phase);

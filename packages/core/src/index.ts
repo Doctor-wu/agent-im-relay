@@ -40,13 +40,34 @@ export {
   conversationEffort,
   conversationCwd,
   conversationBackend,
+  conversationArtifacts,
   savedCwdList,
   activeConversations,
   processedMessages,
   pendingConversationCreation,
+  getConversationArtifactMetadata,
   initState,
+  persistConversationArtifactMetadata,
   persistState,
 } from './state.js';
+
+// Artifacts
+export {
+  createEmptyArtifactMetadata,
+  ensureConversationArtifactPaths,
+  getConversationArtifactPaths,
+  readArtifactMetadata,
+  writeArtifactMetadata,
+} from './artifacts/store.js';
+export { parseArtifactManifest, resolveArtifactPath, stripArtifactManifest } from './artifacts/protocol.js';
+export type {
+  ArtifactKind,
+  ArtifactRecord,
+  ArtifactManifest,
+  ArtifactManifestFile,
+  ConversationArtifactMetadata,
+  ConversationArtifactPaths,
+} from './artifacts/types.js';
 
 // Skills
 export { listSkills, refreshSkills, readSkillsFromDirectory, parseSkillFrontmatter } from './skills.js';

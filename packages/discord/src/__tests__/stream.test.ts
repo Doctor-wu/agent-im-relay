@@ -364,4 +364,41 @@ describe('streamAgentToDiscord', () => {
     expect(send).toHaveBeenCalledWith(expect.stringContaining('⏹️ 当前任务已中断。'));
     expect(send).not.toHaveBeenCalledWith(expect.stringContaining('❌ **Error:** Agent request aborted'));
   });
+
+  it('removes artifacts fenced blocks from the rendered final message', async () => {
+    const edit = vi.fn().mockResolvedValue(undefined);
+    const message = { edit } as any;
+    const send = vi.fn().mockResolvedValue(message);
+
+    async function* events() {
+      yield {
+        type: 'text' as const,
+        delta: [
+          'Here is your summary.',
+          '',
+          '```artifacts',
+          '{ "files": [{ "path": "reports/summary.md" }] }',
+          '```',
+        ].join('\n'),
+      };
+      yield {
+        type: 'done' as const,
+        result: [
+          'Here is your summary.',
+          '',
+          '```artifacts',
+          '{ "files": [{ "path": "reports/summary.md" }] }',
+          '```',
+        ].join('\n'),
+      };
+    }
+
+    await streamAgentToDiscord(
+      { channel: { send } },
+      events(),
+    );
+
+    expect(send).toHaveBeenCalledWith('Here is your summary.');
+    expect(edit).not.toHaveBeenCalledWith(expect.stringContaining('```artifacts'));
+  });
 });

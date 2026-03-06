@@ -20,6 +20,9 @@ export const config = {
   claudeModel: process.env['CLAUDE_MODEL'],
   claudeCwd: process.env['CLAUDE_CWD']?.trim() || process.cwd(),
   stateFile: process.env['STATE_FILE']?.trim() || join(process.cwd(), 'data', 'sessions.json'),
+  artifactsBaseDir: process.env['ARTIFACTS_BASE_DIR']?.trim() || join(process.cwd(), 'data', 'artifacts'),
+  artifactRetentionDays: numberEnv('ARTIFACT_RETENTION_DAYS', 14),
+  artifactMaxSizeBytes: numberEnv('ARTIFACT_MAX_SIZE_BYTES', 8 * 1024 * 1024),
   claudeBin: process.env['CLAUDE_BIN']?.trim() || '/opt/homebrew/bin/claude',
   codexBin: process.env['CODEX_BIN']?.trim() || '/opt/homebrew/bin/codex',
 };

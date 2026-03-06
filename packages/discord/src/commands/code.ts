@@ -1,5 +1,6 @@
 import { SlashCommandBuilder, type ChatInputCommandInteraction } from 'discord.js';
 import { runMentionConversation } from '../conversation.js';
+import { collectInteractionAttachments } from '../files.js';
 import { ensureCodeThread } from '../thread.js';
 
 export const codeCommand = new SlashCommandBuilder()
@@ -8,6 +9,15 @@ export const codeCommand = new SlashCommandBuilder()
   .setDMPermission(false)
   .addStringOption((option) =>
     option.setName('prompt').setDescription('What should Claude build or fix?').setRequired(true),
+  )
+  .addAttachmentOption((option) =>
+    option.setName('file').setDescription('Optional attachment to share with the agent'),
+  )
+  .addAttachmentOption((option) =>
+    option.setName('file2').setDescription('Optional second attachment'),
+  )
+  .addAttachmentOption((option) =>
+    option.setName('file3').setDescription('Optional third attachment'),
   );
 
 function toErrorMessage(error: unknown): string {
@@ -17,6 +27,7 @@ function toErrorMessage(error: unknown): string {
 
 export async function handleCodeCommand(interaction: ChatInputCommandInteraction): Promise<void> {
   const prompt = interaction.options.getString('prompt', true).trim();
+  const attachments = collectInteractionAttachments(interaction.options);
   if (!prompt) {
     await interaction.reply({ content: 'Please provide a prompt.', ephemeral: true });
     return;
@@ -31,7 +42,7 @@ export async function handleCodeCommand(interaction: ChatInputCommandInteraction
 
     await interaction.editReply(`Started coding in ${threadMention}`);
     await thread.send(`## /code\n${prompt}`);
-    const started = await runMentionConversation(thread, prompt);
+    const started = await runMentionConversation(thread, prompt, undefined, { attachments });
     if (!started) {
       await interaction.editReply(`Claude is already busy in ${threadMention}`);
     }

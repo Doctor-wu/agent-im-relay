@@ -25,6 +25,7 @@ import { config } from './config.js';
 import { createDiscordAdapter } from './adapter.js';
 import type { StreamTargetChannel } from './stream.js';
 import { runMentionConversation } from './conversation.js';
+import { collectMessageAttachments } from './files.js';
 import { ensureMentionThread } from './thread.js';
 import { askCommand, handleAskCommand } from './commands/ask.js';
 import { codeCommand, handleCodeCommand } from './commands/code.js';
@@ -119,6 +120,7 @@ async function runThreadConversation(
   triggerMsg?: Message,
 ): Promise<boolean> {
   return runMentionConversation(thread as AnyThreadChannel & StreamTargetChannel, prompt, triggerMsg, {
+    attachments: collectMessageAttachments(triggerMsg),
     persist: persistState,
     setReaction,
   });
