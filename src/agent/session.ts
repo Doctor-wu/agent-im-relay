@@ -100,7 +100,7 @@ function extractStreamEvent(payload: Record<string, unknown>): AgentStreamEvent[
   return [];
 }
 
-function extractEvents(payload: unknown): AgentStreamEvent[] {
+export function extractEvents(payload: unknown): AgentStreamEvent[] {
   if (!isRecord(payload)) return [];
   const messageType = asString(payload.type);
   if (!messageType) return [];
@@ -144,7 +144,7 @@ function extractEvents(payload: unknown): AgentStreamEvent[] {
   return [];
 }
 
-function createClaudeArgs(options: AgentSessionOptions): string[] {
+export function createClaudeArgs(options: AgentSessionOptions): string[] {
   const args = ['-p', '--output-format', 'stream-json', '--verbose'];
 
   if (config.claudeModel) {

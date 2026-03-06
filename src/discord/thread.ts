@@ -63,9 +63,7 @@ export async function ensureMentionThread(message: Message<true>, prompt: string
   // Always create a new seed message for the thread to avoid
   // "A thread has already been created for this message" errors.
   // This also means each @ mention gets its own thread = its own session.
-  const seedMessage = await channel.send(
-    `🧵 <@${message.author.id}> started a Claude session`,
-  );
+  const seedMessage = await channel.send('🧵 Starting Claude session...');
 
   return seedMessage.startThread({
     autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,

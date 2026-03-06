@@ -225,6 +225,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 // Dedup: track processed message IDs to prevent double-handling
 const processedMessages = new Set<string>();
+const pendingThreadCreation = new Set<string>();
 
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.inGuild()) return;
@@ -263,11 +264,18 @@ client.on(Events.MessageCreate, async (message) => {
       return;
     }
 
-    // In a channel — create a new thread (= new session)
-    const thread = await ensureMentionThread(message, prompt);
-    // Echo the user's prompt in the thread for context
-    await thread.send(`**${message.author.displayName}:** ${prompt}`);
-    await runMentionConversation(thread, prompt, message);
+    if (pendingThreadCreation.has(message.id)) return;
+    pendingThreadCreation.add(message.id);
+
+    try {
+      // In a channel — create a new thread (= new session)
+      const thread = await ensureMentionThread(message, prompt);
+      // Echo the user's prompt in the thread for context
+      await thread.send(`**${message.author.displayName}:** ${prompt}`);
+      await runMentionConversation(thread, prompt, message);
+    } finally {
+      pendingThreadCreation.delete(message.id);
+    }
   } catch (error) {
     const errorText = toErrorMessage(error);
     if (message.channel.isThread()) {

@@ -28,7 +28,7 @@ const TOOL_ICONS: Record<string, string> = {
   TodoWrite: '📋',
 };
 
-function getToolIcon(name: string): string {
+export function getToolIcon(name: string): string {
   return TOOL_ICONS[name] ?? '🔧';
 }
 
@@ -62,7 +62,7 @@ function formatToolInput(name: string, input: unknown): string {
   return '';
 }
 
-function formatToolLine(summary: string): string {
+export function formatToolLine(summary: string): string {
   // Parse "running ToolName {...}" format from session.ts
   const match = summary.match(/^running (\w+)\s*(.*)/s);
   if (!match) {
@@ -88,7 +88,7 @@ function formatToolLine(summary: string): string {
 
 // --- Chunking ---
 
-function chunkForDiscord(text: string, maxLength: number): string[] {
+export function chunkForDiscord(text: string, maxLength: number): string[] {
   const chunks: string[] = [];
   let remaining = text;
 
