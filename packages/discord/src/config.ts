@@ -1,4 +1,7 @@
-import 'dotenv/config';
+import { config as dotenvConfig } from 'dotenv';
+import { resolve } from 'node:path';
+
+dotenvConfig({ path: resolve(import.meta.dirname, '../../../.env') });
 import { config as coreConfig } from '@agent-im-relay/core';
 
 function requireEnv(key: string): string {

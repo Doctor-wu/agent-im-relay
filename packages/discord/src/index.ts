@@ -6,6 +6,10 @@ import {
   REST,
   Routes,
   SlashCommandBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ComponentType,
   type AnyThreadChannel,
   type ChatInputCommandInteraction,
   type Message,
@@ -17,6 +21,8 @@ import {
   conversationModels,
   conversationEffort,
   conversationCwd,
+  conversationBackend,
+  savedCwdList,
   activeConversations,
   processedMessages,
   pendingConversationCreation,
@@ -41,6 +47,7 @@ import {
   SKILL_MODAL_CUSTOM_ID_PREFIX,
   SKILL_SELECT_CUSTOM_ID,
 } from './commands/skill.js';
+import { promptThreadSetup, applySetupResult } from './commands/thread-setup.js';
 
 type CommandHandler = (interaction: ChatInputCommandInteraction) => Promise<void>;
 
@@ -145,6 +152,49 @@ async function setReaction(msg: Message, phase: ReactionPhase, currentPhase?: Re
   }
 }
 
+async function offerSaveCwd(thread: AnyThreadChannel, detectedPath: string): Promise<void> {
+  if (savedCwdList.includes(detectedPath)) return;
+
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`save_cwd:${detectedPath}`)
+      .setLabel('保存到常用目录')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('save_cwd:ignore')
+      .setLabel('忽略')
+      .setStyle(ButtonStyle.Secondary),
+  );
+
+  const msg = await thread.send({
+    content: `📁 Agent 确定工作目录：\`${detectedPath}\``,
+    components: [row],
+  });
+
+  const collector = msg.createMessageComponentCollector({
+    componentType: ComponentType.Button,
+    time: 60_000,
+    max: 1,
+  });
+
+  collector.on('collect', async (interaction) => {
+    await interaction.deferUpdate();
+    if (interaction.customId.startsWith('save_cwd:') && !interaction.customId.endsWith(':ignore')) {
+      savedCwdList.push(detectedPath);
+      void persistState();
+      await msg.edit({ content: `✅ 已保存：\`${detectedPath}\``, components: [] });
+    } else {
+      await msg.edit({ content: `📁 \`${detectedPath}\`（未保存）`, components: [] });
+    }
+  });
+
+  collector.on('end', (_collected, reason) => {
+    if (reason === 'time') {
+      void msg.edit({ content: `📁 \`${detectedPath}\`（已超时）`, components: [] });
+    }
+  });
+}
+
 async function runMentionConversation(
   thread: AnyThreadChannel,
   prompt: string,
@@ -173,6 +223,7 @@ async function runMentionConversation(
       model: conversationModels.get(thread.id),
       effort: conversationEffort.get(thread.id),
       cwd: conversationCwd.get(thread.id) ?? config.claudeCwd,
+      backend: conversationBackend.get(thread.id),
       ...(isResume
         ? { resumeSessionId: sessionId }
         : { sessionId }),
@@ -193,6 +244,17 @@ async function runMentionConversation(
           const prev = phase;
           phase = 'error';
           if (triggerMsg) void setReaction(triggerMsg, 'error', prev);
+        }
+
+        // Auto-detect working directory from Codex output
+        if (
+          event.type === 'status' &&
+          event.status.startsWith('cwd:') &&
+          !conversationCwd.has(thread.id)
+        ) {
+          const detectedCwd = event.status.slice(4);
+          conversationCwd.set(thread.id, detectedCwd);
+          void offerSaveCwd(thread, detectedCwd);
         }
       }),
     );
@@ -310,6 +372,13 @@ client.on(Events.MessageCreate, async (message) => {
     try {
       const thread = await ensureMentionThread(message, prompt);
       await thread.send(`**${message.author.displayName}:** ${prompt}`);
+
+      // Show setup UI only if backend not yet chosen
+      if (!conversationBackend.has(thread.id)) {
+        const result = await promptThreadSetup(thread, prompt);
+        await applySetupResult(thread.id, result);
+      }
+
       await runMentionConversation(thread, prompt, message);
     } finally {
       pendingConversationCreation.delete(message.id);
