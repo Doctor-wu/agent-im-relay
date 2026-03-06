@@ -225,17 +225,22 @@ client.on(Events.MessageCreate, async (message) => {
   const botUser = client.user;
   if (!botUser) return;
 
-  // Only respond to explicit @ mentions in the message text, not reply mentions
-  const mentionRegex = new RegExp(`<@!?${botUser.id}>`);
-  if (!mentionRegex.test(message.content)) return;
+  const isExplicitMention = new RegExp(`<@!?${botUser.id}>`).test(message.content);
+  const isActiveThread = message.channel.isThread() && threadSessions.has(message.channel.id);
+
+  // In an active thread: respond to all messages (no @ needed)
+  // In a channel: only respond to explicit @ mentions
+  if (!isExplicitMention && !isActiveThread) return;
 
   // Dedup guard
   if (processedMessages.has(message.id)) return;
   processedMessages.add(message.id);
-  // Cleanup old entries after 60s
   setTimeout(() => processedMessages.delete(message.id), 60_000);
 
-  const prompt = extractMentionPrompt(message.content, botUser.id);
+  const prompt = isExplicitMention
+    ? extractMentionPrompt(message.content, botUser.id)
+    : message.content.trim();
+
   if (!prompt) {
     await message.reply('Please include a prompt after mentioning me.');
     return;
