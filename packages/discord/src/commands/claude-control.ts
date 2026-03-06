@@ -3,6 +3,10 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import {
   SlashCommandBuilder,
+  ActionRowBuilder,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
+  ComponentType,
   type AnyThreadChannel,
   type ChatInputCommandInteraction,
   type Message,
@@ -14,6 +18,7 @@ import {
   conversationModels,
   conversationEffort,
   conversationCwd,
+  savedCwdList,
   activeConversations,
   processedMessages,
   pendingConversationCreation,
@@ -50,9 +55,22 @@ export const effortCommand = new SlashCommandBuilder()
 
 export const cwdCommand = new SlashCommandBuilder()
   .setName('cwd')
-  .setDescription('Set Claude working directory for this thread')
+  .setDescription('工作目录管理')
   .setDMPermission(false)
-  .addStringOption((option) => option.setName('path').setDescription('Absolute or relative path').setRequired(true));
+  .addSubcommand((sub) =>
+    sub
+      .setName('set')
+      .setDescription('设置当前 thread 的工作目录')
+      .addStringOption((o) => o.setName('path').setDescription('绝对路径').setRequired(true)),
+  )
+  .addSubcommand((sub) => sub.setName('list').setDescription('列出常用目录'))
+  .addSubcommand((sub) =>
+    sub
+      .setName('add')
+      .setDescription('添加常用目录')
+      .addStringOption((o) => o.setName('path').setDescription('绝对路径').setRequired(true)),
+  )
+  .addSubcommand((sub) => sub.setName('remove').setDescription('移除常用目录（交互式）'));
 
 export const resumeCommand = new SlashCommandBuilder()
   .setName('resume')
@@ -155,24 +173,73 @@ async function handleEffortCommand(interaction: ChatInputCommandInteraction): Pr
 }
 
 async function handleCwdCommand(interaction: ChatInputCommandInteraction): Promise<void> {
-  const channel = await requireThread(interaction);
-  if (!channel) return;
+  const sub = interaction.options.getSubcommand();
 
-  const inputPath = interaction.options.getString('path', true).trim();
-  if (!inputPath) {
-    await interaction.reply({ content: 'Please provide a path.', ephemeral: true });
+  if (sub === 'set') {
+    const channel = await requireThread(interaction);
+    if (!channel) return;
+
+    const inputPath = interaction.options.getString('path', true).trim();
+    if (!inputPath) {
+      await interaction.reply({ content: 'Please provide a path.', ephemeral: true });
+      return;
+    }
+
+    const resolvedPath = path.isAbsolute(inputPath) ? inputPath : path.resolve(process.cwd(), inputPath);
+    if (!existsSync(resolvedPath)) {
+      await interaction.reply({ content: `Path does not exist: \`${resolvedPath}\``, ephemeral: true });
+      return;
+    }
+
+    conversationCwd.set(channel.id, resolvedPath);
+    void persistState();
+    await interaction.reply({ content: `✅ 工作目录设置为：\`${resolvedPath}\``, ephemeral: true });
     return;
   }
 
-  const resolvedPath = path.isAbsolute(inputPath) ? inputPath : path.resolve(process.cwd(), inputPath);
-  if (!existsSync(resolvedPath)) {
-    await interaction.reply({ content: `Path does not exist: \`${resolvedPath}\``, ephemeral: true });
+  if (sub === 'list') {
+    const list = savedCwdList.length
+      ? savedCwdList.map((d, i) => `${i + 1}. \`${d}\``).join('\n')
+      : '（空）';
+    await interaction.reply({ content: `**常用目录：**\n${list}`, ephemeral: true });
     return;
   }
 
-  conversationCwd.set(channel.id, resolvedPath);
-  void persistState();
-  await interaction.reply({ content: `Set working directory to \`${resolvedPath}\`.`, ephemeral: true });
+  if (sub === 'add') {
+    const inputPath = interaction.options.getString('path', true).trim();
+    if (!savedCwdList.includes(inputPath)) {
+      savedCwdList.push(inputPath);
+      void persistState();
+      await interaction.reply({ content: `✅ 已添加：\`${inputPath}\``, ephemeral: true });
+    } else {
+      await interaction.reply({ content: `已存在：\`${inputPath}\``, ephemeral: true });
+    }
+    return;
+  }
+
+  if (sub === 'remove') {
+    if (savedCwdList.length === 0) {
+      await interaction.reply({ content: '常用目录为空。', ephemeral: true });
+      return;
+    }
+    const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId('cwd_remove_select')
+        .setPlaceholder('选择要移除的目录')
+        .addOptions(savedCwdList.map((d) => new StringSelectMenuOptionBuilder().setLabel(d).setValue(d))),
+    );
+    await interaction.reply({ content: '选择要移除的目录：', components: [row], ephemeral: true });
+
+    const msg = await interaction.fetchReply();
+    const collector = msg.createMessageComponentCollector({ componentType: ComponentType.StringSelect, time: 30_000, max: 1 });
+    collector.on('collect', async (i) => {
+      const toRemove = i.values[0];
+      const idx = savedCwdList.indexOf(toRemove);
+      if (idx !== -1) savedCwdList.splice(idx, 1);
+      void persistState();
+      await i.update({ content: `✅ 已移除：\`${toRemove}\``, components: [] });
+    });
+  }
 }
 
 async function handleResumeCommand(interaction: ChatInputCommandInteraction): Promise<void> {
