@@ -183,11 +183,24 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
+// Dedup: track processed message IDs to prevent double-handling
+const processedMessages = new Set<string>();
+
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.inGuild()) return;
 
   const botUser = client.user;
-  if (!botUser || !message.mentions.has(botUser)) return;
+  if (!botUser) return;
+
+  // Only respond to explicit @ mentions in the message text, not reply mentions
+  const mentionRegex = new RegExp(`<@!?${botUser.id}>`);
+  if (!mentionRegex.test(message.content)) return;
+
+  // Dedup guard
+  if (processedMessages.has(message.id)) return;
+  processedMessages.add(message.id);
+  // Cleanup old entries after 60s
+  setTimeout(() => processedMessages.delete(message.id), 60_000);
 
   const prompt = extractMentionPrompt(message.content, botUser.id);
   if (!prompt) {
