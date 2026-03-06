@@ -5,6 +5,87 @@ import { registerBackend, type AgentBackend } from '../backend.js';
 import type { AgentSessionOptions, AgentStreamEvent } from '../session.js';
 
 const WORKING_DIR_PATTERN = /^Working directory:\s*(.+)$/;
+const LOG_LINE_PATTERN = /^\d{4}-\d{2}-\d{2}T/;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return '[unserializable]';
+  }
+}
+
+function formatCommandSummary(command: string): string {
+  return `running Bash ${safeJson({ command }).slice(0, 600)}`;
+}
+
+function extractCodexSessionId(payload: unknown): string | undefined {
+  if (!isRecord(payload)) return undefined;
+  const type = asString(payload.type);
+  if (type === 'thread.started' || type === 'thread.resumed') {
+    return asString(payload.thread_id);
+  }
+  return undefined;
+}
+
+export function createCodexArgs(options: AgentSessionOptions): string[] {
+  const args = options.resumeSessionId
+    ? ['exec', 'resume', options.resumeSessionId, '--json', '--skip-git-repo-check']
+    : ['exec', '--json', '--skip-git-repo-check'];
+
+  if (options.model) {
+    args.push('--model', options.model);
+  }
+
+  if (options.cwd) {
+    args.push('--cd', options.cwd);
+  }
+
+  args.push('-');
+  return args;
+}
+
+export function extractCodexEvents(payload: unknown): AgentStreamEvent[] {
+  if (!isRecord(payload)) return [];
+
+  const type = asString(payload.type);
+  if (!type) return [];
+
+  if (type === 'item.started') {
+    const item = payload.item;
+    if (!isRecord(item) || asString(item.type) !== 'command_execution') return [];
+
+    const command = asString(item.command);
+    return command ? [{ type: 'tool', summary: formatCommandSummary(command) }] : [];
+  }
+
+  if (type === 'item.completed') {
+    const item = payload.item;
+    if (!isRecord(item)) return [];
+
+    if (asString(item.type) === 'agent_message') {
+      const text = asString(item.text);
+      return text ? [{ type: 'text', delta: text }] : [];
+    }
+
+    return [];
+  }
+
+  if (type === 'error' || type.endsWith('.failed')) {
+    const error = asString(payload.message) ?? asString(payload.error);
+    return error ? [{ type: 'error', error }] : [];
+  }
+
+  return [];
+}
 
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -18,14 +99,15 @@ async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentS
     ? options.prompt
     : `请在开始任务前，先找到与本任务相关的项目目录，并在响应的第一行输出：Working directory: /absolute/path，然后再执行任务。\n\n${options.prompt}`;
 
-  const args = ['-q', prompt];
-  if (options.model) args.unshift('--model', options.model);
+  const args = createCodexArgs(options);
 
   const child = spawn(config.codexBin, args, {
     cwd,
     env: process.env,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'],
   });
+
+  child.stdin?.end(prompt);
 
   const closePromise = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
     (resolve, reject) => {
@@ -36,6 +118,7 @@ async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentS
 
   const stderrLines: string[] = [];
   let abortReason: 'timeout' | 'aborted' | null = null;
+  let sessionId: string | undefined = options.resumeSessionId ?? options.sessionId;
 
   const timeout = setTimeout(() => {
     abortReason = 'timeout';
@@ -64,25 +147,34 @@ async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentS
     for await (const rawLine of stdoutReader) {
       const line = rawLine.trimEnd();
       if (!line) continue;
-
-      fullOutput += line + '\n';
-
-      const cwdMatch = WORKING_DIR_PATTERN.exec(line);
-      if (cwdMatch?.[1]) {
-        yield { type: 'status', status: `cwd:${cwdMatch[1].trim()}` };
+      if (LOG_LINE_PATTERN.test(line)) {
+        stderrLines.push(line);
+        continue;
       }
 
+      let parsed: unknown;
       try {
-        const parsed = JSON.parse(line) as Record<string, unknown>;
-        if (parsed['type'] === 'message' && typeof parsed['content'] === 'string') {
-          yield { type: 'text', delta: parsed['content'] };
-          continue;
-        }
+        parsed = JSON.parse(line);
       } catch {
-        // Not JSON — emit as plain text
+        continue;
       }
 
-      yield { type: 'text', delta: line + '\n' };
+      sessionId = extractCodexSessionId(parsed) ?? sessionId;
+
+      for (const event of extractCodexEvents(parsed)) {
+        if (event.type === 'text') {
+          fullOutput += event.delta;
+
+          for (const textLine of event.delta.split('\n')) {
+            const cwdMatch = WORKING_DIR_PATTERN.exec(textLine.trim());
+            if (cwdMatch?.[1]) {
+              yield { type: 'status', status: `cwd:${cwdMatch[1].trim()}` };
+            }
+          }
+        }
+
+        yield event;
+      }
     }
 
     const { code, signal } = await closePromise;
@@ -104,7 +196,7 @@ async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentS
       return;
     }
 
-    yield { type: 'done', result: fullOutput.trim() };
+    yield { type: 'done', result: fullOutput.trim(), sessionId };
   } catch (error) {
     if (abortReason === 'timeout') {
       yield { type: 'error', error: 'Agent request timed out' };

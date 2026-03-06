@@ -7,6 +7,7 @@ vi.mock('node:child_process', () => ({
 
 import { spawn } from 'node:child_process';
 import type { AgentStreamEvent } from '../../agent/session.js';
+import { createCodexArgs, extractCodexEvents } from '../../agent/backends/codex.js';
 
 async function collect(gen: AsyncGenerator<AgentStreamEvent>): Promise<AgentStreamEvent[]> {
   const events: AgentStreamEvent[] = [];
@@ -33,8 +34,85 @@ function makeProcess(stdout: string, stderr = '', exitCode = 0) {
 describe('codex backend', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it('builds exec arguments that read prompt from stdin', () => {
+    const args = createCodexArgs({
+      mode: 'code',
+      prompt: 'test',
+      model: 'gpt-5',
+      cwd: '/tmp/project',
+    });
+
+    expect(args).toEqual([
+      'exec',
+      '--json',
+      '--skip-git-repo-check',
+      '--model',
+      'gpt-5',
+      '--cd',
+      '/tmp/project',
+      '-',
+    ]);
+    expect(args).not.toContain('-q');
+  });
+
+  it('builds resume arguments when resuming a session', () => {
+    const args = createCodexArgs({
+      mode: 'code',
+      prompt: 'test',
+      resumeSessionId: 'session-123',
+      model: 'gpt-5',
+      cwd: '/tmp/project',
+    });
+
+    expect(args).toEqual([
+      'exec',
+      'resume',
+      'session-123',
+      '--json',
+      '--skip-git-repo-check',
+      '--model',
+      'gpt-5',
+      '--cd',
+      '/tmp/project',
+      '-',
+    ]);
+  });
+
+  it('extracts text and tool events from Codex JSONL items', () => {
+    expect(extractCodexEvents({
+      type: 'item.started',
+      item: {
+        id: 'item_1',
+        type: 'command_execution',
+        command: '/bin/zsh -lc "pwd"',
+        status: 'in_progress',
+      },
+    })).toEqual([
+      { type: 'tool', summary: 'running Bash {"command":"/bin/zsh -lc \\"pwd\\""}' },
+    ]);
+
+    expect(extractCodexEvents({
+      type: 'item.completed',
+      item: {
+        id: 'item_2',
+        type: 'agent_message',
+        text: 'Working directory: /tmp/project\nDone.',
+      },
+    })).toEqual([
+      { type: 'text', delta: 'Working directory: /tmp/project\nDone.' },
+    ]);
+  });
+
   it('emits text events from plain text output', async () => {
-    vi.mocked(spawn).mockReturnValue(makeProcess('Hello world\n') as any);
+    vi.mocked(spawn).mockReturnValue(
+      makeProcess([
+        JSON.stringify({ type: 'thread.started', thread_id: 'thread-123' }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { id: 'item_1', type: 'agent_message', text: 'Hello world' },
+        }),
+      ].join('\n')) as any,
+    );
 
     const { codexBackend } = await import('../../agent/backends/codex.js');
     const events = await collect(codexBackend.stream({
@@ -42,13 +120,28 @@ describe('codex backend', () => {
       prompt: 'test',
     }));
 
-    expect(events.some(e => e.type === 'text')).toBe(true);
-    expect(events.some(e => e.type === 'done')).toBe(true);
+    expect(events).toEqual([
+      { type: 'text', delta: 'Hello world' },
+      { type: 'done', result: 'Hello world', sessionId: 'thread-123' },
+    ]);
+
+    const [, args] = vi.mocked(spawn).mock.calls[0] ?? [];
+    const proc = vi.mocked(spawn).mock.results[0]?.value as ReturnType<typeof makeProcess>;
+    expect(args).toEqual(expect.arrayContaining(['exec', '--json', '--skip-git-repo-check', '-']));
+    expect(args).not.toContain('-q');
+    expect(proc.stdin.end).toHaveBeenCalledWith(expect.stringContaining('test'));
   });
 
   it('detects Working directory pattern', async () => {
     vi.mocked(spawn).mockReturnValue(
-      makeProcess('Working directory: /home/user/project\nDone.\n') as any,
+      makeProcess(JSON.stringify({
+        type: 'item.completed',
+        item: {
+          id: 'item_1',
+          type: 'agent_message',
+          text: 'Working directory: /home/user/project\nDone.',
+        },
+      })) as any,
     );
 
     const { codexBackend } = await import('../../agent/backends/codex.js');
@@ -66,5 +159,33 @@ describe('codex backend', () => {
     const events = await collect(codexBackend.stream({ mode: 'code', prompt: 'test' }));
 
     expect(events.some(e => e.type === 'error')).toBe(true);
+  });
+
+  it('ignores warning items and log lines in json mode', async () => {
+    vi.mocked(spawn).mockReturnValue(
+      makeProcess([
+        '2026-03-06T10:27:36.839767Z  WARN codex_protocol::openai_models: warning',
+        JSON.stringify({
+          type: 'item.completed',
+          item: {
+            id: 'item_0',
+            type: 'error',
+            message: 'Under-development features enabled',
+          },
+        }),
+        JSON.stringify({
+          type: 'item.completed',
+          item: { id: 'item_1', type: 'agent_message', text: 'Final answer' },
+        }),
+      ].join('\n')) as any,
+    );
+
+    const { codexBackend } = await import('../../agent/backends/codex.js');
+    const events = await collect(codexBackend.stream({ mode: 'code', prompt: 'test' }));
+
+    expect(events).toEqual([
+      { type: 'text', delta: 'Final answer' },
+      { type: 'done', result: 'Final answer', sessionId: undefined },
+    ]);
   });
 });
