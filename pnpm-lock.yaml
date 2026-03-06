@@ -6,8 +6,29 @@ settings:
 
 importers:
 
-  .:
+  .: {}
+
+  packages/core:
     dependencies:
+      dotenv:
+        specifier: ^16.4.7
+        version: 16.6.1
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.13
+      tsdown:
+        specifier: ^0.20.1
+        version: 0.20.3(typescript@5.9.3)
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.13)(tsx@4.21.0)
+
+  packages/discord:
+    dependencies:
+      '@agent-im-relay/core':
+        specifier: workspace:*
+        version: link:../core
       discord.js:
         specifier: ^14.18.0
         version: 14.25.1
