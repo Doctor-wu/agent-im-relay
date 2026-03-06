@@ -27,7 +27,6 @@ type SetReaction = (
 type RunMentionConversationOptions = {
   backend?: BackendName | AgentBackend;
   createSessionId?: () => string;
-  offerSaveCwd?: (thread: AnyThreadChannel, detectedPath: string) => Promise<void>;
   persist?: () => Promise<void>;
   setReaction?: SetReaction;
   streamToDiscord?: (
@@ -107,9 +106,6 @@ export async function runMentionConversation(
         ) {
           const detectedCwd = event.status.slice(4);
           conversationCwd.set(thread.id, detectedCwd);
-          if (options.offerSaveCwd) {
-            void options.offerSaveCwd(thread, detectedCwd);
-          }
         }
       }),
     );

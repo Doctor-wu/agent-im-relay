@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   activeConversations,
+  conversationCwd,
   conversationSessions,
   interruptConversationRun,
   isConversationRunning,
@@ -26,6 +27,7 @@ function createBackend(): AgentBackend {
 
 afterEach(() => {
   activeConversations.clear();
+  conversationCwd.clear();
   conversationSessions.clear();
   interruptConversationRun('thread-123');
 });
@@ -59,7 +61,6 @@ describe('runMentionConversation', () => {
       backend: createBackend(),
       createSessionId: () => 'session-1',
       persist: vi.fn().mockResolvedValue(undefined),
-      offerSaveCwd: vi.fn().mockResolvedValue(undefined),
       setReaction: vi.fn().mockResolvedValue(undefined),
       streamToDiscord: async (_target, events) => {
         for await (const event of events) {
@@ -82,7 +83,6 @@ describe('runMentionConversation', () => {
       backend: createBackend(),
       createSessionId: () => 'session-2',
       persist: vi.fn().mockResolvedValue(undefined),
-      offerSaveCwd: vi.fn().mockResolvedValue(undefined),
       setReaction: vi.fn().mockResolvedValue(undefined),
       streamToDiscord: async (_target, events) => {
         for await (const event of events) {
@@ -93,5 +93,34 @@ describe('runMentionConversation', () => {
 
     expect(secondEvents).toContainEqual({ type: 'done', result: 'ok', sessionId: 'resolved-session' });
     expect(conversationSessions.get(thread.id)).toBe('resolved-session');
+  });
+
+  it('stores detected cwd without sending a follow-up prompt', async () => {
+    const thread = {
+      id: 'thread-123',
+      send: vi.fn(),
+    } as any;
+
+    const backend: AgentBackend = {
+      name: 'claude',
+      async *stream() {
+        yield { type: 'status', status: 'cwd:/tmp/project' } as const;
+        yield { type: 'done', result: 'ok', sessionId: 'resolved-session' } as const;
+      },
+    };
+
+    await expect(runMentionConversation(thread, 'detect cwd', undefined, {
+      backend,
+      createSessionId: () => 'session-3',
+      persist: vi.fn().mockResolvedValue(undefined),
+      setReaction: vi.fn().mockResolvedValue(undefined),
+      streamToDiscord: async (_target, events) => {
+        for await (const _event of events) {
+        }
+      },
+    })).resolves.toBe(true);
+
+    expect(conversationCwd.get(thread.id)).toBe('/tmp/project');
+    expect(thread.send).not.toHaveBeenCalled();
   });
 });

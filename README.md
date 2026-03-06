@@ -39,7 +39,7 @@ Platform-agnostic foundation:
 
 Discord-specific implementation:
 
-- Slash commands (`/ask`, `/code`, `/interrupt`, `/done`, `/skill`, `/model`, `/effort`, `/cwd`, `/resume`, `/sessions`, `/clear`, `/compact`)
+- Slash commands (`/ask`, `/code`, `/interrupt`, `/done`, `/skill`, `/model`, `/effort`, `/resume`, `/sessions`, `/clear`, `/compact`)
 - Streaming agent output with live message edits
 - Thread-based conversation management
 - Markdown → Discord formatting with embed support

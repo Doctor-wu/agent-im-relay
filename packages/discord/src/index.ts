@@ -5,17 +5,13 @@ import {
   REST,
   Routes,
   SlashCommandBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  ComponentType,
   type AnyThreadChannel,
   type ChatInputCommandInteraction,
   type Message,
 } from 'discord.js';
 import {
   conversationSessions,
-  savedCwdList,
+  conversationBackend,
   activeConversations,
   processedMessages,
   pendingConversationCreation,
@@ -117,56 +113,12 @@ async function setReaction(msg: Message, phase: ReactionPhase, currentPhase?: Re
   }
 }
 
-async function offerSaveCwd(thread: AnyThreadChannel, detectedPath: string): Promise<void> {
-  if (savedCwdList.includes(detectedPath)) return;
-
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`save_cwd:${detectedPath}`)
-      .setLabel('保存到常用目录')
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId('save_cwd:ignore')
-      .setLabel('忽略')
-      .setStyle(ButtonStyle.Secondary),
-  );
-
-  const msg = await thread.send({
-    content: `📁 Agent 确定工作目录：\`${detectedPath}\``,
-    components: [row],
-  });
-
-  const collector = msg.createMessageComponentCollector({
-    componentType: ComponentType.Button,
-    time: 60_000,
-    max: 1,
-  });
-
-  collector.on('collect', async (interaction) => {
-    await interaction.deferUpdate();
-    if (interaction.customId.startsWith('save_cwd:') && !interaction.customId.endsWith(':ignore')) {
-      savedCwdList.push(detectedPath);
-      void persistState();
-      await msg.edit({ content: `✅ 已保存：\`${detectedPath}\``, components: [] });
-    } else {
-      await msg.edit({ content: `📁 \`${detectedPath}\`（未保存）`, components: [] });
-    }
-  });
-
-  collector.on('end', (_collected, reason) => {
-    if (reason === 'time') {
-      void msg.edit({ content: `📁 \`${detectedPath}\`（已超时）`, components: [] });
-    }
-  });
-}
-
 async function runThreadConversation(
   thread: AnyThreadChannel,
   prompt: string,
   triggerMsg?: Message,
 ): Promise<boolean> {
   return runMentionConversation(thread as AnyThreadChannel & StreamTargetChannel, prompt, triggerMsg, {
-    offerSaveCwd,
     persist: persistState,
     setReaction,
   });
@@ -270,7 +222,7 @@ client.on(Events.MessageCreate, async (message) => {
       const thread = await ensureMentionThread(message, prompt);
       await thread.send(`**${message.author.displayName}:** ${prompt}`);
 
-      // Show setup UI only if backend not yet chosen
+      // Show backend setup only if backend not yet chosen
       if (!conversationBackend.has(thread.id)) {
         const result = await promptThreadSetup(thread, prompt);
         await applySetupResult(thread.id, result);
