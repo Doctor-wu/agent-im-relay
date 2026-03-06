@@ -13,6 +13,7 @@ import { streamAgentToDiscord, type StreamTargetChannel } from '../discord/strea
 import {
   activeThreads,
   pendingThreadCreation,
+  persistState,
   processedMessages,
   threadCwd,
   threadEffort,
@@ -138,6 +139,7 @@ async function handleModelCommand(interaction: ChatInputCommandInteraction): Pro
   }
 
   threadModels.set(channel.id, model);
+  void persistState();
   await interaction.reply({ content: `Set model to \`${model}\` for this thread.`, ephemeral: true });
 }
 
@@ -147,6 +149,7 @@ async function handleEffortCommand(interaction: ChatInputCommandInteraction): Pr
 
   const level = interaction.options.getString('level', true);
   threadEffort.set(channel.id, level);
+  void persistState();
   await interaction.reply({ content: `Set effort to \`${level}\` for this thread.`, ephemeral: true });
 }
 
@@ -167,6 +170,7 @@ async function handleCwdCommand(interaction: ChatInputCommandInteraction): Promi
   }
 
   threadCwd.set(channel.id, resolvedPath);
+  void persistState();
   await interaction.reply({ content: `Set working directory to \`${resolvedPath}\`.`, ephemeral: true });
 }
 
@@ -181,6 +185,7 @@ async function handleResumeCommand(interaction: ChatInputCommandInteraction): Pr
   }
 
   threadSessions.set(channel.id, sessionId);
+  void persistState();
   await interaction.reply({ content: `Set session to \`${sessionId}\` for this thread.`, ephemeral: true });
 }
 
@@ -215,6 +220,7 @@ async function handleClearCommand(interaction: ChatInputCommandInteraction): Pro
     pendingThreadCreation.delete(threadId);
 
   if (removed) {
+    void persistState();
     await interaction.reply({ content: 'Cleared Claude state for this thread.', ephemeral: true });
     return;
   }
@@ -277,6 +283,7 @@ async function handleCompactCommand(interaction: ChatInputCommandInteraction): P
     );
 
     threadSessions.set(channel.id, resolvedSessionId);
+    void persistState();
   } catch (error) {
     const errorText = toErrorMessage(error);
     if (interaction.replied || interaction.deferred) {

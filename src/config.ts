@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { join } from 'node:path';
 
 function requireEnv(key: string): string {
   const val = process.env[key];
@@ -29,4 +30,5 @@ export const config = {
   discordMessageCharLimit: numberEnv('DISCORD_MESSAGE_CHAR_LIMIT', 1900),
   claudeModel: process.env['CLAUDE_MODEL'],
   claudeCwd: process.env['CLAUDE_CWD']?.trim() || process.cwd(),
+  stateFile: process.env['STATE_FILE']?.trim() || join(process.cwd(), 'data', 'sessions.json'),
 };

@@ -15,11 +15,22 @@ import { config } from './config.js';
 import { askCommand, handleAskCommand } from './commands/ask.js';
 import { claudeControlCommandHandlers, claudeControlCommands } from './commands/claude-control.js';
 import { codeCommand, handleCodeCommand } from './commands/code.js';
+import {
+  handleSkillCommand,
+  handleSkillModalSubmit,
+  handleSkillSelectMenu,
+  skillCommand,
+  SKILL_MODAL_CUSTOM_ID_PREFIX,
+  SKILL_SELECT_CUSTOM_ID,
+} from './commands/skill.js';
 import { streamAgentToDiscord, type StreamTargetChannel } from './discord/stream.js';
 import { ensureMentionThread } from './discord/thread.js';
+import { listSkills } from './skills.js';
 import {
   activeThreads,
+  initState,
   pendingThreadCreation,
+  persistState,
   processedMessages,
   threadCwd,
   threadEffort,
@@ -33,6 +44,7 @@ function endSession(threadId: string): boolean {
   const had = threadSessions.has(threadId);
   threadSessions.delete(threadId);
   activeThreads.delete(threadId);
+  if (had) void persistState();
   return had;
 }
 
@@ -61,11 +73,12 @@ async function handleDoneCommand(interaction: ChatInputCommandInteraction): Prom
 const commandHandlers = new Map<string, CommandHandler>([
   ['code', handleCodeCommand],
   ['ask', handleAskCommand],
+  ['skill', handleSkillCommand],
   ['done', handleDoneCommand],
   ...claudeControlCommandHandlers.entries(),
 ]);
 
-const commandDefinitions = [codeCommand, askCommand, doneCommand, ...claudeControlCommands];
+const commandDefinitions = [codeCommand, askCommand, skillCommand, doneCommand, ...claudeControlCommands];
 
 // --- Client ---
 const client = new Client({
@@ -126,10 +139,14 @@ async function setReaction(msg: Message, phase: ReactionPhase, currentPhase?: Re
   }
 }
 
-async function runMentionConversation(thread: AnyThreadChannel, prompt: string, triggerMsg?: Message): Promise<void> {
+async function runMentionConversation(
+  thread: AnyThreadChannel,
+  prompt: string,
+  triggerMsg?: Message,
+): Promise<boolean> {
   if (activeThreads.has(thread.id)) {
     // Don't send a message — just silently ignore to avoid spam
-    return;
+    return false;
   }
 
   activeThreads.add(thread.id);
@@ -144,7 +161,7 @@ async function runMentionConversation(thread: AnyThreadChannel, prompt: string, 
     // Store session ID immediately so follow-up messages know this thread is active
     threadSessions.set(thread.id, sessionId);
 
-    console.log(`[session] thread=${thread.id} ${isResume ? 'resume' : 'new'} session=${sessionId}`);
+    console.log(`[session] thread=${thread.id} ${isResume ? 'resume sessionId=' : 'new sessionId='}${sessionId} cwd=${threadCwd.get(thread.id) ?? config.claudeCwd}`);
 
     const events = streamAgentSession({
       mode: 'code',
@@ -183,6 +200,9 @@ async function runMentionConversation(thread: AnyThreadChannel, prompt: string, 
 
     // Update with the resolved session ID from Claude CLI
     threadSessions.set(thread.id, resolvedSessionId);
+    console.log(`[session] thread=${thread.id} saved resolvedSessionId=${resolvedSessionId}`);
+    void persistState();
+    return true;
   } catch (err) {
     if (triggerMsg) await setReaction(triggerMsg, 'error', phase);
     throw err;
@@ -201,6 +221,13 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
 client.once(Events.ClientReady, async (readyClient) => {
   console.log(`Logged in as ${readyClient.user.tag}`);
   await registerSlashCommands();
+
+  try {
+    const skills = await listSkills();
+    console.log(`Loaded ${skills.length} Claude skill(s).`);
+  } catch (error) {
+    console.warn(`Failed to load Claude skills: ${toErrorMessage(error)}`);
+  }
 });
 
 client.rest.on('rateLimited', (rateLimitData) => {
@@ -212,13 +239,23 @@ client.on(Events.Error, (error) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-
-  const handler = commandHandlers.get(interaction.commandName);
-  if (!handler) return;
-
   try {
-    await handler(interaction);
+    if (interaction.isChatInputCommand()) {
+      const handler = commandHandlers.get(interaction.commandName);
+      if (!handler) return;
+
+      await handler(interaction);
+      return;
+    }
+
+    if (interaction.isStringSelectMenu() && interaction.customId === SKILL_SELECT_CUSTOM_ID) {
+      await handleSkillSelectMenu(interaction);
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith(SKILL_MODAL_CUSTOM_ID_PREFIX)) {
+      await handleSkillModalSubmit(interaction, runMentionConversation);
+    }
   } catch (error) {
     const errorText = toErrorMessage(error);
     if (interaction.replied || interaction.deferred) {
@@ -300,4 +337,5 @@ process.on('unhandledRejection', (error) => {
   console.error('Unhandled rejection:', error);
 });
 
+await initState();
 void client.login(config.discordToken);
