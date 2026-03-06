@@ -386,6 +386,7 @@ export async function streamAgentToDiscord(
     if (event.type === 'text') {
       if (isThinking) {
         isThinking = false;
+        buffer = '';
       }
       buffer += event.delta;
     } else if (event.type === 'tool') {
