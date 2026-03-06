@@ -41,6 +41,10 @@ export function createCodexArgs(options: AgentSessionOptions): string[] {
     ? ['exec', 'resume', options.resumeSessionId, '--json', '--skip-git-repo-check']
     : ['exec', '--json', '--skip-git-repo-check'];
 
+  if (options.mode === 'code') {
+    args.push('--full-auto');
+  }
+
   if (options.model) {
     args.push('--model', options.model);
   }
