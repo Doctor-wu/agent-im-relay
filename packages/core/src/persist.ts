@@ -7,6 +7,8 @@ interface PersistedState {
   models: Record<string, string>;
   effort: Record<string, string>;
   cwd: Record<string, string>;
+  backend: Record<string, string>;
+  savedCwdList: string[];
 }
 
 function populateMap(map: Map<string, string>, record: unknown): void {
@@ -21,6 +23,8 @@ export async function loadState(
   models: Map<string, string>,
   effort: Map<string, string>,
   cwd: Map<string, string>,
+  backend: Map<string, string>,
+  savedCwdList: string[],
 ): Promise<void> {
   try {
     const raw = await readFile(config.stateFile, 'utf-8');
@@ -30,6 +34,9 @@ export async function loadState(
     populateMap(models, parsed.models ?? (parsed as any).threadModels);
     populateMap(effort, parsed.effort ?? (parsed as any).threadEffort);
     populateMap(cwd, parsed.cwd ?? (parsed as any).threadCwd);
+    populateMap(backend, parsed.backend ?? {});
+    const cwds = Array.isArray(parsed.savedCwdList) ? parsed.savedCwdList : [];
+    savedCwdList.push(...cwds.filter((v): v is string => typeof v === 'string'));
     console.log(`[state] Loaded ${sessions.size} session(s) from ${config.stateFile}`);
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
@@ -43,12 +50,16 @@ export async function saveState(
   models: Map<string, string>,
   effort: Map<string, string>,
   cwd: Map<string, string>,
+  backend: Map<string, string>,
+  savedCwdList: string[],
 ): Promise<void> {
   const data: PersistedState = {
     sessions: Object.fromEntries(sessions),
     models: Object.fromEntries(models),
     effort: Object.fromEntries(effort),
     cwd: Object.fromEntries(cwd),
+    backend: Object.fromEntries(backend),
+    savedCwdList,
   };
   try {
     await mkdir(dirname(config.stateFile), { recursive: true });
