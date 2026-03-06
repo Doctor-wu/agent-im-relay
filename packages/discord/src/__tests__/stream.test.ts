@@ -226,4 +226,22 @@ describe('streamAgentToDiscord', () => {
       ],
     });
   });
+
+  it('renders agent aborts as controlled interruptions', async () => {
+    const edit = vi.fn().mockResolvedValue(undefined);
+    const message = { edit } as any;
+    const send = vi.fn().mockResolvedValue(message);
+
+    async function* events() {
+      yield { type: 'error' as const, error: 'Agent request aborted' };
+    }
+
+    await streamAgentToDiscord(
+      { channel: { send } },
+      events(),
+    );
+
+    expect(send).toHaveBeenCalledWith(expect.stringContaining('⏹️ 当前任务已中断。'));
+    expect(send).not.toHaveBeenCalledWith(expect.stringContaining('❌ **Error:** Agent request aborted'));
+  });
 });

@@ -399,7 +399,11 @@ export async function streamAgentToDiscord(
         buffer = '⏳ *' + event.status + '*';
       }
     } else if (event.type === 'error') {
-      buffer += `\n\n❌ **Error:** ${event.error}\n`;
+      if (event.error === 'Agent request aborted') {
+        buffer += '\n\n⏹️ 当前任务已中断。\n';
+      } else {
+        buffer += `\n\n❌ **Error:** ${event.error}\n`;
+      }
     } else if (event.type === 'done') {
       if (!buffer.trim() && event.result) {
         buffer = event.result;

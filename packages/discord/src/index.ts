@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import {
   Client,
   Events,
@@ -15,13 +14,7 @@ import {
   type Message,
 } from 'discord.js';
 import {
-  streamAgentSession,
-  type AgentStreamEvent,
   conversationSessions,
-  conversationModels,
-  conversationEffort,
-  conversationCwd,
-  conversationBackend,
   savedCwdList,
   activeConversations,
   processedMessages,
@@ -34,10 +27,13 @@ import {
 } from '@agent-im-relay/core';
 import { config } from './config.js';
 import { createDiscordAdapter } from './adapter.js';
-import { streamAgentToDiscord, type StreamTargetChannel } from './stream.js';
+import type { StreamTargetChannel } from './stream.js';
+import { runMentionConversation } from './conversation.js';
 import { ensureMentionThread } from './thread.js';
 import { askCommand, handleAskCommand } from './commands/ask.js';
 import { codeCommand, handleCodeCommand } from './commands/code.js';
+import { doneCommand, handleDoneCommand } from './commands/done.js';
+import { interruptCommand, handleInterruptCommand } from './commands/interrupt.js';
 import { claudeControlCommandHandlers, claudeControlCommands } from './commands/claude-control.js';
 import {
   handleSkillCommand,
@@ -51,45 +47,24 @@ import { promptThreadSetup, applySetupResult } from './commands/thread-setup.js'
 
 type CommandHandler = (interaction: ChatInputCommandInteraction) => Promise<void>;
 
-function endSession(conversationId: string): boolean {
-  const had = conversationSessions.has(conversationId);
-  conversationSessions.delete(conversationId);
-  activeConversations.delete(conversationId);
-  if (had) void persistState();
-  return had;
-}
-
-// --- /done command ---
-const doneCommand = new SlashCommandBuilder()
-  .setName('done')
-  .setDescription('End the current Claude session in this thread')
-  .setDMPermission(false);
-
-async function handleDoneCommand(interaction: ChatInputCommandInteraction): Promise<void> {
-  const channel = interaction.channel;
-  if (!channel?.isThread()) {
-    await interaction.reply({ content: 'This command only works inside a thread.', ephemeral: true });
-    return;
-  }
-
-  const ended = endSession(channel.id);
-  if (ended) {
-    await interaction.reply('✅ Session ended. Start a new conversation by mentioning me again in a channel.');
-  } else {
-    await interaction.reply({ content: 'No active session in this thread.', ephemeral: true });
-  }
-}
-
 // --- Command registry ---
 const commandHandlers = new Map<string, CommandHandler>([
   ['code', handleCodeCommand],
   ['ask', handleAskCommand],
+  ['interrupt', handleInterruptCommand],
   ['skill', handleSkillCommand],
   ['done', handleDoneCommand],
   ...claudeControlCommandHandlers.entries(),
 ]);
 
-const commandDefinitions = [codeCommand, askCommand, skillCommand, doneCommand, ...claudeControlCommands];
+const commandDefinitions = [
+  codeCommand,
+  askCommand,
+  interruptCommand,
+  skillCommand,
+  doneCommand,
+  ...claudeControlCommands,
+];
 
 // --- Client ---
 const client = new Client({
@@ -125,16 +100,6 @@ function toErrorMessage(error: unknown): string {
 function extractMentionPrompt(content: string, botId: string): string {
   const mentionRegex = new RegExp(`<@!?${botId}>`, 'g');
   return content.replace(mentionRegex, '').replace(/\s+/g, ' ').trim();
-}
-
-async function* captureAgentEvents(
-  events: AsyncIterable<AgentStreamEvent>,
-  onEvent: (event: AgentStreamEvent) => void,
-): AsyncGenerator<AgentStreamEvent, void> {
-  for await (const event of events) {
-    onEvent(event);
-    yield event;
-  }
 }
 
 // --- Reaction status indicator ---
@@ -195,84 +160,16 @@ async function offerSaveCwd(thread: AnyThreadChannel, detectedPath: string): Pro
   });
 }
 
-async function runMentionConversation(
+async function runThreadConversation(
   thread: AnyThreadChannel,
   prompt: string,
   triggerMsg?: Message,
 ): Promise<boolean> {
-  if (activeConversations.has(thread.id)) {
-    return false;
-  }
-
-  activeConversations.add(thread.id);
-  let phase = 'thinking' as ReactionPhase;
-  if (triggerMsg) await setReaction(triggerMsg, 'thinking', 'received');
-
-  try {
-    const existingSessionId = conversationSessions.get(thread.id);
-    const isResume = !!existingSessionId;
-    const sessionId = existingSessionId ?? randomUUID();
-
-    conversationSessions.set(thread.id, sessionId);
-
-    console.log(`[session] conversation=${thread.id} ${isResume ? 'resume sessionId=' : 'new sessionId='}${sessionId} cwd=${conversationCwd.get(thread.id) ?? config.claudeCwd}`);
-
-    const events = streamAgentSession({
-      mode: 'code',
-      prompt,
-      model: conversationModels.get(thread.id),
-      effort: conversationEffort.get(thread.id),
-      cwd: conversationCwd.get(thread.id) ?? config.claudeCwd,
-      backend: conversationBackend.get(thread.id),
-      ...(isResume
-        ? { resumeSessionId: sessionId }
-        : { sessionId }),
-    });
-
-    let resolvedSessionId = sessionId;
-
-    await streamAgentToDiscord(
-      { channel: thread as StreamTargetChannel },
-      captureAgentEvents(events, (event) => {
-        if (event.type === 'tool' && phase !== 'tools' && phase !== 'error') {
-          const prev = phase;
-          phase = 'tools';
-          if (triggerMsg) void setReaction(triggerMsg, 'tools', prev);
-        } else if (event.type === 'done') {
-          if (event.sessionId) resolvedSessionId = event.sessionId;
-        } else if (event.type === 'error') {
-          const prev = phase;
-          phase = 'error';
-          if (triggerMsg) void setReaction(triggerMsg, 'error', prev);
-        }
-
-        // Auto-detect working directory from Codex output
-        if (
-          event.type === 'status' &&
-          event.status.startsWith('cwd:') &&
-          !conversationCwd.has(thread.id)
-        ) {
-          const detectedCwd = event.status.slice(4);
-          conversationCwd.set(thread.id, detectedCwd);
-          void offerSaveCwd(thread, detectedCwd);
-        }
-      }),
-    );
-
-    if (phase !== 'error') {
-      if (triggerMsg) await setReaction(triggerMsg, 'done', phase);
-    }
-
-    conversationSessions.set(thread.id, resolvedSessionId);
-    console.log(`[session] conversation=${thread.id} saved resolvedSessionId=${resolvedSessionId}`);
-    void persistState();
-    return true;
-  } catch (err) {
-    if (triggerMsg) await setReaction(triggerMsg, 'error', phase);
-    throw err;
-  } finally {
-    activeConversations.delete(thread.id);
-  }
+  return runMentionConversation(thread as AnyThreadChannel & StreamTargetChannel, prompt, triggerMsg, {
+    offerSaveCwd,
+    persist: persistState,
+    setReaction,
+  });
 }
 
 // --- Event handlers ---
@@ -318,7 +215,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (interaction.isModalSubmit() && interaction.customId.startsWith(SKILL_MODAL_CUSTOM_ID_PREFIX)) {
-      await handleSkillModalSubmit(interaction, runMentionConversation);
+      await handleSkillModalSubmit(interaction, runThreadConversation);
     }
   } catch (error) {
     const errorText = toErrorMessage(error);
@@ -362,7 +259,7 @@ client.on(Events.MessageCreate, async (message) => {
 
   try {
     if (message.channel.isThread()) {
-      await runMentionConversation(message.channel, prompt, message);
+      await runThreadConversation(message.channel, prompt, message);
       return;
     }
 
@@ -379,7 +276,7 @@ client.on(Events.MessageCreate, async (message) => {
         await applySetupResult(thread.id, result);
       }
 
-      await runMentionConversation(thread, prompt, message);
+      await runThreadConversation(thread, prompt, message);
     } finally {
       pendingConversationCreation.delete(message.id);
     }
