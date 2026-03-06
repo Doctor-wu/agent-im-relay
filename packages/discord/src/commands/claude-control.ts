@@ -7,6 +7,7 @@ import {
 } from 'discord.js';
 import {
   streamAgentSession,
+  conversationBackend,
   type AgentStreamEvent,
   conversationSessions,
   conversationModels,
@@ -17,7 +18,6 @@ import {
   pendingConversationCreation,
   persistState,
 } from '@agent-im-relay/core';
-import { config } from '../config.js';
 import { streamAgentToDiscord, type StreamTargetChannel } from '../stream.js';
 
 type CommandHandler = (interaction: ChatInputCommandInteraction) => Promise<void>;
@@ -64,6 +64,29 @@ export const clearCommand = new SlashCommandBuilder()
   .setDescription('Clear all saved Claude state for this thread')
   .setDMPermission(false);
 
+export const cwdCommand = new SlashCommandBuilder()
+  .setName('cwd')
+  .setDescription('Manage working directory overrides for this thread')
+  .setDMPermission(false)
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('set')
+      .setDescription('Set a working directory override for this thread')
+      .addStringOption((option) =>
+        option.setName('path').setDescription('Absolute working directory path').setRequired(true),
+      ),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('clear')
+      .setDescription('Clear the working directory override for this thread'),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('show')
+      .setDescription('Show the current working directory configuration for this thread'),
+  );
+
 export const compactCommand = new SlashCommandBuilder()
   .setName('compact')
   .setDescription('Ask Claude to summarize this thread context briefly')
@@ -75,6 +98,7 @@ export const claudeControlCommands = [
   resumeCommand,
   sessionsCommand,
   clearCommand,
+  cwdCommand,
   compactCommand,
 ];
 
@@ -84,6 +108,7 @@ export const claudeControlCommandHandlers = new Map<string, CommandHandler>([
   ['resume', handleResumeCommand],
   ['sessions', handleSessionsCommand],
   ['clear', handleClearCommand],
+  ['cwd', handleCwdCommand],
   ['compact', handleCompactCommand],
 ]);
 
@@ -198,6 +223,66 @@ async function handleClearCommand(interaction: ChatInputCommandInteraction): Pro
   await interaction.reply({ content: 'No saved Claude state found for this thread.', ephemeral: true });
 }
 
+function formatConfiguredEnvironment(threadId: string): string {
+  const backend = conversationBackend.get(threadId) ?? 'claude';
+  const model = conversationModels.get(threadId) ?? 'backend default';
+  const cwd = conversationCwd.get(threadId);
+  const cwdText = cwd ? `${cwd} (manual override)` : 'auto-detected by backend';
+
+  return [
+    '## Environment',
+    `- Backend: ${backend}`,
+    `- Model: ${model}`,
+    `- Working directory: ${cwdText}`,
+  ].join('\n');
+}
+
+async function handleCwdCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+  const channel = await requireThread(interaction);
+  if (!channel) return;
+
+  const subcommand = interaction.options.getSubcommand(true);
+
+  if (subcommand === 'set') {
+    const path = interaction.options.getString('path', true).trim();
+    if (!path) {
+      await interaction.reply({ content: 'Please provide a working directory path.', ephemeral: true });
+      return;
+    }
+
+    conversationCwd.set(channel.id, path);
+    void persistState();
+    await interaction.reply({
+      content: `Set working directory override to \`${path}\` for this thread.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  if (subcommand === 'clear') {
+    const removed = conversationCwd.delete(channel.id);
+    if (removed) {
+      void persistState();
+      await interaction.reply({
+        content: 'Cleared the working directory override. Future runs will auto-detect it.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    await interaction.reply({
+      content: 'No working directory override is set for this thread.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.reply({
+    content: formatConfiguredEnvironment(channel.id),
+    ephemeral: true,
+  });
+}
+
 async function* captureSessionEvents(
   events: AsyncIterable<AgentStreamEvent>,
   onEvent: (event: AgentStreamEvent) => void,
@@ -236,7 +321,7 @@ async function handleCompactCommand(interaction: ChatInputCommandInteraction): P
       prompt: compactPrompt,
       model: conversationModels.get(channel.id),
       effort: conversationEffort.get(channel.id),
-      cwd: conversationCwd.get(channel.id) ?? config.claudeCwd,
+      cwd: conversationCwd.get(channel.id),
       ...(isResume ? { resumeSessionId: sessionId } : { sessionId }),
     });
 

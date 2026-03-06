@@ -1,6 +1,5 @@
 import { SlashCommandBuilder, type ChatInputCommandInteraction, type Message } from 'discord.js';
 import { streamAgentSession } from '@agent-im-relay/core';
-import { config } from '../config.js';
 import { streamAgentToDiscord, type StreamTargetChannel } from '../stream.js';
 
 export const askCommand = new SlashCommandBuilder()
@@ -34,7 +33,6 @@ export async function handleAskCommand(interaction: ChatInputCommandInteraction)
     const events = streamAgentSession({
       mode: 'ask',
       prompt: question,
-      cwd: config.claudeCwd,
     });
 
     await streamAgentToDiscord({

@@ -64,6 +64,7 @@ export async function runMentionConversation(
   try {
     const existingSessionId = conversationSessions.get(thread.id);
     const isResume = !!existingSessionId;
+    const showEnvironment = !existingSessionId;
     const sessionId = existingSessionId ?? options.createSessionId?.() ?? randomUUID();
 
     conversationSessions.set(thread.id, sessionId);
@@ -81,7 +82,7 @@ export async function runMentionConversation(
     let resolvedSessionId = sessionId;
 
     await (options.streamToDiscord ?? streamAgentToDiscord)(
-      { channel: thread },
+      { channel: thread, showEnvironment },
       captureAgentEvents(events, (event) => {
         if (event.type === 'tool' && phase !== 'tools' && phase !== 'error') {
           const previousPhase = phase;
@@ -97,6 +98,15 @@ export async function runMentionConversation(
           if (triggerMsg && options.setReaction) {
             void options.setReaction(triggerMsg, 'error', previousPhase);
           }
+        }
+
+        if (
+          event.type === 'environment'
+          && event.environment.cwd.source === 'auto-detected'
+          && event.environment.cwd.value
+          && !conversationCwd.has(thread.id)
+        ) {
+          conversationCwd.set(thread.id, event.environment.cwd.value);
         }
 
         if (

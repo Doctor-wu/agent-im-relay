@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import { config } from '../../config.js';
 import { registerBackend, type AgentBackend } from '../backend.js';
+import { buildEnvironment } from '../environment.js';
 import type { AgentSessionOptions, AgentStreamEvent } from '../session.js';
 
 const WORKING_DIR_PATTERN = /^Working directory:\s*(.+)$/;
@@ -100,6 +101,13 @@ function toErrorMessage(error: unknown): string {
 
 async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentStreamEvent, void> {
   const cwd = options.cwd ?? config.claudeCwd;
+  let environmentCwd = cwd;
+  let environmentSource: 'explicit' | 'auto-detected' | 'default' = options.cwd ? 'explicit' : 'default';
+
+  yield {
+    type: 'environment',
+    environment: buildEnvironment('codex', options, environmentCwd, environmentSource, options.model),
+  };
 
   const prompt = options.cwd
     ? options.prompt
@@ -174,7 +182,16 @@ async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentS
           for (const textLine of event.delta.split('\n')) {
             const cwdMatch = WORKING_DIR_PATTERN.exec(textLine.trim());
             if (cwdMatch?.[1]) {
-              yield { type: 'status', status: `cwd:${cwdMatch[1].trim()}` };
+              const detectedCwd = cwdMatch[1].trim();
+              yield { type: 'status', status: `cwd:${detectedCwd}` };
+              if (environmentCwd !== detectedCwd || environmentSource !== 'auto-detected') {
+                environmentCwd = detectedCwd;
+                environmentSource = 'auto-detected';
+                yield {
+                  type: 'environment',
+                  environment: buildEnvironment('codex', options, environmentCwd, environmentSource, options.model),
+                };
+              }
             }
           }
         }

@@ -1,5 +1,5 @@
 import type { Message } from 'discord.js';
-import type { AgentStreamEvent } from '@agent-im-relay/core';
+import type { AgentEnvironment, AgentStreamEvent } from '@agent-im-relay/core';
 import { config } from './config.js';
 
 export type StreamTargetChannel = {
@@ -9,6 +9,7 @@ export type StreamTargetChannel = {
 type StreamToDiscordOptions = {
   channel: StreamTargetChannel;
   initialMessage?: Message<boolean>;
+  showEnvironment?: boolean;
 };
 
 type EmbedFieldData = {
@@ -28,6 +29,10 @@ type MarkdownConversionResult = {
 };
 
 const ZERO_WIDTH_SPACE = '\u200B';
+
+function capitalize(value: string): string {
+  return value ? value[0]!.toUpperCase() + value.slice(1) : value;
+}
 
 // --- Tool display formatting ---
 
@@ -141,6 +146,63 @@ export function chunkForDiscord(text: string, maxLength: number): string[] {
   return chunks;
 }
 
+function normalizeMarkdownSpacing(text: string): string {
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const output: string[] = [];
+  let inFence = false;
+
+  const ensureBlankLine = () => {
+    if (output.length > 0 && output[output.length - 1] !== '') {
+      output.push('');
+    }
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine;
+    const trimmed = line.trim();
+
+    if (isFenceLine(line)) {
+      if (!inFence) {
+        ensureBlankLine();
+      }
+      output.push(line);
+      inFence = !inFence;
+      continue;
+    }
+
+    if (inFence) {
+      output.push(line);
+      continue;
+    }
+
+    if (!trimmed) {
+      if (output.length > 0 && output[output.length - 1] !== '') {
+        output.push('');
+      }
+      continue;
+    }
+
+    const isHeading = /^#{1,6}\s/.test(trimmed);
+    const isQuote = /^>\s?/.test(trimmed);
+    const isList = /^([-*+]\s|\d+\.\s)/.test(trimmed);
+
+    if (isHeading || isQuote) {
+      ensureBlankLine();
+      output.push(trimmed);
+      continue;
+    }
+
+    if (isList) {
+      output.push(trimmed);
+      continue;
+    }
+
+    output.push(line);
+  }
+
+  return output.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function isFenceLine(line: string): boolean {
   return line.trimStart().startsWith('```');
 }
@@ -229,7 +291,8 @@ function formatAlignedTableCodeBlock(headers: string[], rows: string[][]): strin
 }
 
 export function convertMarkdownForDiscord(text: string): MarkdownConversionResult {
-  const lines = text.split('\n');
+  const normalized = normalizeMarkdownSpacing(text);
+  const lines = normalized.split('\n');
   const output: string[] = [];
   const embeds: EmbedData[] = [];
   let index = 0;
@@ -316,13 +379,37 @@ export function convertMarkdownForDiscord(text: string): MarkdownConversionResul
   };
 }
 
+export function formatEnvironmentSummary(environment: AgentEnvironment): string {
+  const model = environment.model.resolved ?? environment.model.requested ?? 'backend default';
+  const cwd = environment.cwd.value ?? 'unknown';
+  const cwdSuffix = environment.cwd.source === 'auto-detected'
+    ? ' (auto-detected)'
+    : environment.cwd.source === 'explicit'
+      ? ' (manual override)'
+      : '';
+  const gitBranch = environment.git.isRepo
+    ? environment.git.branch ?? 'unknown'
+    : 'not a git repository';
+
+  return [
+    '## Environment',
+    `- Backend: ${capitalize(environment.backend)}`,
+    `- Model: ${model}`,
+    `- Working directory: ${cwd}${cwdSuffix}`,
+    `- Git branch: ${gitBranch}`,
+    `- Mode: ${environment.mode}`,
+  ].join('\n');
+}
+
 // --- Streaming ---
 
 export async function streamAgentToDiscord(
   options: StreamToDiscordOptions,
   events: AsyncIterable<AgentStreamEvent>,
 ): Promise<void> {
+  const showEnvironment = options.showEnvironment ?? false;
   const messages: Message<boolean>[] = [];
+  let environmentMessage: Message<boolean> | undefined;
   if (options.initialMessage) {
     messages.push(options.initialMessage);
   }
@@ -383,7 +470,17 @@ export async function streamAgentToDiscord(
   };
 
   for await (const event of events) {
-    if (event.type === 'text') {
+    if (event.type === 'environment') {
+      if (!showEnvironment) {
+        continue;
+      }
+      const content = formatEnvironmentSummary(event.environment);
+      if (environmentMessage) {
+        await environmentMessage.edit(content).catch(() => {});
+      } else {
+        environmentMessage = await options.channel.send(content);
+      }
+    } else if (event.type === 'text') {
       if (isThinking) {
         isThinking = false;
         buffer = '';

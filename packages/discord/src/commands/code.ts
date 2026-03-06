@@ -1,7 +1,5 @@
 import { SlashCommandBuilder, type ChatInputCommandInteraction } from 'discord.js';
-import { streamAgentSession } from '@agent-im-relay/core';
-import { config } from '../config.js';
-import { streamAgentToDiscord, type StreamTargetChannel } from '../stream.js';
+import { runMentionConversation } from '../conversation.js';
 import { ensureCodeThread } from '../thread.js';
 
 export const codeCommand = new SlashCommandBuilder()
@@ -33,14 +31,10 @@ export async function handleCodeCommand(interaction: ChatInputCommandInteraction
 
     await interaction.editReply(`Started coding in ${threadMention}`);
     await thread.send(`## /code\n${prompt}`);
-
-    const events = streamAgentSession({
-      mode: 'code',
-      prompt,
-      cwd: config.claudeCwd,
-    });
-
-    await streamAgentToDiscord({ channel: thread as StreamTargetChannel }, events);
+    const started = await runMentionConversation(thread, prompt);
+    if (!started) {
+      await interaction.editReply(`Claude is already busy in ${threadMention}`);
+    }
   } catch (error) {
     const errorText = toErrorMessage(error);
     await interaction.editReply(`Failed to run /code in ${threadMention}: ${errorText}`);

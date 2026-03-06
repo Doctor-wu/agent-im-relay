@@ -16,6 +16,8 @@ A platform-agnostic bridge that connects Claude AI to instant messaging platform
 - Discord adapter with thread-based conversations and slash commands
 - Backend-agnostic control flow that can support multiple agent providers
 - Monorepo structure that makes it easy to add more IM platforms over time
+- Backend-provided environment summaries appear only on the first agent run in a thread
+- Working directory overrides are managed separately from backend setup
 
 ## Project Structure
 
@@ -39,12 +41,14 @@ Platform-agnostic foundation:
 
 Discord-specific implementation:
 
-- Slash commands (`/ask`, `/code`, `/interrupt`, `/done`, `/skill`, `/model`, `/effort`, `/resume`, `/sessions`, `/clear`, `/compact`)
+- Slash commands (`/ask`, `/code`, `/interrupt`, `/done`, `/skill`, `/model`, `/effort`, `/resume`, `/sessions`, `/clear`, `/cwd`, `/compact`)
 - Streaming agent output with live message edits
 - Thread-based conversation management
 - Markdown → Discord formatting with embed support
 - `/interrupt` stops the currently running agent task in the thread without clearing saved session state
 - `/done` ends the saved session for the thread without acting as an interrupt control
+- Environment summaries show backend, model, working directory, git branch, and mode only on the first agent run in a thread
+- `/cwd` manages per-thread working directory overrides; otherwise backends auto-detect the project directory
 
 ## Setup
 

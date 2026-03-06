@@ -3,11 +3,30 @@ import './backends/codex.js';
 import { getBackend, type BackendName } from './backend.js';
 
 export type AgentStreamEvent =
+  | { type: 'environment'; environment: AgentEnvironment }
   | { type: 'text'; delta: string }
   | { type: 'tool'; summary: string }
   | { type: 'status'; status: string }
   | { type: 'done'; result: string; sessionId?: string }
   | { type: 'error'; error: string };
+
+export type AgentEnvironment = {
+  backend: import('./backend.js').BackendName;
+  mode: import('./tools.js').AgentMode;
+  model: {
+    requested?: string;
+    resolved?: string;
+  };
+  cwd: {
+    value?: string;
+    source: 'explicit' | 'auto-detected' | 'default' | 'unknown';
+  };
+  git: {
+    isRepo: boolean;
+    branch?: string;
+    repoRoot?: string;
+  };
+};
 
 export type AgentSessionOptions = {
   mode: import('./tools.js').AgentMode;

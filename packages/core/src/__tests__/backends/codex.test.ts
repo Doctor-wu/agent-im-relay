@@ -3,9 +3,10 @@ import { Readable } from 'node:stream';
 
 vi.mock('node:child_process', () => ({
   spawn: vi.fn(),
+  spawnSync: vi.fn(() => ({ status: 128, stdout: '' })),
 }));
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import type { AgentStreamEvent } from '../../agent/session.js';
 import { createCodexArgs, extractCodexEvents } from '../../agent/backends/codex.js';
 
@@ -32,7 +33,10 @@ function makeProcess(stdout: string, stderr = '', exitCode = 0) {
 }
 
 describe('codex backend', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(spawnSync).mockReturnValue({ status: 128, stdout: '' } as any);
+  });
 
   it('builds exec arguments that read prompt from stdin', () => {
     const args = createCodexArgs({
@@ -122,7 +126,25 @@ describe('codex backend', () => {
       prompt: 'test',
     }));
 
-    expect(events).toEqual([
+    expect(events[0]).toEqual({
+      type: 'environment',
+      environment: {
+        backend: 'codex',
+        mode: 'code',
+        model: {
+          requested: undefined,
+          resolved: undefined,
+        },
+        cwd: {
+          value: expect.any(String),
+          source: 'default',
+        },
+        git: {
+          isRepo: false,
+        },
+      },
+    });
+    expect(events.slice(1)).toEqual([
       { type: 'text', delta: 'Hello world' },
       { type: 'done', result: 'Hello world', sessionId: 'thread-123' },
     ]);
@@ -150,8 +172,71 @@ describe('codex backend', () => {
     const events = await collect(codexBackend.stream({ mode: 'code', prompt: 'test' }));
 
     const status = events.find(e => e.type === 'status' && e.status.startsWith('cwd:'));
+    const environment = events.findLast?.(
+      (event) => event.type === 'environment',
+    ) ?? [...events].reverse().find((event) => event.type === 'environment');
     expect(status).toBeDefined();
     expect((status as any).status).toBe('cwd:/home/user/project');
+    expect(environment).toEqual({
+      type: 'environment',
+      environment: {
+        backend: 'codex',
+        mode: 'code',
+        model: {
+          requested: undefined,
+          resolved: undefined,
+        },
+        cwd: {
+          value: '/home/user/project',
+          source: 'auto-detected',
+        },
+        git: {
+          isRepo: false,
+        },
+      },
+    });
+  });
+
+  it('emits explicit cwd and requested model in environment summary', async () => {
+    vi.mocked(spawn).mockReturnValue(
+      makeProcess(JSON.stringify({
+        type: 'item.completed',
+        item: { id: 'item_1', type: 'agent_message', text: 'Hello from Codex' },
+      })) as any,
+    );
+
+    vi.mocked(spawnSync)
+      .mockReturnValueOnce({ status: 0, stdout: '/tmp/project\n' } as any)
+      .mockReturnValueOnce({ status: 0, stdout: 'feature/demo\n' } as any);
+
+    const { codexBackend } = await import('../../agent/backends/codex.js');
+    const events = await collect(codexBackend.stream({
+      mode: 'code',
+      prompt: 'test',
+      cwd: '/tmp/project',
+      model: 'gpt-5-codex',
+    }));
+
+    expect(events[0]).toEqual({
+      type: 'environment',
+      environment: {
+        backend: 'codex',
+        mode: 'code',
+        model: {
+          requested: 'gpt-5-codex',
+          resolved: 'gpt-5-codex',
+        },
+        cwd: {
+          value: '/tmp/project',
+          source: 'explicit',
+        },
+        git: {
+          isRepo: true,
+          repoRoot: '/tmp/project',
+          branch: 'feature/demo',
+        },
+      },
+    });
   });
 
   it('emits error event on non-zero exit', async () => {
@@ -186,6 +271,24 @@ describe('codex backend', () => {
     const events = await collect(codexBackend.stream({ mode: 'code', prompt: 'test' }));
 
     expect(events).toEqual([
+      {
+        type: 'environment',
+        environment: {
+          backend: 'codex',
+          mode: 'code',
+          model: {
+            requested: undefined,
+            resolved: undefined,
+          },
+          cwd: {
+            value: expect.any(String),
+            source: 'default',
+          },
+          git: {
+            isRepo: false,
+          },
+        },
+      },
       { type: 'text', delta: 'Final answer' },
       { type: 'done', result: 'Final answer', sessionId: undefined },
     ]);

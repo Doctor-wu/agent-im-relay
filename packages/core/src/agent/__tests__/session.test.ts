@@ -1,5 +1,4 @@
-import { EventEmitter } from 'node:events';
-import { PassThrough } from 'node:stream';
+import { Readable } from 'node:stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentStreamEvent } from '../session.js';
 import { createClaudeArgs, extractEvents, streamAgentSession } from '../session.js';
@@ -7,45 +6,38 @@ import { spawn } from 'node:child_process';
 
 vi.mock('node:child_process', () => ({
   spawn: vi.fn(),
+  spawnSync: vi.fn(() => ({ status: 128, stdout: '' })),
 }));
 
-type MockChildProcess = EventEmitter & {
-  stdout: PassThrough;
-  stderr: PassThrough;
+type MockChildProcess = {
+  stdout: Readable;
+  stderr: Readable;
   killed: boolean;
   kill: ReturnType<typeof vi.fn>;
+  once: ReturnType<typeof vi.fn>;
 };
 
 function createMockChildProcess(
   lines: string[],
   options: { code?: number; signal?: NodeJS.Signals | null; stderrLines?: string[] } = {},
 ): MockChildProcess {
-  const child = new EventEmitter() as MockChildProcess;
-  child.stdout = new PassThrough();
-  child.stderr = new PassThrough();
-  child.killed = false;
-  child.kill = vi.fn(() => {
-    child.killed = true;
-    return true;
-  });
-
   const code = options.code ?? 0;
   const signal = options.signal ?? null;
   const stderrLines = options.stderrLines ?? [];
-
-  queueMicrotask(() => {
-    for (const line of lines) {
-      child.stdout.write(line + '\n');
-    }
-    for (const line of stderrLines) {
-      child.stderr.write(line + '\n');
-    }
-    child.stdout.end();
-    child.stderr.end();
-    child.emit('close', code, signal);
-  });
-
-  return child;
+  return {
+    stdout: Readable.from(lines.map(line => `${line}\n`)),
+    stderr: Readable.from(stderrLines.map(line => `${line}\n`)),
+    killed: false,
+    kill: vi.fn(function mockKill(this: MockChildProcess) {
+      this.killed = true;
+      return true;
+    }),
+    once: vi.fn((event: string, callback: (...args: unknown[]) => void) => {
+      if (event === 'close') {
+        queueMicrotask(() => callback(code, signal));
+      }
+    }),
+  };
 }
 
 describe('createClaudeArgs', () => {
@@ -170,7 +162,21 @@ describe('streamAgentSession', () => {
       events.push(event);
     }
 
-    expect(events).toEqual([
+    expect(events[0]).toEqual({
+      type: 'environment',
+      environment: expect.objectContaining({
+        backend: 'claude',
+        mode: 'code',
+        cwd: {
+          value: expect.any(String),
+          source: 'default',
+        },
+        git: {
+          isRepo: false,
+        },
+      }),
+    });
+    expect(events.slice(1)).toEqual([
       { type: 'text', delta: 'Alpha' },
       { type: 'tool', summary: 'running Read {"file_path":"a.ts"}' },
       { type: 'done', result: 'Done', sessionId: 'session-final' },

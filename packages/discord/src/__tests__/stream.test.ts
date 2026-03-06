@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   chunkForDiscord,
   convertMarkdownForDiscord,
+  formatEnvironmentSummary,
   formatToolLine,
   getToolIcon,
   streamAgentToDiscord,
@@ -45,7 +46,16 @@ describe('convertMarkdownForDiscord', () => {
     const input = ['Intro', '# Title', 'Body', '## Section', '### Detail'].join('\n');
 
     expect(convertMarkdownForDiscord(input)).toEqual({
-      text: input,
+      text: [
+        'Intro',
+        '',
+        '# Title',
+        'Body',
+        '',
+        '## Section',
+        '',
+        '### Detail',
+      ].join('\n'),
       embeds: [],
     });
   });
@@ -141,6 +151,36 @@ describe('convertMarkdownForDiscord', () => {
     });
   });
 
+  it('normalizes heading, quote, and code fence spacing for Discord output', () => {
+    const input = [
+      'Intro',
+      '## Plan',
+      '- item 1',
+      '- item 2',
+      '> note',
+      '```ts',
+      'const x = 1',
+      '```',
+    ].join('\n');
+
+    expect(convertMarkdownForDiscord(input)).toEqual({
+      text: [
+        'Intro',
+        '',
+        '## Plan',
+        '- item 1',
+        '- item 2',
+        '',
+        '> note',
+        '',
+        '```ts',
+        'const x = 1',
+        '```',
+      ].join('\n'),
+      embeds: [],
+    });
+  });
+
   it('handles mixed content with headings, rules, tables, and code fences', () => {
     const input = [
       'Summary',
@@ -163,7 +203,9 @@ describe('convertMarkdownForDiscord', () => {
     expect(convertMarkdownForDiscord(input)).toEqual({
       text: [
         'Summary',
+        '',
         '## Results',
+        '',
         '',
         '```md',
         '# Keep this',
@@ -171,6 +213,7 @@ describe('convertMarkdownForDiscord', () => {
         '| --- | --- |',
         '| Carol | 7 |',
         '```',
+        '',
         '### Next',
         'Done',
       ].join('\n'),
@@ -187,7 +230,84 @@ describe('convertMarkdownForDiscord', () => {
   });
 });
 
+describe('formatEnvironmentSummary', () => {
+  it('formats backend-provided environment details for Discord', () => {
+    expect(formatEnvironmentSummary({
+      backend: 'codex',
+      mode: 'code',
+      model: { requested: 'gpt-5-codex' },
+      cwd: { value: '/tmp/project', source: 'auto-detected' },
+      git: { isRepo: true, branch: 'feature/demo', repoRoot: '/tmp/project' },
+    })).toBe([
+      '## Environment',
+      '- Backend: Codex',
+      '- Model: gpt-5-codex',
+      '- Working directory: /tmp/project (auto-detected)',
+      '- Git branch: feature/demo',
+      '- Mode: code',
+    ].join('\n'));
+  });
+});
+
 describe('streamAgentToDiscord', () => {
+  it('renders environment events as a standalone summary message', async () => {
+    const edit = vi.fn().mockResolvedValue(undefined);
+    const message = { edit } as any;
+    const send = vi.fn().mockResolvedValue(message);
+
+    async function* events() {
+      yield {
+        type: 'environment' as const,
+        environment: {
+          backend: 'codex' as const,
+          mode: 'code' as const,
+          model: { requested: 'gpt-5-codex' },
+          cwd: { value: '/tmp/project', source: 'auto-detected' as const },
+          git: { isRepo: true, branch: 'feature/demo', repoRoot: '/tmp/project' },
+        },
+      };
+      yield { type: 'text' as const, delta: '## Done\n- item 1\n- item 2' };
+      yield { type: 'done' as const, result: '## Done\n- item 1\n- item 2' };
+    }
+
+    await streamAgentToDiscord(
+      { channel: { send }, showEnvironment: true },
+      events(),
+    );
+
+    expect(send).toHaveBeenNthCalledWith(1, expect.stringContaining('## Environment'));
+  });
+
+  it('skips visible environment output when disabled', async () => {
+    const edit = vi.fn().mockResolvedValue(undefined);
+    const message = { edit } as any;
+    const send = vi.fn().mockResolvedValue(message);
+
+    async function* events() {
+      yield {
+        type: 'environment' as const,
+        environment: {
+          backend: 'codex' as const,
+          mode: 'code' as const,
+          model: { requested: 'gpt-5-codex' },
+          cwd: { value: '/tmp/project', source: 'auto-detected' as const },
+          git: { isRepo: true, branch: 'feature/demo', repoRoot: '/tmp/project' },
+        },
+      };
+      yield { type: 'text' as const, delta: '## Done\n- item 1\n- item 2' };
+      yield { type: 'done' as const, result: '## Done\n- item 1\n- item 2' };
+    }
+
+    await streamAgentToDiscord(
+      { channel: { send }, showEnvironment: false },
+      events(),
+    );
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith(expect.not.stringContaining('## Environment'));
+    expect(send).toHaveBeenCalledWith(expect.stringContaining('## Done'));
+  });
+
   it('sends embeds alongside converted text content', async () => {
     const edit = vi.fn().mockResolvedValue(undefined);
     const message = { edit } as any;

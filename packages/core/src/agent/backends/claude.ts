@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import { config } from '../../config.js';
-import { toolsForMode } from '../tools.js';
 import { registerBackend, type AgentBackend } from '../backend.js';
+import { buildEnvironment } from '../environment.js';
 import type { AgentSessionOptions, AgentStreamEvent } from '../session.js';
+import { toolsForMode } from '../tools.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -159,6 +160,17 @@ function toErrorMessage(error: unknown): string {
 
 async function* streamClaude(options: AgentSessionOptions): AsyncGenerator<AgentStreamEvent, void> {
   const cwd = options.cwd ?? config.claudeCwd;
+  yield {
+    type: 'environment',
+    environment: buildEnvironment(
+      'claude',
+      options,
+      cwd,
+      options.cwd ? 'explicit' : 'default',
+      options.model ?? config.claudeModel,
+    ),
+  };
+
   const child = spawn(config.claudeBin, createClaudeArgs(options), {
     cwd,
     env: process.env,
