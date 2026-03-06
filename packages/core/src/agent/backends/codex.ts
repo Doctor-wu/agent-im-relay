@@ -45,7 +45,9 @@ export function createCodexArgs(options: AgentSessionOptions): string[] {
     args.push('--model', options.model);
   }
 
-  if (options.cwd) {
+  // --cd is only supported by `codex exec`, not `codex exec resume`
+  // (resumed sessions remember their own working directory)
+  if (options.cwd && !options.resumeSessionId) {
     args.push('--cd', options.cwd);
   }
 

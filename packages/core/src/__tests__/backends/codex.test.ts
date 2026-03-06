@@ -72,10 +72,10 @@ describe('codex backend', () => {
       '--skip-git-repo-check',
       '--model',
       'gpt-5',
-      '--cd',
-      '/tmp/project',
       '-',
     ]);
+    // --cd is not supported by `codex exec resume`
+    expect(args).not.toContain('--cd');
   });
 
   it('extracts text and tool events from Codex JSONL items', () => {
