@@ -10,7 +10,6 @@ import {
   type Message,
 } from 'discord.js';
 import {
-  conversationSessions,
   conversationBackend,
   activeConversations,
   processedMessages,
@@ -24,7 +23,7 @@ import {
 import { config } from './config.js';
 import { createDiscordAdapter } from './adapter.js';
 import type { StreamTargetChannel } from './stream.js';
-import { runMentionConversation } from './conversation.js';
+import { hasOpenStickyThreadSession, runMentionConversation } from './conversation.js';
 import { collectMessageAttachments } from './files.js';
 import { ensureMentionThread } from './thread.js';
 import { askCommand, handleAskCommand } from './commands/ask.js';
@@ -190,7 +189,7 @@ client.on(Events.MessageCreate, async (message) => {
   if (!botUser) return;
 
   const isExplicitMention = new RegExp(`<@!?${botUser.id}>`).test(message.content);
-  const isActiveThread = message.channel.isThread() && conversationSessions.has(message.channel.id);
+  const isActiveThread = message.channel.isThread() && hasOpenStickyThreadSession(message.channel.id);
 
   if (!isExplicitMention && !isActiveThread) return;
 

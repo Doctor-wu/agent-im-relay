@@ -50,6 +50,8 @@ afterEach(() => {
   core.activeConversations.clear();
   core.conversationModels.clear();
   core.conversationEffort.clear();
+  core.threadSessionBindings.clear();
+  core.threadContinuationSnapshots.clear();
   vi.restoreAllMocks();
 });
 
@@ -195,6 +197,17 @@ describe('handleDoneCommand', () => {
   it('keeps done replies unchanged while leaving runtime activity alone', async () => {
     const interaction = createThreadInteraction();
     core.conversationSessions.set('thread-123', 'session-1');
+    core.openThreadSessionBinding({
+      conversationId: 'thread-123',
+      backend: 'claude',
+      now: '2026-03-07T00:00:00.000Z',
+    });
+    core.updateThreadContinuationSnapshot({
+      conversationId: 'thread-123',
+      taskSummary: 'Keep this thread sticky.',
+      whyStopped: 'completed',
+      updatedAt: '2026-03-07T00:01:00.000Z',
+    });
     core.activeConversations.add('thread-123');
     const applySessionControlCommandSpy = vi.spyOn(core, 'applySessionControlCommand');
     vi.spyOn(core, 'persistState').mockResolvedValue(undefined);
@@ -207,6 +220,8 @@ describe('handleDoneCommand', () => {
       type: 'done',
     });
     expect(core.conversationSessions.has('thread-123')).toBe(false);
+    expect(core.threadSessionBindings.has('thread-123')).toBe(false);
+    expect(core.threadContinuationSnapshots.has('thread-123')).toBe(false);
     expect(core.activeConversations.has('thread-123')).toBe(true);
     expect(core.interruptConversationRun).not.toHaveBeenCalled();
     expect(interaction.reply).toHaveBeenCalledWith(
