@@ -7,7 +7,8 @@
   "scripts": {
     "build": "pnpm -r build",
     "test": "pnpm -r test",
-    "dev:discord": "pnpm --filter @agent-im-relay/discord dev"
+    "dev:discord": "pnpm --filter @agent-im-relay/discord dev",
+    "dev:feishu": "pnpm --filter @agent-im-relay/feishu dev"
   },
   "engines": {
     "node": ">=20"

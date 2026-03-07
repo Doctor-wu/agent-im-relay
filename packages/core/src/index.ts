@@ -26,12 +26,21 @@ export { Orchestrator } from './orchestrator.js';
 export type { AgentSessionFactory, OrchestratorOptions } from './orchestrator.js';
 
 // Agent
-export { streamAgentSession, extractEvents, createClaudeArgs } from './agent/session.js';
+export { buildAgentPrompt, streamAgentSession, extractEvents, createClaudeArgs } from './agent/session.js';
 export { runConversationSession, interruptConversationRun, isConversationRunning, resetConversationRuntimeForTests } from './agent/runtime.js';
 export type { AgentEnvironment, AgentStreamEvent, AgentSessionOptions } from './agent/session.js';
 export type { BackendName, AgentBackend } from './agent/backend.js';
 export { toolsForMode } from './agent/tools.js';
 export type { AgentMode } from './agent/tools.js';
+export { runConversationWithRenderer } from './runtime/conversation-runner.js';
+export type { ConversationRunPhase } from './runtime/conversation-runner.js';
+export {
+  buildAttachmentPromptContext,
+  downloadIncomingAttachments,
+  prepareAttachmentPrompt,
+  stageOutgoingArtifacts,
+} from './runtime/files.js';
+export type { DownloadedAttachment, RemoteAttachmentLike, StagedArtifactsResult } from './runtime/files.js';
 
 // State
 export {
@@ -40,11 +49,14 @@ export {
   conversationEffort,
   conversationCwd,
   conversationBackend,
+  conversationMode,
   conversationArtifacts,
   savedCwdList,
   activeConversations,
   processedMessages,
+  processedEventIds,
   pendingConversationCreation,
+  pendingBackendChanges,
   getConversationArtifactMetadata,
   initState,
   persistConversationArtifactMetadata,
@@ -54,12 +66,18 @@ export {
 // Artifacts
 export {
   createEmptyArtifactMetadata,
+  cloneConversationArtifactMetadata,
   ensureConversationArtifactPaths,
   getConversationArtifactPaths,
   readArtifactMetadata,
   writeArtifactMetadata,
 } from './artifacts/store.js';
-export { parseArtifactManifest, resolveArtifactPath, stripArtifactManifest } from './artifacts/protocol.js';
+export {
+  parseArtifactManifest,
+  resolveArtifactCandidatePaths,
+  resolveArtifactPath,
+  stripArtifactManifest,
+} from './artifacts/protocol.js';
 export type {
   ArtifactKind,
   ArtifactRecord,
