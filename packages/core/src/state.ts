@@ -8,6 +8,7 @@ import {
 } from './artifacts/store.js';
 import type { ConversationArtifactMetadata } from './artifacts/types.js';
 import { loadState, saveState } from './persist.js';
+import type { ThreadContinuationSnapshot, ThreadSessionBinding } from './thread-session/types.js';
 
 // Generalized keys: "conversation" instead of "thread"
 export const conversationSessions = new Map<string, string>();
@@ -17,6 +18,8 @@ export const conversationCwd = new Map<string, string>();
 export const conversationBackend = new Map<string, BackendName>();
 export const conversationMode = new Map<string, 'code' | 'ask'>();
 export const conversationArtifacts = new Map<string, ConversationArtifactMetadata>();
+export const threadSessionBindings = new Map<string, ThreadSessionBinding>();
+export const threadContinuationSnapshots = new Map<string, ThreadContinuationSnapshot>();
 export const savedCwdList: string[] = [];
 export const activeConversations = new Set<string>();
 export const processedMessages = new Set<string>();
@@ -41,6 +44,8 @@ function trackedConversationIds(): string[] {
     ...conversationBackend.keys(),
     ...conversationMode.keys(),
     ...pendingBackendChanges.keys(),
+    ...threadSessionBindings.keys(),
+    ...threadContinuationSnapshots.keys(),
   ])];
 }
 
@@ -74,7 +79,16 @@ export async function persistConversationArtifactMetadata(
 }
 
 export async function initState(): Promise<void> {
-  await loadState(conversationSessions, conversationModels, conversationEffort, conversationCwd, conversationBackend, savedCwdList);
+  await loadState(
+    conversationSessions,
+    conversationModels,
+    conversationEffort,
+    conversationCwd,
+    conversationBackend,
+    threadSessionBindings,
+    threadContinuationSnapshots,
+    savedCwdList,
+  );
   await Promise.all(trackedConversationIds().map(async (conversationId) => {
     try {
       await loadConversationArtifactMetadata(conversationId);
@@ -86,5 +100,14 @@ export async function initState(): Promise<void> {
 }
 
 export async function persistState(): Promise<void> {
-  await saveState(conversationSessions, conversationModels, conversationEffort, conversationCwd, conversationBackend, savedCwdList);
+  await saveState(
+    conversationSessions,
+    conversationModels,
+    conversationEffort,
+    conversationCwd,
+    conversationBackend,
+    threadSessionBindings,
+    threadContinuationSnapshots,
+    savedCwdList,
+  );
 }

@@ -78,6 +78,8 @@ export {
   conversationBackend,
   conversationMode,
   conversationArtifacts,
+  threadSessionBindings,
+  threadContinuationSnapshots,
   savedCwdList,
   activeConversations,
   processedMessages,
@@ -89,6 +91,21 @@ export {
   persistConversationArtifactMetadata,
   persistState,
 } from './state.js';
+export {
+  closeThreadSession,
+  confirmThreadSessionBinding,
+  invalidateThreadSessionBinding,
+  openThreadSessionBinding,
+  resolveThreadResumeMode,
+  updateThreadContinuationSnapshot,
+} from './thread-session/manager.js';
+export type {
+  ThreadContinuationSnapshot,
+  ThreadContinuationStopReason,
+  ThreadNativeSessionStatus,
+  ThreadResumeMode,
+  ThreadSessionBinding,
+} from './thread-session/types.js';
 
 // Artifacts
 export {
