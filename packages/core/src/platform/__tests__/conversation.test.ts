@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type GatewayToClientCommand,
   type ManagedBridgeTarget,
@@ -12,6 +12,7 @@ import {
   applyConversationControlAction,
   evaluateConversationRunRequest,
 } from '../conversation.js';
+import * as sessionControlController from '../../session-control/controller.js';
 
 describe('platform conversation setup and controls', () => {
   beforeEach(() => {
@@ -138,6 +139,26 @@ describe('platform conversation setup and controls', () => {
       continuationCleared: true,
     });
     expect(conversationSessions.has('conv-actions')).toBe(false);
+  });
+
+  it('delegates session control semantics to the session-control controller', () => {
+    const controllerSpy = vi.spyOn(sessionControlController, 'applySessionControlCommand');
+
+    const result = applyConversationControlAction({
+      conversationId: 'conv-delegated',
+      type: 'backend',
+      value: 'codex',
+    });
+
+    expect(controllerSpy).toHaveBeenCalledWith({
+      conversationId: 'conv-delegated',
+      type: 'backend',
+      value: 'codex',
+    });
+    expect(result).toEqual({
+      kind: 'backend',
+      conversationId: 'conv-delegated',
+    });
   });
 
   it('exports the managed bridge protocol types from the package root', () => {

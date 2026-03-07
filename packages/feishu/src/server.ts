@@ -14,6 +14,7 @@ import {
 } from './conversation.js';
 import {
   handleFeishuCallback,
+  unwrapFeishuCallbackBody,
 } from './security.js';
 import {
   resolveFeishuMessageRequest,
@@ -268,7 +269,12 @@ export function createFeishuCallbackHandler(
       return text('not found', 404);
     }
 
-    const verification = isUrlVerification(body);
+    const callbackBody = unwrapFeishuCallbackBody({
+      body,
+      encryptKey: config.feishuEncryptKey,
+    });
+
+    const verification = isUrlVerification(callbackBody);
     if (verification) {
       if (config.feishuVerificationToken && verification.token !== config.feishuVerificationToken) {
         return json({ code: 403, msg: 'invalid verification token' }, 403);
@@ -277,12 +283,9 @@ export function createFeishuCallbackHandler(
       return json({ challenge: verification.challenge });
     }
 
-    if (body.includes('"encrypt"')) {
-      return json({ code: 501, msg: 'encrypted callbacks are not implemented' }, 501);
-    }
-
     await handleFeishuCallback({
       body,
+      payloadBody: callbackBody,
       headers,
       signingSecret: config.feishuAppSecret,
       runEvent: async (payload) => {

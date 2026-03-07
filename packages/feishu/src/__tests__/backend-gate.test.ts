@@ -3,10 +3,12 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   conversationBackend,
   conversationSessions,
+  pendingBackendChanges,
 } from '@agent-im-relay/core';
 import {
   beginFeishuConversationRun,
   confirmBackendChange,
+  dispatchFeishuCardAction,
   requestBackendChange,
 } from '../runtime.js';
 
@@ -14,6 +16,7 @@ describe('Feishu backend gate', () => {
   beforeEach(() => {
     conversationBackend.clear();
     conversationSessions.clear();
+    pendingBackendChanges.clear();
   });
 
   it('blocks a new conversation until backend selection completes', () => {
@@ -51,22 +54,67 @@ describe('Feishu backend gate', () => {
     conversationBackend.set('conv-switch', 'claude');
     conversationSessions.set('conv-switch', 'session-1');
 
-    const pending = requestBackendChange('conv-switch', 'codex');
-    expect(pending).toEqual(expect.objectContaining({
+    const pending = dispatchFeishuCardAction({
+      conversationId: 'conv-switch',
+      type: 'backend',
+      value: 'codex',
+    });
+    expect(pending).toEqual({
+      kind: 'backend',
+      conversationId: 'conv-switch',
+      stateChanged: true,
+      persist: false,
+      clearContinuation: false,
+      requiresConfirmation: true,
+      summaryKey: 'backend.confirm',
+      currentBackend: 'claude',
+      requestedBackend: 'codex',
+    });
+
+    const card = requestBackendChange('conv-switch', 'codex');
+    expect(card).toEqual(expect.objectContaining({
       type: 'backend-confirmation',
       conversationId: 'conv-switch',
       currentBackend: 'claude',
       requestedBackend: 'codex',
     }));
+    expect(pendingBackendChanges.get('conv-switch')).toBe('codex');
     expect(conversationBackend.get('conv-switch')).toBe('claude');
     expect(conversationSessions.get('conv-switch')).toBe('session-1');
 
     const confirmed = confirmBackendChange('conv-switch', 'codex');
     expect(confirmed).toEqual({
+      kind: 'confirm-backend',
+      conversationId: 'conv-switch',
       backend: 'codex',
-      continuationCleared: true,
+      stateChanged: true,
+      persist: true,
+      clearContinuation: true,
+      requiresConfirmation: false,
+      summaryKey: 'backend.updated',
     });
     expect(conversationBackend.get('conv-switch')).toBe('codex');
     expect(conversationSessions.has('conv-switch')).toBe(false);
+  });
+
+  it('skips backend confirmation when the controller updates immediately', () => {
+    const result = dispatchFeishuCardAction({
+      conversationId: 'conv-direct',
+      type: 'backend',
+      value: 'codex',
+    });
+
+    expect(result).toEqual({
+      kind: 'backend',
+      conversationId: 'conv-direct',
+      stateChanged: true,
+      persist: true,
+      clearContinuation: false,
+      requiresConfirmation: false,
+      summaryKey: 'backend.updated',
+      backend: 'codex',
+    });
+
+    expect(requestBackendChange('conv-new', 'claude')).toBeNull();
   });
 });

@@ -1,3 +1,4 @@
+import { createCipheriv, createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { createFeishuSignature } from '../security.js';
 import { createFeishuCallbackHandler } from '../server.js';
@@ -38,6 +39,20 @@ function signedRequest(body: string, nonce: string) {
     },
     body,
   };
+}
+
+function encryptFeishuBody(body: string, encryptKey: string, iv = Buffer.from('fedcba9876543210')): string {
+  const key = createHash('sha256').update(encryptKey).digest();
+  const cipher = createCipheriv('aes-256-cbc', key, iv);
+  cipher.setAutoPadding(true);
+  const ciphertext = Buffer.concat([
+    cipher.update(body, 'utf8'),
+    cipher.final(),
+  ]);
+
+  return JSON.stringify({
+    encrypt: Buffer.concat([iv, ciphertext]).toString('base64'),
+  });
 }
 
 describe('Feishu callback handler', () => {
@@ -350,6 +365,63 @@ describe('Feishu callback handler', () => {
       content: JSON.stringify({
         file_key: 'file-key-bridge',
       }),
+    }));
+  });
+
+  it('decrypts encrypted callbacks before routing them into the managed bridge', async () => {
+    const bridge = {
+      dispatchRunCommand: vi.fn(() => ({
+        kind: 'queued',
+        clientId: 'client-a',
+        requestId: 'request-encrypted',
+      })),
+      dispatchControlCommand: vi.fn(),
+      registerClient: vi.fn(),
+      pullCommands: vi.fn(),
+      consumeClientEvent: vi.fn(),
+      queueAttachments: vi.fn(),
+    };
+    const handler = createFeishuCallbackHandler({
+      ...testConfig(),
+      feishuEncryptKey: 'encrypt-key',
+    }, {
+      client: {
+        sendMessage: vi.fn(async () => undefined),
+        replyMessage: vi.fn(async () => undefined),
+        sendCard: vi.fn(async () => undefined),
+        uploadFile: vi.fn(async () => 'file-key'),
+        uploadFileContent: vi.fn(async () => 'file-key'),
+        sendFileMessage: vi.fn(async () => undefined),
+        getTenantAccessToken: vi.fn(async () => 'tenant-token'),
+        downloadMessageResource: vi.fn(),
+      } as any,
+      bridge: bridge as any,
+    });
+
+    const payloadBody = JSON.stringify({
+      header: {
+        event_id: 'event-encrypted-message',
+        event_type: 'im.message.receive_v1',
+      },
+      event: {
+        message: {
+          chat_id: 'chat-1',
+          chat_type: 'p2p',
+          message_id: 'message-1',
+          message_type: 'text',
+          content: JSON.stringify({ text: 'encrypted hello bot' }),
+        },
+      },
+    });
+    const body = encryptFeishuBody(payloadBody, 'encrypt-key');
+
+    const response = await handler(signedRequest(body, 'nonce-encrypted'));
+
+    expect(response.status).toBe(200);
+    expect(bridge.dispatchRunCommand).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 'chat-1',
+      prompt: 'encrypted hello bot',
+      mode: 'code',
     }));
   });
 });

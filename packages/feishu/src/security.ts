@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { createDecipheriv, createHash, createHmac } from 'node:crypto';
 import { processedEventIds } from '@agent-im-relay/core';
 
 type FeishuHeaders = Record<string, string | undefined>;
@@ -22,6 +22,62 @@ export function createFeishuSignature(options: {
   return createHmac('sha256', options.signingSecret)
     .update(`${options.timestamp}:${options.nonce}:${options.body}`)
     .digest('hex');
+}
+
+type FeishuEncryptionEnvelope = {
+  encrypt: string;
+};
+
+function parseEncryptedEnvelope(body: string): FeishuEncryptionEnvelope | null {
+  try {
+    const parsed = JSON.parse(body) as Record<string, unknown>;
+    if (typeof parsed.encrypt !== 'string') {
+      return null;
+    }
+
+    return {
+      encrypt: parsed.encrypt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function unwrapFeishuCallbackBody(options: {
+  body: string;
+  encryptKey?: string;
+}): string {
+  const envelope = parseEncryptedEnvelope(options.body);
+  if (!envelope) {
+    return options.body;
+  }
+
+  if (!options.encryptKey) {
+    throw new Error('Encrypted Feishu callback received without FEISHU_ENCRYPT_KEY.');
+  }
+
+  const encryptedBuffer = Buffer.from(envelope.encrypt, 'base64');
+  if (encryptedBuffer.byteLength <= 16) {
+    throw new Error('Malformed encrypted Feishu callback payload.');
+  }
+
+  const iv = encryptedBuffer.subarray(0, 16);
+  const ciphertext = encryptedBuffer.subarray(16);
+  const key = createHash('sha256').update(options.encryptKey).digest();
+
+  try {
+    const decipher = createDecipheriv('aes-256-cbc', key, iv);
+    decipher.setAutoPadding(true);
+
+    return Buffer.concat([
+      decipher.update(ciphertext),
+      decipher.final(),
+    ]).toString('utf-8');
+  } catch (error) {
+    throw new Error(
+      `Failed to decrypt Feishu callback payload: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 export function validateFeishuSignature(options: {
@@ -69,6 +125,7 @@ export function parseFeishuCallbackPayload(body: string): FeishuCallbackPayload 
 
 export async function handleFeishuCallback(options: {
   body: string;
+  payloadBody?: string;
   headers: FeishuHeaders;
   signingSecret: string;
   runEvent: (payload: FeishuCallbackPayload) => Promise<void>;
@@ -81,7 +138,7 @@ export async function handleFeishuCallback(options: {
     throw new Error('Invalid Feishu signature.');
   }
 
-  const payload = parseFeishuCallbackPayload(options.body);
+  const payload = parseFeishuCallbackPayload(options.payloadBody ?? options.body);
   const eventId = payload.header.event_id;
   if (processedEventIds.has(eventId) || inFlightEventIds.has(eventId)) {
     return { kind: 'duplicate', eventId };

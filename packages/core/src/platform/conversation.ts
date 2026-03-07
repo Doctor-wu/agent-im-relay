@@ -1,17 +1,12 @@
-import { interruptConversationRun } from '../agent/runtime.js';
 import type { AgentBackend, BackendName } from '../agent/backend.js';
 import type { AgentMode } from '../agent/tools.js';
 import type { AgentStreamEvent } from '../agent/session.js';
 import { stageOutgoingArtifacts, type RemoteAttachmentLike } from '../runtime/files.js';
 import { prepareAttachmentPrompt } from '../runtime/files.js';
 import { runConversationWithRenderer, type ConversationRunPhase } from '../runtime/conversation-runner.js';
-import {
-  conversationBackend,
-  conversationEffort,
-  conversationModels,
-  conversationSessions,
-  pendingBackendChanges,
-} from '../state.js';
+import { conversationBackend } from '../state.js';
+import { applySessionControlCommand } from '../session-control/controller.js';
+import type { SessionControlCommand } from '../session-control/types.js';
 
 export type ConversationRunEvaluation =
   | {
@@ -25,14 +20,7 @@ export type ConversationRunEvaluation =
     backend: BackendName | undefined;
   };
 
-export type ConversationControlAction =
-  | { conversationId: string; type: 'interrupt' }
-  | { conversationId: string; type: 'done' }
-  | { conversationId: string; type: 'backend'; value: BackendName }
-  | { conversationId: string; type: 'confirm-backend'; value: BackendName }
-  | { conversationId: string; type: 'cancel-backend' }
-  | { conversationId: string; type: 'model'; value: string }
-  | { conversationId: string; type: 'effort'; value: string };
+export type ConversationControlAction = SessionControlCommand;
 
 export type ConversationControlResult =
   | {
@@ -123,76 +111,66 @@ export function evaluateConversationRunRequest(options: {
 }
 
 export function applyConversationControlAction(action: ConversationControlAction): ConversationControlResult {
-  if (action.type === 'interrupt') {
+  const result = applySessionControlCommand(action);
+
+  if (result.kind === 'interrupt') {
     return {
       kind: 'interrupt',
-      conversationId: action.conversationId,
-      interrupted: interruptConversationRun(action.conversationId),
+      conversationId: result.conversationId,
+      interrupted: result.interrupted,
     };
   }
 
-  if (action.type === 'done') {
+  if (result.kind === 'done') {
     return {
       kind: 'done',
-      conversationId: action.conversationId,
-      continuationCleared: conversationSessions.delete(action.conversationId),
+      conversationId: result.conversationId,
+      continuationCleared: result.clearContinuation,
     };
   }
 
-  if (action.type === 'backend') {
-    const currentBackend = conversationBackend.get(action.conversationId);
-    if (currentBackend && currentBackend !== action.value) {
-      pendingBackendChanges.set(action.conversationId, action.value);
+  if (result.kind === 'backend') {
+    if (result.requiresConfirmation) {
       return {
         kind: 'backend-confirmation',
-        conversationId: action.conversationId,
-        currentBackend,
-        requestedBackend: action.value,
+        conversationId: result.conversationId,
+        currentBackend: result.currentBackend!,
+        requestedBackend: result.requestedBackend!,
       };
     }
 
-    pendingBackendChanges.delete(action.conversationId);
-    conversationBackend.set(action.conversationId, action.value);
     return {
       kind: 'backend',
-      conversationId: action.conversationId,
+      conversationId: result.conversationId,
     };
   }
 
-  if (action.type === 'confirm-backend') {
-    const pending = pendingBackendChanges.get(action.conversationId);
-    const backend = pending ?? action.value;
-    pendingBackendChanges.delete(action.conversationId);
-    conversationBackend.set(action.conversationId, backend);
-
+  if (result.kind === 'confirm-backend') {
     return {
       kind: 'confirm-backend',
-      conversationId: action.conversationId,
-      backend,
-      continuationCleared: conversationSessions.delete(action.conversationId),
+      conversationId: result.conversationId,
+      backend: result.backend,
+      continuationCleared: result.clearContinuation,
     };
   }
 
-  if (action.type === 'cancel-backend') {
-    pendingBackendChanges.delete(action.conversationId);
+  if (result.kind === 'cancel-backend') {
     return {
       kind: 'cancel-backend',
-      conversationId: action.conversationId,
+      conversationId: result.conversationId,
     };
   }
 
-  if (action.type === 'model') {
-    conversationModels.set(action.conversationId, action.value);
+  if (result.kind === 'model') {
     return {
       kind: 'model',
-      conversationId: action.conversationId,
+      conversationId: result.conversationId,
     };
   }
 
-  conversationEffort.set(action.conversationId, action.value);
   return {
     kind: 'effort',
-    conversationId: action.conversationId,
+    conversationId: result.conversationId,
   };
 }
 

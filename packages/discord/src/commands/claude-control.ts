@@ -5,6 +5,7 @@ import {
   type ChatInputCommandInteraction,
   type Message,
 } from 'discord.js';
+import * as core from '@agent-im-relay/core';
 import {
   streamAgentSession,
   conversationBackend,
@@ -16,7 +17,6 @@ import {
   activeConversations,
   processedMessages,
   pendingConversationCreation,
-  persistState,
 } from '@agent-im-relay/core';
 import { streamAgentToDiscord, type StreamTargetChannel } from '../stream.js';
 
@@ -154,8 +154,14 @@ async function handleModelCommand(interaction: ChatInputCommandInteraction): Pro
     return;
   }
 
-  conversationModels.set(channel.id, model);
-  void persistState();
+  const result = core.applySessionControlCommand({
+    conversationId: channel.id,
+    type: 'model',
+    value: model,
+  });
+  if (result.persist) {
+    void core.persistState();
+  }
   await interaction.reply({ content: `Set model to \`${model}\` for this thread.`, ephemeral: true });
 }
 
@@ -164,8 +170,14 @@ async function handleEffortCommand(interaction: ChatInputCommandInteraction): Pr
   if (!channel) return;
 
   const level = interaction.options.getString('level', true);
-  conversationEffort.set(channel.id, level);
-  void persistState();
+  const result = core.applySessionControlCommand({
+    conversationId: channel.id,
+    type: 'effort',
+    value: level,
+  });
+  if (result.persist) {
+    void core.persistState();
+  }
   await interaction.reply({ content: `Set effort to \`${level}\` for this thread.`, ephemeral: true });
 }
 
@@ -180,7 +192,7 @@ async function handleResumeCommand(interaction: ChatInputCommandInteraction): Pr
   }
 
   conversationSessions.set(channel.id, sessionId);
-  void persistState();
+  void core.persistState();
   await interaction.reply({ content: `Set session to \`${sessionId}\` for this thread.`, ephemeral: true });
 }
 
@@ -215,7 +227,7 @@ async function handleClearCommand(interaction: ChatInputCommandInteraction): Pro
     pendingConversationCreation.delete(conversationId);
 
   if (removed) {
-    void persistState();
+    void core.persistState();
     await interaction.reply({ content: 'Cleared Claude state for this thread.', ephemeral: true });
     return;
   }
@@ -251,7 +263,7 @@ async function handleCwdCommand(interaction: ChatInputCommandInteraction): Promi
     }
 
     conversationCwd.set(channel.id, path);
-    void persistState();
+    void core.persistState();
     await interaction.reply({
       content: `Set working directory override to \`${path}\` for this thread.`,
       ephemeral: true,
@@ -262,7 +274,7 @@ async function handleCwdCommand(interaction: ChatInputCommandInteraction): Promi
   if (subcommand === 'clear') {
     const removed = conversationCwd.delete(channel.id);
     if (removed) {
-      void persistState();
+      void core.persistState();
       await interaction.reply({
         content: 'Cleared the working directory override. Future runs will auto-detect it.',
         ephemeral: true,
@@ -338,7 +350,7 @@ async function handleCompactCommand(interaction: ChatInputCommandInteraction): P
     );
 
     conversationSessions.set(channel.id, resolvedSessionId);
-    void persistState();
+    void core.persistState();
   } catch (error) {
     const errorText = toErrorMessage(error);
     if (interaction.replied || interaction.deferred) {

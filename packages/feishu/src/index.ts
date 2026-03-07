@@ -61,6 +61,7 @@ export {
   createFeishuSignature,
   handleFeishuCallback,
   parseFeishuCallbackPayload,
+  unwrapFeishuCallbackBody,
   validateFeishuSignature,
 } from './security.js';
 export { createFeishuCallbackHandler } from './server.js';

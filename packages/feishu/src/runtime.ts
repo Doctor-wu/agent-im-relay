@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
-  applyConversationControlAction,
+  applySessionControlCommand,
   buildAttachmentPromptContext,
   conversationBackend,
   conversationMode,
@@ -10,6 +10,8 @@ import {
   type BackendName,
   type DownloadedAttachment,
   type RemoteAttachmentLike,
+  type SessionControlCommand,
+  type SessionControlResult,
 } from '@agent-im-relay/core';
 import {
   buildFeishuBackendConfirmationCardPayload,
@@ -100,49 +102,42 @@ export function beginFeishuConversationRun(
   };
 }
 
-export type FeishuCardAction =
-  | { conversationId: string; type: 'interrupt' }
-  | { conversationId: string; type: 'done' }
-  | { conversationId: string; type: 'backend'; value: BackendName }
-  | { conversationId: string; type: 'confirm-backend'; value: BackendName }
-  | { conversationId: string; type: 'cancel-backend' }
-  | { conversationId: string; type: 'model'; value: string }
-  | { conversationId: string; type: 'effort'; value: string };
+export type FeishuCardAction = SessionControlCommand;
 
-export function dispatchFeishuCardAction(action: FeishuCardAction) {
-  return applyConversationControlAction(action);
+export function dispatchFeishuCardAction(action: FeishuCardAction): SessionControlResult {
+  return applySessionControlCommand(action);
 }
 
 export function requestBackendChange(
   conversationId: string,
   requestedBackend: BackendName,
-): BackendConfirmationCard {
-  const currentBackend = conversationBackend.get(conversationId) ?? 'claude';
-  applyConversationControlAction({
+): BackendConfirmationCard | null {
+  const result = dispatchFeishuCardAction({
     conversationId,
     type: 'backend',
     value: requestedBackend,
   });
-  return createBackendConfirmationCard(conversationId, currentBackend, requestedBackend);
+
+  if (!result.requiresConfirmation || result.kind !== 'backend') {
+    return null;
+  }
+
+  return createBackendConfirmationCard(
+    conversationId,
+    result.currentBackend ?? conversationBackend.get(conversationId) ?? 'claude',
+    result.requestedBackend ?? requestedBackend,
+  );
 }
 
 export function confirmBackendChange(
   conversationId: string,
   requestedBackend: BackendName,
-): {
-  backend: BackendName;
-  continuationCleared: boolean;
-} {
-  const result = applyConversationControlAction({
+): SessionControlResult {
+  return dispatchFeishuCardAction({
     conversationId,
     type: 'confirm-backend',
     value: requestedBackend,
   });
-
-  return {
-    backend: result.kind === 'confirm-backend' ? result.backend : requestedBackend,
-    continuationCleared: result.kind === 'confirm-backend' ? result.continuationCleared : false,
-  };
 }
 
 export function resolveFeishuMessageRequest(content: string): {
@@ -317,35 +312,47 @@ export async function handleFeishuControlAction(options: {
   action: FeishuCardAction;
   target: FeishuTarget;
   transport: FeishuRuntimeTransport;
+  persist?: () => Promise<void>;
 }): Promise<
   | { kind: 'applied' }
   | { kind: 'backend-confirmation'; card: BackendConfirmationCard }
 > {
   const result = dispatchFeishuCardAction(options.action);
 
-  if (result.kind === 'backend-confirmation') {
+  if (result.requiresConfirmation && result.kind === 'backend') {
     return {
       kind: 'backend-confirmation',
-      card: createBackendConfirmationCard(result.conversationId, result.currentBackend, result.requestedBackend),
+      card: createBackendConfirmationCard(result.conversationId, result.currentBackend!, result.requestedBackend!),
     };
   }
 
+  if (result.persist) {
+    await options.persist?.();
+  }
+
   const text = (() => {
-    switch (result.kind) {
-      case 'interrupt':
-        return result.interrupted ? 'Interrupted current run.' : 'No active run to interrupt.';
-      case 'done':
-        return result.continuationCleared ? 'Continuation cleared.' : 'No saved continuation to clear.';
-      case 'confirm-backend':
-        return `Backend switched to ${result.backend}.`;
-      case 'cancel-backend':
+    switch (result.summaryKey) {
+      case 'interrupt.ok':
+        return 'Interrupted current run.';
+      case 'interrupt.noop':
+        return 'No active run to interrupt.';
+      case 'done.ok':
+        return 'Continuation cleared.';
+      case 'done.noop':
+        return 'No saved continuation to clear.';
+      case 'backend.cancelled':
+      case 'backend.cancelled-noop':
         return 'Backend switch canceled.';
-      case 'model':
+      case 'backend.updated':
+        return result.kind === 'confirm-backend'
+          ? `Backend switched to ${result.backend}.`
+          : 'Backend updated.';
+      case 'model.updated':
+      case 'model.noop':
         return 'Model updated.';
-      case 'effort':
+      case 'effort.updated':
+      case 'effort.noop':
         return 'Effort updated.';
-      case 'backend':
-        return 'Backend updated.';
       default:
         return 'Action applied.';
     }

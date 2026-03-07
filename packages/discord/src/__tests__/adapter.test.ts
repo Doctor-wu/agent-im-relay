@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as core from '@agent-im-relay/core';
 import { createDiscordAdapter } from '../adapter.js';
+import { claudeControlCommandHandlers } from '../commands/claude-control.js';
 import { handleDoneCommand } from '../commands/done.js';
 import { handleInterruptCommand } from '../commands/interrupt.js';
 
@@ -47,6 +48,8 @@ function createThreadInteraction(overrides: Partial<any> = {}) {
 afterEach(() => {
   core.conversationSessions.clear();
   core.activeConversations.clear();
+  core.conversationModels.clear();
+  core.conversationEffort.clear();
   vi.restoreAllMocks();
 });
 
@@ -126,13 +129,25 @@ describe('markdownFormatter', () => {
 });
 
 describe('handleInterruptCommand', () => {
-  it('interrupts the active conversation run', async () => {
+  it('routes interrupt through the shared session-control controller', async () => {
     const interaction = createThreadInteraction();
-    vi.spyOn(core, 'interruptConversationRun').mockReturnValue(true);
+    vi.spyOn(core, 'applySessionControlCommand').mockReturnValue({
+      kind: 'interrupt',
+      conversationId: 'thread-123',
+      interrupted: true,
+      stateChanged: false,
+      persist: false,
+      clearContinuation: false,
+      requiresConfirmation: false,
+      summaryKey: 'interrupt.ok',
+    });
 
     await handleInterruptCommand(interaction as any);
 
-    expect(core.interruptConversationRun).toHaveBeenCalledWith('thread-123');
+    expect(core.applySessionControlCommand).toHaveBeenCalledWith({
+      conversationId: 'thread-123',
+      type: 'interrupt',
+    });
     expect(interaction.reply).toHaveBeenCalledWith({
       content: '⏹️ 已请求中断当前任务。',
       ephemeral: true,
@@ -141,7 +156,16 @@ describe('handleInterruptCommand', () => {
 
   it('replies when there is no active run', async () => {
     const interaction = createThreadInteraction();
-    vi.spyOn(core, 'interruptConversationRun').mockReturnValue(false);
+    vi.spyOn(core, 'applySessionControlCommand').mockReturnValue({
+      kind: 'interrupt',
+      conversationId: 'thread-123',
+      interrupted: false,
+      stateChanged: false,
+      persist: false,
+      clearContinuation: false,
+      requiresConfirmation: false,
+      summaryKey: 'interrupt.noop',
+    });
 
     await handleInterruptCommand(interaction as any);
 
@@ -168,17 +192,22 @@ describe('handleInterruptCommand', () => {
 });
 
 describe('handleDoneCommand', () => {
-  it('keeps done semantics unchanged for active sessions', async () => {
+  it('keeps done replies unchanged while leaving runtime activity alone', async () => {
     const interaction = createThreadInteraction();
     core.conversationSessions.set('thread-123', 'session-1');
     core.activeConversations.add('thread-123');
+    const applySessionControlCommandSpy = vi.spyOn(core, 'applySessionControlCommand');
     vi.spyOn(core, 'persistState').mockResolvedValue(undefined);
     vi.spyOn(core, 'interruptConversationRun');
 
     await handleDoneCommand(interaction as any);
 
+    expect(applySessionControlCommandSpy).toHaveBeenCalledWith({
+      conversationId: 'thread-123',
+      type: 'done',
+    });
     expect(core.conversationSessions.has('thread-123')).toBe(false);
-    expect(core.activeConversations.has('thread-123')).toBe(false);
+    expect(core.activeConversations.has('thread-123')).toBe(true);
     expect(core.interruptConversationRun).not.toHaveBeenCalled();
     expect(interaction.reply).toHaveBeenCalledWith(
       '✅ Session ended. Start a new conversation by mentioning me again in a channel.',
@@ -187,11 +216,56 @@ describe('handleDoneCommand', () => {
 
   it('keeps idle done reply unchanged', async () => {
     const interaction = createThreadInteraction();
+    vi.spyOn(core, 'applySessionControlCommand').mockReturnValue({
+      kind: 'done',
+      conversationId: 'thread-123',
+      stateChanged: false,
+      persist: false,
+      clearContinuation: false,
+      requiresConfirmation: false,
+      summaryKey: 'done.noop',
+    });
 
     await handleDoneCommand(interaction as any);
 
     expect(interaction.reply).toHaveBeenCalledWith({
       content: 'No active session in this thread.',
+      ephemeral: true,
+    });
+  });
+
+  it('skips persistence when the controller reports a model noop', async () => {
+    const handler = claudeControlCommandHandlers.get('model');
+    expect(handler).toBeDefined();
+
+    core.conversationModels.set('thread-123', 'claude-3-7');
+    const interaction = createThreadInteraction({
+      options: {
+        getString: vi.fn().mockReturnValue('claude-3-7'),
+      },
+    });
+    vi.spyOn(core, 'applySessionControlCommand').mockReturnValue({
+      kind: 'model',
+      conversationId: 'thread-123',
+      value: 'claude-3-7',
+      stateChanged: false,
+      persist: false,
+      clearContinuation: false,
+      requiresConfirmation: false,
+      summaryKey: 'model.noop',
+    });
+    const persistSpy = vi.spyOn(core, 'persistState').mockResolvedValue(undefined);
+
+    await handler?.(interaction as any);
+
+    expect(core.applySessionControlCommand).toHaveBeenCalledWith({
+      conversationId: 'thread-123',
+      type: 'model',
+      value: 'claude-3-7',
+    });
+    expect(persistSpy).not.toHaveBeenCalled();
+    expect(interaction.reply).toHaveBeenCalledWith({
+      content: 'Set model to `claude-3-7` for this thread.',
       ephemeral: true,
     });
   });

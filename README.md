@@ -5,13 +5,13 @@
 ![pnpm workspace](https://img.shields.io/badge/pnpm-workspace-F69220)
 ![TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6)
 ![Discord](https://img.shields.io/badge/platform-Discord-5865F2)
-![Feishu planned](https://img.shields.io/badge/platform-Feishu-in--progress-00B96B)
+![Feishu managed gateway](https://img.shields.io/badge/platform-Feishu-managed_gateway-00B96B)
 
 A platform-agnostic bridge that connects Claude AI to instant messaging platforms. Built as a pnpm monorepo with a shared core and per-platform adapter packages.
 
 `agent-im-relay` lets you run agent workflows from chat threads while keeping the runtime logic portable across platforms. The shared core owns session state, streaming, interruption, backend integration, and orchestration; platform packages focus on delivery, UX, and command surfaces.
 
-Feishu support is currently in progress via a new `@agent-im-relay/feishu` package. This round stays adapter-first: extract only the minimum shared runtime needed in `@agent-im-relay/core`, and keep Feishu-specific cards, ingress, and file transport in the Feishu package until the abstractions prove reusable.
+Feishu support is available through `@agent-im-relay/feishu` as a managed-gateway plus local relay-client pair. This round stays adapter-first: extract only the minimum shared runtime needed in `@agent-im-relay/core`, and keep Feishu-specific cards, ingress, and file transport in the Feishu package until the abstractions prove reusable.
 
 ## Highlights
 
@@ -59,12 +59,13 @@ Discord-specific implementation:
 
 ### `@agent-im-relay/feishu`
 
-Planned adapter with:
+Feishu-specific implementation with:
 
-- Message-driven conversations with card-based session controls
-- Backend selection before the first run in a new conversation
-- Reply-aware conversation mapping for private chats and group threads
+- Managed gateway ingress that receives Feishu callbacks and forwards work to a local relay client
+- Card-based session controls for backend selection, interrupt, done, model, and effort changes
+- Reply-aware conversation mapping for private chats and group reply chains
 - Inbound file download and outbound artifact upload support
+- Optional callback decryption via `FEISHU_ENCRYPT_KEY`
 
 ## Setup
 
@@ -74,13 +75,19 @@ pnpm install
 
 # Copy and configure environment variables
 cp .env.example .env
-# Edit .env with your Discord bot token and client ID
+# Edit .env with the platform credentials you need
 
 # Build all packages
 pnpm build
 
 # Run the Discord bot
 pnpm dev:discord
+
+# Run the Feishu managed gateway
+pnpm dev:feishu:gateway
+
+# In a second terminal, run the Feishu local relay client
+pnpm dev:feishu:client
 ```
 
 ## Environment Variables
@@ -90,6 +97,16 @@ pnpm dev:discord
 | `DISCORD_TOKEN` | Yes | — | Discord bot token |
 | `DISCORD_CLIENT_ID` | Yes | — | Discord application client ID |
 | `GUILD_IDS` | No | (all guilds) | Comma-separated guild IDs to restrict bot |
+| `FEISHU_APP_ID` | Feishu gateway | — | Feishu app ID used by the managed gateway |
+| `FEISHU_APP_SECRET` | Feishu gateway | — | Feishu app secret used for API access and callback validation |
+| `FEISHU_ENCRYPT_KEY` | No | — | Callback decrypt key when Feishu event encryption is enabled |
+| `FEISHU_VERIFICATION_TOKEN` | No | — | Verification token returned during URL verification |
+| `FEISHU_BASE_URL` | No | `https://open.feishu.cn` | Override Feishu Open Platform base URL |
+| `FEISHU_PORT` | No | `3001` | HTTP port for the managed Feishu gateway |
+| `FEISHU_CLIENT_ID` | Feishu gateway/client | — | Shared logical client ID used by gateway and local relay client |
+| `FEISHU_CLIENT_TOKEN` | Feishu gateway/client | — | Shared secret used by gateway and local relay client |
+| `FEISHU_GATEWAY_URL` | Feishu client | — | Base URL for the managed Feishu gateway |
+| `FEISHU_CLIENT_POLL_INTERVAL_MS` | No | `1000` | Long-poll interval for the local Feishu relay client |
 | `CLAUDE_MODEL` | No | (Claude default) | Claude model override |
 | `CLAUDE_CWD` | No | `process.cwd()` | Working directory for Claude sessions |
 | `AGENT_TIMEOUT_MS` | No | `600000` | Agent request timeout (ms) |
@@ -99,6 +116,20 @@ pnpm dev:discord
 | `ARTIFACT_MAX_SIZE_BYTES` | No | `8388608` | Max size for downloaded or uploaded artifacts |
 | `STREAM_UPDATE_INTERVAL_MS` | No | `1000` | Discord message edit frequency (ms) |
 | `DISCORD_MESSAGE_CHAR_LIMIT` | No | `1900` | Max characters per Discord message chunk |
+
+## Feishu Runtime Model
+
+Feishu runs in two processes:
+
+- `gateway` receives Feishu callbacks, validates signatures, optionally decrypts encrypted callbacks, and talks back to Feishu APIs
+- `client` runs on the machine with Claude Code or Codex access, polls the gateway for commands, executes the conversation locally, and streams text/cards/files back
+
+Typical startup flow:
+
+1. Configure the Feishu app callback URL to point at `POST /feishu/callback` on the managed gateway.
+2. Start `pnpm dev:feishu:gateway` in the environment reachable by Feishu.
+3. Start `pnpm dev:feishu:client` on the machine that has the agent CLI tools and working copy.
+4. Set `FEISHU_ENCRYPT_KEY` if the Feishu app enables callback encryption.
 
 ## File Transfer
 

@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, type ChatInputCommandInteraction } from 'discord.js';
-import { interruptConversationRun } from '@agent-im-relay/core';
+import * as core from '@agent-im-relay/core';
 
 export const interruptCommand = new SlashCommandBuilder()
   .setName('interrupt')
@@ -13,8 +13,12 @@ export async function handleInterruptCommand(interaction: ChatInputCommandIntera
     return;
   }
 
-  const interrupted = interruptConversationRun(channel.id);
-  if (interrupted) {
+  const result = core.applySessionControlCommand({
+    conversationId: channel.id,
+    type: 'interrupt',
+  });
+
+  if (result.interrupted) {
     await interaction.reply({ content: '⏹️ 已请求中断当前任务。', ephemeral: true });
     return;
   }

@@ -1,14 +1,6 @@
 import { SlashCommandBuilder, type ChatInputCommandInteraction } from 'discord.js';
 import * as core from '@agent-im-relay/core';
 
-function endSession(conversationId: string): boolean {
-  const had = core.conversationSessions.has(conversationId);
-  core.conversationSessions.delete(conversationId);
-  core.activeConversations.delete(conversationId);
-  if (had) void core.persistState();
-  return had;
-}
-
 export const doneCommand = new SlashCommandBuilder()
   .setName('done')
   .setDescription('End the current Claude session in this thread')
@@ -21,8 +13,16 @@ export async function handleDoneCommand(interaction: ChatInputCommandInteraction
     return;
   }
 
-  const ended = endSession(channel.id);
-  if (ended) {
+  const result = core.applySessionControlCommand({
+    conversationId: channel.id,
+    type: 'done',
+  });
+
+  if (result.persist) {
+    void core.persistState();
+  }
+
+  if (result.clearContinuation) {
     await interaction.reply('✅ Session ended. Start a new conversation by mentioning me again in a channel.');
     return;
   }
