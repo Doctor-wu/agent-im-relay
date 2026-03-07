@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  createFeishuCallbackHandler,
   createFeishuServer,
   readFeishuConfig,
-  readManagedFeishuClientConfig,
   startFeishuServer,
 } from '../index.js';
 
@@ -11,6 +11,7 @@ const startedServers: Array<{ stop(): Promise<void> }> = [];
 
 afterEach(async () => {
   await Promise.all(startedServers.splice(0).map(async server => server.stop()));
+  vi.unstubAllEnvs();
 });
 
 describe('readFeishuConfig', () => {
@@ -19,16 +20,12 @@ describe('readFeishuConfig', () => {
       ...process.env,
       FEISHU_APP_ID: 'cli_test_app_id',
       FEISHU_APP_SECRET: 'test-secret',
-      FEISHU_CLIENT_ID: 'client-a',
-      FEISHU_CLIENT_TOKEN: 'token-a',
       FEISHU_PORT: '4400',
       FEISHU_BASE_URL: 'https://example.invalid',
     });
 
     expect(config.feishuAppId).toBe('cli_test_app_id');
     expect(config.feishuAppSecret).toBe('test-secret');
-    expect(config.feishuClientId).toBe('client-a');
-    expect(config.feishuClientToken).toBe('token-a');
     expect(config.feishuPort).toBe(4400);
     expect(config.feishuBaseUrl).toBe('https://example.invalid');
     expect(config.agentTimeoutMs).toBeGreaterThan(0);
@@ -42,29 +39,32 @@ describe('readFeishuConfig', () => {
     })).toThrow('Missing required environment variable: FEISHU_APP_ID');
   });
 
-  it('requires managed client credentials for the gateway mode', () => {
-    expect(() => readFeishuConfig({
-      ...process.env,
-      FEISHU_APP_ID: 'cli_test_app_id',
-      FEISHU_APP_SECRET: 'test-secret',
-      FEISHU_CLIENT_ID: '',
-      FEISHU_CLIENT_TOKEN: '',
-    })).toThrow('Missing required environment variable: FEISHU_CLIENT_ID');
-  });
+  it('applies explicit core runtime settings when building a callback handler', () => {
+    vi.stubEnv('STATE_FILE', '/tmp/original-state.json');
+    vi.stubEnv('ARTIFACTS_BASE_DIR', '/tmp/original-artifacts');
 
-  it('reads managed relay client configuration without requiring Feishu app credentials', () => {
-    const config = readManagedFeishuClientConfig({
-      ...process.env,
-      FEISHU_GATEWAY_URL: 'https://gateway.example',
-      FEISHU_CLIENT_ID: 'client-a',
-      FEISHU_CLIENT_TOKEN: 'token-a',
-      FEISHU_CLIENT_POLL_INTERVAL_MS: '2500',
+    createFeishuCallbackHandler({
+      agentTimeoutMs: 1_000,
+      claudeCwd: '/tmp/feishu-workspace',
+      stateFile: '/tmp/feishu-explicit-state.json',
+      artifactsBaseDir: '/tmp/feishu-explicit-artifacts',
+      artifactRetentionDays: 21,
+      artifactMaxSizeBytes: 123_456,
+      claudeBin: '/tmp/bin/claude',
+      codexBin: '/tmp/bin/codex',
+      feishuAppId: 'test-app-id',
+      feishuAppSecret: 'test-secret',
+      feishuBaseUrl: 'https://open.feishu.cn',
+      feishuPort: 3001,
+    }, {
+      client: {} as never,
     });
 
-    expect(config.feishuGatewayUrl).toBe('https://gateway.example');
-    expect(config.feishuClientId).toBe('client-a');
-    expect(config.feishuClientToken).toBe('token-a');
-    expect(config.feishuClientPollIntervalMs).toBe(2500);
+    expect(process.env['STATE_FILE']).toBe('/tmp/feishu-explicit-state.json');
+    expect(process.env['ARTIFACTS_BASE_DIR']).toBe('/tmp/feishu-explicit-artifacts');
+    expect(process.env['CLAUDE_CWD']).toBe('/tmp/feishu-workspace');
+    expect(process.env['CLAUDE_BIN']).toBe('/tmp/bin/claude');
+    expect(process.env['CODEX_BIN']).toBe('/tmp/bin/codex');
   });
 });
 
@@ -90,8 +90,6 @@ describe('startup entry', () => {
       feishuAppSecret: 'test-secret',
       feishuBaseUrl: 'https://open.feishu.cn',
       feishuPort: 0,
-      feishuClientId: 'client-a',
-      feishuClientToken: 'token-a',
     });
     startedServers.push(server);
 

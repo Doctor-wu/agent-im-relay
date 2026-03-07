@@ -1,10 +1,15 @@
 import { config as dotenvConfig } from 'dotenv';
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
+import { resolveRelayPaths } from './paths.js';
 
 dotenvConfig({ path: resolve(import.meta.dirname, '../../../.env') });
 
-function numberEnv(key: string, fallback: number): number {
-  const raw = process.env[key];
+function optionalEnv(env: NodeJS.ProcessEnv, key: string): string | undefined {
+  return env[key]?.trim() || undefined;
+}
+
+function numberEnv(env: NodeJS.ProcessEnv, key: string, fallback: number): number {
+  const raw = env[key];
   if (!raw) return fallback;
 
   const parsed = Number.parseInt(raw, 10);
@@ -15,14 +20,82 @@ function numberEnv(key: string, fallback: number): number {
   return parsed;
 }
 
-export const config = {
-  agentTimeoutMs: numberEnv('AGENT_TIMEOUT_MS', 10 * 60 * 1000),
-  claudeModel: process.env['CLAUDE_MODEL'],
-  claudeCwd: process.env['CLAUDE_CWD']?.trim() || process.cwd(),
-  stateFile: process.env['STATE_FILE']?.trim() || join(process.cwd(), 'data', 'sessions.json'),
-  artifactsBaseDir: process.env['ARTIFACTS_BASE_DIR']?.trim() || join(process.cwd(), 'data', 'artifacts'),
-  artifactRetentionDays: numberEnv('ARTIFACT_RETENTION_DAYS', 14),
-  artifactMaxSizeBytes: numberEnv('ARTIFACT_MAX_SIZE_BYTES', 8 * 1024 * 1024),
-  claudeBin: process.env['CLAUDE_BIN']?.trim() || '/opt/homebrew/bin/claude',
-  codexBin: process.env['CODEX_BIN']?.trim() || '/opt/homebrew/bin/codex',
+function setOptionalEnv(key: string, value: string | undefined): void {
+  if (value) {
+    process.env[key] = value;
+    return;
+  }
+
+  delete process.env[key];
+}
+
+function setNumericEnv(key: string, value: number): void {
+  process.env[key] = String(value);
+}
+
+export interface CoreConfig {
+  agentTimeoutMs: number;
+  claudeModel?: string;
+  claudeCwd: string;
+  stateFile: string;
+  artifactsBaseDir: string;
+  artifactRetentionDays: number;
+  artifactMaxSizeBytes: number;
+  claudeBin: string;
+  codexBin: string;
+}
+
+export function readCoreConfig(env: NodeJS.ProcessEnv = process.env): CoreConfig {
+  const relayPaths = resolveRelayPaths();
+
+  return {
+    agentTimeoutMs: numberEnv(env, 'AGENT_TIMEOUT_MS', 10 * 60 * 1000),
+    claudeModel: optionalEnv(env, 'CLAUDE_MODEL'),
+    claudeCwd: optionalEnv(env, 'CLAUDE_CWD') || process.cwd(),
+    stateFile: optionalEnv(env, 'STATE_FILE') || relayPaths.stateFile,
+    artifactsBaseDir: optionalEnv(env, 'ARTIFACTS_BASE_DIR') || relayPaths.artifactsDir,
+    artifactRetentionDays: numberEnv(env, 'ARTIFACT_RETENTION_DAYS', 14),
+    artifactMaxSizeBytes: numberEnv(env, 'ARTIFACT_MAX_SIZE_BYTES', 8 * 1024 * 1024),
+    claudeBin: optionalEnv(env, 'CLAUDE_BIN') || 'claude',
+    codexBin: optionalEnv(env, 'CODEX_BIN') || 'codex',
+  };
+}
+
+export function applyCoreConfigEnvironment(config: CoreConfig): void {
+  setNumericEnv('AGENT_TIMEOUT_MS', config.agentTimeoutMs);
+  setOptionalEnv('CLAUDE_MODEL', config.claudeModel);
+  process.env['CLAUDE_CWD'] = config.claudeCwd;
+  process.env['STATE_FILE'] = config.stateFile;
+  process.env['ARTIFACTS_BASE_DIR'] = config.artifactsBaseDir;
+  setNumericEnv('ARTIFACT_RETENTION_DAYS', config.artifactRetentionDays);
+  setNumericEnv('ARTIFACT_MAX_SIZE_BYTES', config.artifactMaxSizeBytes);
+  process.env['CLAUDE_BIN'] = config.claudeBin;
+  process.env['CODEX_BIN'] = config.codexBin;
+}
+
+const configProxyHandler: ProxyHandler<CoreConfig> = {
+  get(_target, property) {
+    return readCoreConfig()[property as keyof CoreConfig];
+  },
+  has(_target, property) {
+    return property in readCoreConfig();
+  },
+  ownKeys() {
+    return Reflect.ownKeys(readCoreConfig());
+  },
+  getOwnPropertyDescriptor(_target, property) {
+    const current = readCoreConfig();
+    if (!(property in current)) {
+      return undefined;
+    }
+
+    return {
+      configurable: true,
+      enumerable: true,
+      value: current[property as keyof CoreConfig],
+      writable: false,
+    };
+  },
 };
+
+export const config = new Proxy({} as CoreConfig, configProxyHandler);

@@ -49,6 +49,7 @@ export type FeishuRuntimeTransport = {
 };
 
 const pendingAttachments = new Map<string, RemoteAttachmentLike[]>();
+const pendingRuns = new Map<string, PendingFeishuRun>();
 
 export type FeishuRunGateResult =
   | {
@@ -183,6 +184,16 @@ function takePendingFeishuAttachments(conversationId: string): RemoteAttachmentL
   return attachments;
 }
 
+function storePendingFeishuRun(run: PendingFeishuRun): void {
+  pendingRuns.set(run.conversationId, run);
+}
+
+function takePendingFeishuRun(conversationId: string): PendingFeishuRun | undefined {
+  const pendingRun = pendingRuns.get(conversationId);
+  pendingRuns.delete(conversationId);
+  return pendingRun;
+}
+
 function formatEnvironmentSummary(event: Extract<AgentStreamEvent, { type: 'environment' }>): string {
   const cwd = event.environment.cwd.value ?? 'unknown cwd';
   const backend = event.environment.backend;
@@ -251,6 +262,15 @@ export async function runFeishuConversation(options: {
   ];
 
   if (gate.kind === 'blocked') {
+    storePendingFeishuRun({
+      conversationId: options.conversationId,
+      target: options.target,
+      prompt: options.prompt,
+      mode: options.mode,
+      sourceMessageId: options.sourceMessageId,
+      attachments: mergedAttachments,
+      attachmentFetchImpl: options.attachmentFetchImpl,
+    });
     await options.transport.sendCard(
       options.target,
       buildFeishuBackendSelectionCardPayload(
@@ -264,6 +284,7 @@ export async function runFeishuConversation(options: {
     return { kind: 'blocked' };
   }
 
+  pendingRuns.delete(options.conversationId);
   rememberFeishuConversationMode(options.conversationId, options.mode);
   await options.transport.sendText(
     options.target,
@@ -311,6 +332,37 @@ export async function runFeishuConversation(options: {
 
   await options.transport.sendText(options.target, 'Conversation is already running.');
   return { kind: 'busy' };
+}
+
+export async function resumePendingFeishuRun(options: {
+  conversationId: string;
+  transport: FeishuRuntimeTransport;
+  defaultCwd: string;
+  fallback?: Omit<PendingFeishuRun, 'conversationId'>;
+}): Promise<{ kind: 'none' | 'blocked' | 'started' | 'busy' }> {
+  const pending = takePendingFeishuRun(options.conversationId);
+  const run = pending ?? (options.fallback
+    ? {
+      conversationId: options.conversationId,
+      ...options.fallback,
+    }
+    : undefined);
+
+  if (!run) {
+    return { kind: 'none' };
+  }
+
+  return runFeishuConversation({
+    conversationId: run.conversationId,
+    target: run.target,
+    prompt: run.prompt,
+    mode: run.mode,
+    transport: options.transport,
+    defaultCwd: options.defaultCwd,
+    sourceMessageId: run.sourceMessageId,
+    attachments: run.attachments,
+    attachmentFetchImpl: run.attachmentFetchImpl,
+  });
 }
 
 export async function handleFeishuControlAction(options: {
@@ -365,6 +417,11 @@ export async function handleFeishuControlAction(options: {
 
   await options.transport.sendText(options.target, text);
   return { kind: 'applied' };
+}
+
+export function resetFeishuRuntimeForTests(): void {
+  pendingAttachments.clear();
+  pendingRuns.clear();
 }
 
 export { buildSessionControlCard };

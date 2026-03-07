@@ -1,0 +1,27 @@
+{
+  "name": "agent-inbox",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "types": "dist/index.d.mts",
+  "bin": {
+    "agent-inbox": "dist/index.mjs"
+  },
+  "scripts": {
+    "build": "pnpm --filter @agent-im-relay/core build && pnpm --filter @agent-im-relay/discord build && pnpm --filter @agent-im-relay/feishu build && tsdown && node ./scripts/build-executable.mjs",
+    "start": "node dist/index.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@agent-im-relay/core": "workspace:*",
+    "@agent-im-relay/discord": "workspace:*",
+    "@agent-im-relay/feishu": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "postject": "1.0.0-alpha.6",
+    "tsdown": "^0.21.0",
+    "vitest": "^3.2.4"
+  }
+}

@@ -9,6 +9,7 @@ import {
   type ChatInputCommandInteraction,
   type Message,
 } from 'discord.js';
+import { fileURLToPath } from 'node:url';
 import {
   conversationBackend,
   activeConversations,
@@ -70,6 +71,8 @@ const client = new Client({
 const rest = new REST({ version: '10' }).setToken(config.discordToken);
 const adapter = createDiscordAdapter(client);
 const _orchestrator = new Orchestrator({ flushIntervalMs: config.streamUpdateIntervalMs });
+let initialized = false;
+let processHandlersRegistered = false;
 
 async function registerSlashCommands(): Promise<void> {
   const body = commandDefinitions.map((command) => command.toJSON());
@@ -130,6 +133,7 @@ async function runThreadConversation(
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
   console.log(`Received ${signal}. Shutting down...`);
   client.destroy();
+  initialized = false;
 }
 
 client.once(Events.ClientReady, async (readyClient) => {
@@ -243,18 +247,53 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
-process.on('SIGINT', () => {
-  void shutdown('SIGINT');
-});
+function registerProcessHandlers(): void {
+  if (processHandlersRegistered) {
+    return;
+  }
 
-process.on('SIGTERM', () => {
-  void shutdown('SIGTERM');
-});
+  processHandlersRegistered = true;
 
-process.on('unhandledRejection', (error) => {
-  console.error('Unhandled rejection:', error);
-});
+  process.on('SIGINT', () => {
+    void shutdown('SIGINT');
+  });
 
-await initState();
-console.log(`[discord] adapter: ${adapter.name}`);
-void client.login(config.discordToken);
+  process.on('SIGTERM', () => {
+    void shutdown('SIGTERM');
+  });
+
+  process.on('unhandledRejection', (error) => {
+    console.error('Unhandled rejection:', error);
+  });
+}
+
+function isMainModule(): boolean {
+  if (!process.argv[1]) {
+    return false;
+  }
+
+  return fileURLToPath(import.meta.url) === process.argv[1];
+}
+
+export async function startDiscordRuntime(): Promise<Client> {
+  registerProcessHandlers();
+
+  if (!initialized) {
+    await initState();
+    initialized = true;
+  }
+
+  if (!client.isReady()) {
+    console.log(`[discord] adapter: ${adapter.name}`);
+    await client.login(config.discordToken);
+  }
+
+  return client;
+}
+
+if (isMainModule()) {
+  void startDiscordRuntime().catch((error) => {
+    console.error('[discord] failed to start:', error);
+    process.exitCode = 1;
+  });
+}

@@ -1,16 +1,15 @@
 {
-  "name": "agent-im-relay",
+  "name": "agent-inbox",
   "version": "1.0.0",
   "private": true,
-  "description": "Multi-IM platform relay for AI agents",
+  "description": "Inbox-first IM launcher for local AI agents",
   "type": "module",
   "scripts": {
     "build": "pnpm -r build",
     "test": "pnpm -r test",
+    "start": "pnpm --filter @agent-inbox/app start",
     "dev:discord": "pnpm --filter @agent-im-relay/discord dev",
-    "dev:feishu": "pnpm --filter @agent-im-relay/feishu dev:gateway",
-    "dev:feishu:gateway": "pnpm --filter @agent-im-relay/feishu dev:gateway",
-    "dev:feishu:client": "pnpm --filter @agent-im-relay/feishu dev:client"
+    "dev:feishu": "pnpm --filter @agent-im-relay/feishu dev"
   },
   "engines": {
     "node": ">=20"

@@ -1,23 +1,15 @@
 import { createServer, type Server } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { createFeishuClient } from './api.js';
-import { createManagedFeishuRelayClient } from './client.js';
 import {
   readFeishuConfig,
-  readManagedFeishuClientConfig,
   type FeishuConfig,
-  type FeishuRelayClientConfig,
 } from './config.js';
 import { createFeishuCallbackHandler } from './server.js';
+
 export { readFeishuConfig } from './config.js';
-export { readManagedFeishuClientConfig } from './config.js';
-export type { FeishuConfig, FeishuRelayClientConfig } from './config.js';
+export type { FeishuConfig } from './config.js';
 export { createFeishuClient } from './api.js';
-export {
-  buildManagedClientHeartbeatEvent,
-  buildManagedClientHelloEvent,
-  createManagedFeishuRelayClient,
-} from './client.js';
 export {
   buildSessionControlCard,
   createBackendConfirmationCard,
@@ -66,8 +58,6 @@ export {
 } from './security.js';
 export { createFeishuCallbackHandler } from './server.js';
 export type { FeishuCallbackResponse } from './server.js';
-export { createGatewayBridge } from './gateway-bridge.js';
-export { createGatewayStateStore } from './gateway-state.js';
 
 export interface FeishuServer {
   readonly started: boolean;
@@ -179,13 +169,12 @@ export async function startFeishuServer(): Promise<FeishuServer> {
   return server;
 }
 
-export async function startManagedFeishuRelayClient(): Promise<void> {
-  const client = createManagedFeishuRelayClient(readManagedFeishuClientConfig());
-  await client.start();
+export async function startFeishuRuntime(): Promise<FeishuServer> {
+  return startFeishuServer();
 }
 
 if (isMainModule()) {
-  void startFeishuServer().catch((error) => {
+  void startFeishuRuntime().catch((error) => {
     console.error('[feishu] failed to start:', error);
     process.exitCode = 1;
   });
