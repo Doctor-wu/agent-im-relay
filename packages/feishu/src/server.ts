@@ -1,7 +1,8 @@
+import { readFile } from 'node:fs/promises';
+import { initState, persistState } from '@agent-im-relay/core';
 import type { FeishuConfig } from './config.js';
 import { createFeishuClient } from './api.js';
-import { createGatewayBridge } from './gateway-bridge.js';
-import { createGatewayStateStore } from './gateway-state.js';
+import { buildFeishuBackendConfirmationCardPayload } from './cards.js';
 import {
   extractFeishuFileInfo,
   extractFeishuMessageText,
@@ -17,7 +18,12 @@ import {
   unwrapFeishuCallbackBody,
 } from './security.js';
 import {
+  buildFeishuCardContext,
+  handleFeishuControlAction,
+  queuePendingFeishuAttachments,
   resolveFeishuMessageRequest,
+  runFeishuConversation,
+  type FeishuRuntimeTransport,
   type FeishuTarget,
 } from './runtime.js';
 
@@ -31,7 +37,6 @@ export type FeishuCallbackResponse = {
 
 type HandlerDependencies = {
   client?: FeishuClient;
-  bridge?: ReturnType<typeof createGatewayBridge>;
 };
 
 function json(body: unknown, status = 200): FeishuCallbackResponse {
@@ -54,7 +59,7 @@ function text(body: string, status = 200): FeishuCallbackResponse {
   };
 }
 
-function createTransport(client: FeishuClient) {
+function createTransport(client: FeishuClient): FeishuRuntimeTransport {
   async function sendText(target: FeishuTarget, content: string): Promise<void> {
     if (target.replyToMessageId) {
       await client.replyMessage({
@@ -86,10 +91,11 @@ function createTransport(client: FeishuClient) {
 
       await client.sendCard(target.chatId, card);
     },
-    async sendFile(target, file): Promise<void> {
+    async uploadFile(target, filePath): Promise<void> {
+      const buffer = await readFile(filePath);
       const fileKey = await client.uploadFileContent({
-        fileName: file.fileName,
-        data: Buffer.from(file.data, 'base64'),
+        fileName: filePath.split('/').pop() ?? 'artifact',
+        data: buffer,
       });
 
       if (target.replyToMessageId) {
@@ -119,39 +125,6 @@ function isUrlVerification(body: string): { challenge: string; token?: string } 
   } catch {
     return null;
   }
-}
-
-function parseBridgePayload(body: string): {
-  clientId: string;
-  token: string;
-  limit?: number;
-  event?: unknown;
-} {
-  const parsed = JSON.parse(body) as Record<string, unknown>;
-  if (typeof parsed.clientId !== 'string' || typeof parsed.token !== 'string') {
-    throw new Error('Malformed managed bridge payload.');
-  }
-
-  return {
-    clientId: parsed.clientId,
-    token: parsed.token,
-    limit: typeof parsed.limit === 'number' ? parsed.limit : undefined,
-    event: parsed.event,
-  };
-}
-
-function isManagedClientAuthorized(
-  config: FeishuConfig,
-  payload: { clientId: string; token: string },
-): boolean {
-  if (payload.clientId !== config.feishuClientId) {
-    return false;
-  }
-  if (payload.token !== config.feishuClientToken) {
-    return false;
-  }
-
-  return true;
 }
 
 async function buildManagedAttachment(
@@ -192,77 +165,20 @@ export function createFeishuCallbackHandler(
 }) => Promise<FeishuCallbackResponse> {
   const client = dependencies.client ?? createFeishuClient(config);
   const transport = createTransport(client);
-  const bridge = dependencies.bridge ?? createGatewayBridge({
-    state: createGatewayStateStore({
-      defaultClientId: config.feishuClientId,
-    }),
-    sink: transport,
-  });
+  let initialized = false;
+
+  async function ensureInitialized(): Promise<void> {
+    if (initialized) {
+      return;
+    }
+
+    await initState();
+    initialized = true;
+  }
 
   return async ({ method, url, headers, body = '' }) => {
     if (method === 'GET' && url === '/healthz') {
       return text('ok');
-    }
-
-    if (method === 'POST' && url === '/feishu/bridge/hello') {
-      const payload = parseBridgePayload(body);
-      if (!isManagedClientAuthorized(config, payload)) {
-        return json({ code: 403, msg: 'invalid managed client credentials' }, 403);
-      }
-
-      bridge.registerClient({
-        type: 'client.hello',
-        clientId: payload.clientId,
-        requestId: `${payload.clientId}:hello`,
-        timestamp: new Date().toISOString(),
-        payload: {
-          token: payload.token,
-        },
-      });
-      return json({ code: 0, ok: true });
-    }
-
-    if (method === 'POST' && url === '/feishu/bridge/heartbeat') {
-      const payload = parseBridgePayload(body);
-      if (!isManagedClientAuthorized(config, payload)) {
-        return json({ code: 403, msg: 'invalid managed client credentials' }, 403);
-      }
-
-      bridge.registerClient({
-        type: 'client.heartbeat',
-        clientId: payload.clientId,
-        requestId: `${payload.clientId}:heartbeat`,
-        timestamp: new Date().toISOString(),
-        payload: {
-          token: payload.token,
-        },
-      });
-      return json({ code: 0, ok: true });
-    }
-
-    if (method === 'POST' && url === '/feishu/bridge/pull') {
-      const payload = parseBridgePayload(body);
-      if (!isManagedClientAuthorized(config, payload)) {
-        return json({ code: 403, msg: 'invalid managed client credentials' }, 403);
-      }
-
-      return json({
-        code: 0,
-        commands: bridge.pullCommands(payload.clientId, payload.limit ?? 1),
-      });
-    }
-
-    if (method === 'POST' && url === '/feishu/bridge/events') {
-      const payload = parseBridgePayload(body);
-      if (!isManagedClientAuthorized(config, payload)) {
-        return json({ code: 403, msg: 'invalid managed client credentials' }, 403);
-      }
-      if (!payload.event || typeof payload.event !== 'object') {
-        return json({ code: 400, msg: 'missing bridge event' }, 400);
-      }
-
-      await bridge.consumeClientEvent(payload.event as Parameters<typeof bridge.consumeClientEvent>[0]);
-      return json({ code: 0, ok: true });
     }
 
     if (method !== 'POST' || url !== '/feishu/callback') {
@@ -289,6 +205,7 @@ export function createFeishuCallbackHandler(
       headers,
       signingSecret: config.feishuAppSecret,
       runEvent: async (payload) => {
+        await ensureInitialized();
         const event = normalizeFeishuEvent(payload as Parameters<typeof normalizeFeishuEvent>[0]);
 
         if (event.kind === 'message') {
@@ -309,7 +226,10 @@ export function createFeishuCallbackHandler(
 
           const fileInfo = extractFeishuFileInfo(message);
           if (fileInfo) {
-            bridge.queueAttachments(conversationId, [await buildManagedAttachment(client, message.message_id, fileInfo)]);
+            queuePendingFeishuAttachments(
+              conversationId,
+              [await buildManagedAttachment(client, message.message_id, fileInfo)],
+            );
             await transport.sendText(target, 'File received. Send a prompt to use it.');
             return;
           }
@@ -324,18 +244,18 @@ export function createFeishuCallbackHandler(
             return;
           }
 
-          const result = bridge.dispatchRunCommand({
+          const result = await runFeishuConversation({
             conversationId,
             target,
             prompt: request.prompt,
             mode: request.mode,
+            transport,
+            defaultCwd: config.claudeCwd,
             sourceMessageId: message.message_id,
           });
-          if (result.kind === 'offline') {
-            await transport.sendText(
-              target,
-              'Relay client is offline. Start the local Feishu relay client and try again.',
-            );
+
+          if (result.kind === 'busy') {
+            await transport.sendText(target, 'Conversation is already running.');
           }
           return;
         }
@@ -355,9 +275,7 @@ export function createFeishuCallbackHandler(
           return;
         }
 
-        const result = bridge.dispatchControlCommand({
-          conversationId,
-          target,
+        const result = await handleFeishuControlAction({
           action: actionType === 'backend'
             ? { conversationId, type: 'backend', value: action.value as 'claude' | 'codex' }
             : actionType === 'confirm-backend'
@@ -369,25 +287,21 @@ export function createFeishuCallbackHandler(
                   : actionType === 'effort'
                     ? { conversationId, type: 'effort', value: String(action.value) }
                     : actionType === 'done'
-                ? { conversationId, type: 'done' }
-                : { conversationId, type: 'interrupt' },
+                      ? { conversationId, type: 'done' }
+                      : { conversationId, type: 'interrupt' },
+          target,
+          transport,
+          persist: persistState,
         });
-        if (result.kind === 'offline') {
-          await transport.sendText(
-            target,
-            'Relay client is offline. Start the local Feishu relay client and try again.',
-          );
-          return;
-        }
 
-        if (actionType === 'backend') {
-          const resumed = bridge.dispatchPendingRun(conversationId);
-          if (resumed.kind === 'offline') {
-            await transport.sendText(
-              target,
-              'Relay client is offline. Start the local Feishu relay client and try again.',
-            );
-          }
+        if (result.kind === 'backend-confirmation') {
+          await transport.sendCard(
+            target,
+            buildFeishuBackendConfirmationCardPayload(
+              result.card,
+              buildFeishuCardContext(conversationId, target),
+            ),
+          );
         }
       },
     });

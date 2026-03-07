@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   createFeishuServer,
   readFeishuConfig,
-  readManagedFeishuClientConfig,
   startFeishuServer,
 } from '../index.js';
 
@@ -19,16 +18,12 @@ describe('readFeishuConfig', () => {
       ...process.env,
       FEISHU_APP_ID: 'cli_test_app_id',
       FEISHU_APP_SECRET: 'test-secret',
-      FEISHU_CLIENT_ID: 'client-a',
-      FEISHU_CLIENT_TOKEN: 'token-a',
       FEISHU_PORT: '4400',
       FEISHU_BASE_URL: 'https://example.invalid',
     });
 
     expect(config.feishuAppId).toBe('cli_test_app_id');
     expect(config.feishuAppSecret).toBe('test-secret');
-    expect(config.feishuClientId).toBe('client-a');
-    expect(config.feishuClientToken).toBe('token-a');
     expect(config.feishuPort).toBe(4400);
     expect(config.feishuBaseUrl).toBe('https://example.invalid');
     expect(config.agentTimeoutMs).toBeGreaterThan(0);
@@ -40,31 +35,6 @@ describe('readFeishuConfig', () => {
       FEISHU_APP_ID: '',
       FEISHU_APP_SECRET: '',
     })).toThrow('Missing required environment variable: FEISHU_APP_ID');
-  });
-
-  it('requires managed client credentials for the gateway mode', () => {
-    expect(() => readFeishuConfig({
-      ...process.env,
-      FEISHU_APP_ID: 'cli_test_app_id',
-      FEISHU_APP_SECRET: 'test-secret',
-      FEISHU_CLIENT_ID: '',
-      FEISHU_CLIENT_TOKEN: '',
-    })).toThrow('Missing required environment variable: FEISHU_CLIENT_ID');
-  });
-
-  it('reads managed relay client configuration without requiring Feishu app credentials', () => {
-    const config = readManagedFeishuClientConfig({
-      ...process.env,
-      FEISHU_GATEWAY_URL: 'https://gateway.example',
-      FEISHU_CLIENT_ID: 'client-a',
-      FEISHU_CLIENT_TOKEN: 'token-a',
-      FEISHU_CLIENT_POLL_INTERVAL_MS: '2500',
-    });
-
-    expect(config.feishuGatewayUrl).toBe('https://gateway.example');
-    expect(config.feishuClientId).toBe('client-a');
-    expect(config.feishuClientToken).toBe('token-a');
-    expect(config.feishuClientPollIntervalMs).toBe(2500);
   });
 });
 
@@ -90,8 +60,6 @@ describe('startup entry', () => {
       feishuAppSecret: 'test-secret',
       feishuBaseUrl: 'https://open.feishu.cn',
       feishuPort: 0,
-      feishuClientId: 'client-a',
-      feishuClientToken: 'token-a',
     });
     startedServers.push(server);
 
