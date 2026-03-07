@@ -5,6 +5,8 @@ import {
   conversationSessions,
   interruptConversationRun,
   isConversationRunning,
+  threadContinuationSnapshots,
+  threadSessionBindings,
 } from '@agent-im-relay/core';
 import type { AgentBackend } from '@agent-im-relay/core';
 import { runMentionConversation } from '../conversation.js';
@@ -29,6 +31,8 @@ afterEach(() => {
   activeConversations.clear();
   conversationCwd.clear();
   conversationSessions.clear();
+  threadSessionBindings.clear();
+  threadContinuationSnapshots.clear();
   interruptConversationRun('thread-123');
 });
 
@@ -79,12 +83,14 @@ describe('runMentionConversation', () => {
     expect(isConversationRunning(thread.id)).toBe(false);
 
     const secondEvents: Array<Record<string, unknown>> = [];
+    let secondShowEnvironment: boolean | undefined;
     await expect(runMentionConversation(thread, 'second prompt', undefined, {
       backend: createBackend(),
       createSessionId: () => 'session-2',
       persist: vi.fn().mockResolvedValue(undefined),
       setReaction: vi.fn().mockResolvedValue(undefined),
-      streamToDiscord: async (_target, events) => {
+      streamToDiscord: async (target, events) => {
+        secondShowEnvironment = target.showEnvironment;
         for await (const event of events) {
           secondEvents.push(event);
         }
@@ -92,7 +98,55 @@ describe('runMentionConversation', () => {
     })).resolves.toBe(true);
 
     expect(secondEvents).toContainEqual({ type: 'done', result: 'ok', sessionId: 'resolved-session' });
+    expect(secondShowEnvironment).toBe(false);
+    expect(threadSessionBindings.has(thread.id)).toBe(true);
+    expect(threadContinuationSnapshots.get(thread.id)).toEqual(expect.objectContaining({
+      whyStopped: 'completed',
+    }));
     expect(conversationSessions.get(thread.id)).toBe('resolved-session');
+  });
+
+  it('keeps follow-up messages in the same thread after a timeout-like failure', async () => {
+    const thread = {
+      id: 'thread-timeout',
+      send: vi.fn(),
+    } as any;
+
+    const timeoutBackend: AgentBackend = {
+      name: 'claude',
+      async *stream() {
+        yield { type: 'error', error: 'Agent request timed out' } as const;
+      },
+    };
+
+    await expect(runMentionConversation(thread, 'first prompt', undefined, {
+      backend: timeoutBackend,
+      createSessionId: () => 'session-timeout-1',
+      persist: vi.fn().mockResolvedValue(undefined),
+      setReaction: vi.fn().mockResolvedValue(undefined),
+      streamToDiscord: async (_target, events) => {
+        for await (const _event of events) {
+        }
+      },
+    })).resolves.toBe(true);
+
+    let secondShowEnvironment: boolean | undefined;
+    await expect(runMentionConversation(thread, 'second prompt', undefined, {
+      backend: createBackend(),
+      createSessionId: () => 'session-timeout-2',
+      persist: vi.fn().mockResolvedValue(undefined),
+      setReaction: vi.fn().mockResolvedValue(undefined),
+      streamToDiscord: async (target, events) => {
+        secondShowEnvironment = target.showEnvironment;
+        for await (const _event of events) {
+        }
+      },
+    })).resolves.toBe(true);
+
+    expect(threadContinuationSnapshots.get(thread.id)).toEqual(expect.objectContaining({
+      whyStopped: 'completed',
+    }));
+    expect(secondShowEnvironment).toBe(false);
   });
 
   it('stores detected cwd without sending a follow-up prompt', async () => {

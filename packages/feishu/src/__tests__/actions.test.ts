@@ -6,7 +6,11 @@ import {
   conversationEffort,
   conversationModels,
   conversationSessions,
+  openThreadSessionBinding,
   pendingBackendChanges,
+  threadContinuationSnapshots,
+  threadSessionBindings,
+  updateThreadContinuationSnapshot,
 } from '@agent-im-relay/core';
 import {
   buildSessionControlCard,
@@ -21,6 +25,8 @@ describe('Feishu actions', () => {
     conversationModels.clear();
     conversationSessions.clear();
     pendingBackendChanges.clear();
+    threadSessionBindings.clear();
+    threadContinuationSnapshots.clear();
   });
 
   it('maps card actions to interrupt, done, backend, model, and effort controls', () => {
@@ -34,6 +40,18 @@ describe('Feishu actions', () => {
     ]);
 
     conversationSessions.set('conv-actions', 'session-1');
+    openThreadSessionBinding({
+      conversationId: 'conv-actions',
+      backend: 'claude',
+      now: '2026-03-07T00:00:00.000Z',
+    });
+    updateThreadContinuationSnapshot({
+      conversationId: 'conv-actions',
+      taskSummary: 'Keep this Feishu conversation sticky.',
+      whyStopped: 'completed',
+      updatedAt: '2026-03-07T00:01:00.000Z',
+    });
+
     expect(dispatchFeishuCardAction({ conversationId: 'conv-actions', type: 'interrupt' })).toEqual({
       kind: 'interrupt',
       conversationId: 'conv-actions',
@@ -44,6 +62,8 @@ describe('Feishu actions', () => {
       requiresConfirmation: false,
       summaryKey: 'interrupt.noop',
     });
+    expect(threadSessionBindings.has('conv-actions')).toBe(true);
+    expect(threadContinuationSnapshots.has('conv-actions')).toBe(true);
 
     expect(dispatchFeishuCardAction({ conversationId: 'conv-actions', type: 'done' })).toEqual({
       kind: 'done',
@@ -55,6 +75,8 @@ describe('Feishu actions', () => {
       summaryKey: 'done.ok',
     });
     expect(conversationSessions.has('conv-actions')).toBe(false);
+    expect(threadSessionBindings.has('conv-actions')).toBe(false);
+    expect(threadContinuationSnapshots.has('conv-actions')).toBe(false);
 
     expect(dispatchFeishuCardAction({ conversationId: 'conv-actions', type: 'backend', value: 'codex' })).toEqual({
       kind: 'backend',

@@ -34,9 +34,11 @@ import {
   conversationCwd,
   conversationEffort,
   conversationModels,
-  conversationSessions,
+  closeThreadSession,
+  openThreadSessionBinding,
+  threadSessionBindings,
 } from '@agent-im-relay/core';
-import { runMentionConversation } from '../conversation.js';
+import { hasOpenStickyThreadSession, runMentionConversation } from '../conversation.js';
 
 describe('runMentionConversation', () => {
   beforeEach(() => {
@@ -45,7 +47,7 @@ describe('runMentionConversation', () => {
     conversationCwd.clear();
     conversationEffort.clear();
     conversationModels.clear();
-    conversationSessions.clear();
+    threadSessionBindings.clear();
     persistState.mockReset();
     runPlatformConversation.mockClear();
     streamAgentToDiscord.mockReset();
@@ -53,7 +55,7 @@ describe('runMentionConversation', () => {
       await options.render(
         {
           target: options.target,
-          showEnvironment: !conversationSessions.has(options.conversationId),
+          showEnvironment: !threadSessionBindings.has(options.conversationId),
         },
         (async function* () {
           yield { type: 'done', result: 'done', sessionId: 'resolved-session' };
@@ -105,9 +107,13 @@ describe('runMentionConversation', () => {
     expect(runnerOptions.attachments).toEqual(attachments);
   });
 
-  it('skips environment after a session already exists', async () => {
+  it('skips environment after a sticky thread binding already exists', async () => {
     const thread = { id: 'thread-2' } as any;
-    conversationSessions.set(thread.id, 'existing-session');
+    openThreadSessionBinding({
+      conversationId: thread.id,
+      backend: 'claude',
+      now: '2026-03-07T00:00:00.000Z',
+    });
 
     const started = await runMentionConversation(thread, 'hello again');
 
@@ -142,5 +148,19 @@ describe('runMentionConversation', () => {
     expect(setReaction).toHaveBeenNthCalledWith(1, triggerMsg, 'thinking', 'received');
     expect(setReaction).toHaveBeenNthCalledWith(2, triggerMsg, 'tools', 'thinking');
     expect(setReaction).toHaveBeenNthCalledWith(3, triggerMsg, 'done', 'tools');
+  });
+
+  it('treats a thread as active when a sticky binding exists, and only /done resets it', async () => {
+    openThreadSessionBinding({
+      conversationId: 'thread-sticky',
+      backend: 'claude',
+      now: '2026-03-07T00:00:00.000Z',
+    });
+
+    expect(hasOpenStickyThreadSession('thread-sticky')).toBe(true);
+
+    closeThreadSession({ conversationId: 'thread-sticky' });
+
+    expect(hasOpenStickyThreadSession('thread-sticky')).toBe(false);
   });
 });

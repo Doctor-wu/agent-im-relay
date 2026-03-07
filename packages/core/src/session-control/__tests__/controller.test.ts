@@ -10,7 +10,10 @@ import {
   conversationModels,
   conversationSessions,
   pendingBackendChanges,
+  threadContinuationSnapshots,
+  threadSessionBindings,
 } from '../../state.js';
+import { openThreadSessionBinding, updateThreadContinuationSnapshot } from '../../thread-session/manager.js';
 import { applySessionControlCommand } from '../controller.js';
 
 function createBackend(events: Array<unknown>): AgentBackend {
@@ -29,6 +32,14 @@ function createBackend(events: Array<unknown>): AgentBackend {
   };
 }
 
+async function collect(events: AsyncIterable<unknown>): Promise<unknown[]> {
+  const collected: unknown[] = [];
+  for await (const event of events) {
+    collected.push(event);
+  }
+  return collected;
+}
+
 describe('session control controller', () => {
   beforeEach(() => {
     resetConversationRuntimeForTests();
@@ -37,6 +48,8 @@ describe('session control controller', () => {
     conversationModels.clear();
     conversationSessions.clear();
     pendingBackendChanges.clear();
+    threadSessionBindings.clear();
+    threadContinuationSnapshots.clear();
   });
 
   it('returns a noop interrupt result for idle conversations', () => {
@@ -100,6 +113,50 @@ describe('session control controller', () => {
       summaryKey: 'done.ok',
     });
     expect(conversationSessions.has('conv-done')).toBe(false);
+  });
+
+  it('interrupts an active run when done clears the thread continuation', async () => {
+    openThreadSessionBinding({
+      conversationId: 'conv-done-running',
+      backend: 'claude',
+      now: '2026-03-07T00:00:00.000Z',
+    });
+    updateThreadContinuationSnapshot({
+      conversationId: 'conv-done-running',
+      taskSummary: 'Keep this thread open.',
+      whyStopped: 'completed',
+      updatedAt: '2026-03-07T00:01:00.000Z',
+    });
+
+    const events = runConversationSession('conv-done-running', {
+      mode: 'ask',
+      prompt: 'stop',
+      backend: createBackend([
+        { type: 'status', status: 'working' },
+        { type: 'done', result: 'should not finish' },
+      ]),
+    });
+
+    const result = applySessionControlCommand({
+      conversationId: 'conv-done-running',
+      type: 'done',
+    });
+
+    expect(result).toEqual({
+      kind: 'done',
+      conversationId: 'conv-done-running',
+      stateChanged: true,
+      persist: true,
+      clearContinuation: true,
+      requiresConfirmation: false,
+      summaryKey: 'done.ok',
+    });
+    await expect(collect(events)).resolves.toEqual([
+      { type: 'error', error: 'Agent request aborted' },
+    ]);
+    expect(threadSessionBindings.has('conv-done-running')).toBe(false);
+    expect(threadContinuationSnapshots.has('conv-done-running')).toBe(false);
+    expect(conversationSessions.has('conv-done-running')).toBe(false);
   });
 
   it('requests confirmation before switching away from an existing backend', () => {

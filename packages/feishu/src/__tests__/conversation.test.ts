@@ -46,6 +46,34 @@ describe('resolveConversationId', () => {
       },
     }))).toBe('chat-group');
   });
+
+  it('keeps follow-up group replies on the same sticky conversation id', () => {
+    const firstReply = resolveConversationId(normalizeFeishuEvent({
+      header: { event_type: 'im.message.receive_v1' },
+      event: {
+        message: {
+          chat_id: 'chat-group',
+          chat_type: 'group',
+          message_id: 'message-4',
+          root_message_id: 'root-sticky',
+        },
+      },
+    }));
+    const secondReply = resolveConversationId(normalizeFeishuEvent({
+      header: { event_type: 'im.message.receive_v1' },
+      event: {
+        message: {
+          chat_id: 'chat-group',
+          chat_type: 'group',
+          message_id: 'message-5',
+          root_message_id: 'root-sticky',
+        },
+      },
+    }));
+
+    expect(firstReply).toBe('root-sticky');
+    expect(secondReply).toBe('root-sticky');
+  });
 });
 
 describe('resolveConversationIdFromAction', () => {

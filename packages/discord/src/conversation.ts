@@ -6,6 +6,7 @@ import {
   type BackendName,
   conversationBackend,
   persistState,
+  threadSessionBindings,
 } from '@agent-im-relay/core';
 import { config } from './config.js';
 import { publishConversationArtifacts } from './artifacts.js';
@@ -31,6 +32,10 @@ type RunMentionConversationOptions = {
     events: AsyncIterable<import('@agent-im-relay/core').AgentStreamEvent>,
   ) => Promise<void>;
 };
+
+export function hasOpenStickyThreadSession(conversationId: string): boolean {
+  return threadSessionBindings.has(conversationId);
+}
 
 export async function runMentionConversation(
   thread: AnyThreadChannel & StreamTargetChannel,

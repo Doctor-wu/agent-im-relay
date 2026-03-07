@@ -1,9 +1,9 @@
 import { interruptConversationRun } from '../agent/runtime.js';
+import { closeThreadSession } from '../thread-session/manager.js';
 import {
   conversationBackend,
   conversationEffort,
   conversationModels,
-  conversationSessions,
   pendingBackendChanges,
 } from '../state.js';
 import type { SessionControlCommand, SessionControlResult } from './types.js';
@@ -38,7 +38,9 @@ export function applySessionControlCommand(command: SessionControlCommand): Sess
   }
 
   if (command.type === 'done') {
-    const clearContinuation = conversationSessions.delete(command.conversationId);
+    interruptConversationRun(command.conversationId);
+    const cleared = closeThreadSession({ conversationId: command.conversationId });
+    const clearContinuation = cleared.bindingCleared || cleared.snapshotCleared || cleared.sessionCleared;
     return {
       kind: 'done',
       conversationId: command.conversationId,
@@ -88,7 +90,9 @@ export function applySessionControlCommand(command: SessionControlCommand): Sess
     const backend = pendingBackend ?? command.value;
     const hadPendingChange = pendingBackendChanges.delete(command.conversationId);
     const backendChanged = conversationBackend.get(command.conversationId) !== backend;
-    const clearContinuation = conversationSessions.delete(command.conversationId);
+    interruptConversationRun(command.conversationId);
+    const cleared = closeThreadSession({ conversationId: command.conversationId });
+    const clearContinuation = cleared.bindingCleared || cleared.snapshotCleared || cleared.sessionCleared;
     conversationBackend.set(command.conversationId, backend);
 
     return {

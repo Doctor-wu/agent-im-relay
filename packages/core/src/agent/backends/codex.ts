@@ -37,6 +37,17 @@ function extractCodexSessionId(payload: unknown): string | undefined {
   return undefined;
 }
 
+function isAuthoritativeCodexResumeFailure(error: string): boolean {
+  return [
+    /resume session not found/i,
+    /invalid session/i,
+    /session .*invalid/i,
+    /unknown session/i,
+    /cannot resume/i,
+    /not resumable/i,
+  ].some(pattern => pattern.test(error));
+}
+
 export function createCodexArgs(options: AgentSessionOptions): string[] {
   const args = options.resumeSessionId
     ? ['exec', 'resume', options.resumeSessionId, '--json', '--skip-git-repo-check']
@@ -60,11 +71,23 @@ export function createCodexArgs(options: AgentSessionOptions): string[] {
   return args;
 }
 
-export function extractCodexEvents(payload: unknown): AgentStreamEvent[] {
+export function extractCodexEvents(
+  payload: unknown,
+  options: { resumeSessionId?: string } = {},
+): AgentStreamEvent[] {
   if (!isRecord(payload)) return [];
 
   const type = asString(payload.type);
   if (!type) return [];
+
+  const sessionId = extractCodexSessionId(payload);
+  if (sessionId) {
+    return [{
+      type: 'session',
+      sessionId,
+      status: type === 'thread.resumed' ? 'resumed' : 'confirmed',
+    }];
+  }
 
   if (type === 'item.started') {
     const item = payload.item;
@@ -88,7 +111,20 @@ export function extractCodexEvents(payload: unknown): AgentStreamEvent[] {
 
   if (type === 'error' || type.endsWith('.failed')) {
     const error = asString(payload.message) ?? asString(payload.error);
-    return error ? [{ type: 'error', error }] : [];
+    if (!error) {
+      return [];
+    }
+
+    return options.resumeSessionId && isAuthoritativeCodexResumeFailure(error)
+      ? [
+          {
+            type: 'session-invalidated',
+            sessionId: options.resumeSessionId,
+            reason: error,
+          },
+          { type: 'error', error },
+        ]
+      : [{ type: 'error', error }];
   }
 
   return [];
@@ -175,7 +211,7 @@ async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentS
 
       sessionId = extractCodexSessionId(parsed) ?? sessionId;
 
-      for (const event of extractCodexEvents(parsed)) {
+      for (const event of extractCodexEvents(parsed, { resumeSessionId: options.resumeSessionId })) {
         if (event.type === 'text') {
           fullOutput += event.delta;
 

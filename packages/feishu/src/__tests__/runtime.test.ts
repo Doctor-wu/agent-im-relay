@@ -62,4 +62,59 @@ describe('Feishu runtime', () => {
       coreMocks.runPlatformConversation.mock.invocationCallOrder[0]!,
     );
   });
+
+  it('does not send environment summary on sticky-session resumes', async () => {
+    coreMocks.runPlatformConversation.mockImplementationOnce(async (options) => {
+      await options.render(
+        {
+          target: options.target,
+          showEnvironment: false,
+        },
+        (async function* () {
+          yield {
+            type: 'environment',
+            environment: {
+              backend: 'claude',
+              mode: 'code',
+              model: {},
+              cwd: { value: '/tmp/project', source: 'explicit' },
+              git: { isRepo: false },
+            },
+          } as const;
+          yield { type: 'done', result: 'continued reply' } as const;
+        })(),
+      );
+      return true;
+    });
+
+    const transport = {
+      sendText: vi.fn(async () => undefined),
+      sendCard: vi.fn(async () => undefined),
+      uploadFile: vi.fn(async () => undefined),
+    };
+
+    await runFeishuConversation({
+      conversationId: 'conv-resume',
+      target: {
+        chatId: 'chat-1',
+        replyToMessageId: 'message-1',
+      },
+      prompt: 'continue',
+      mode: 'code',
+      transport,
+      defaultCwd: process.cwd(),
+    });
+
+    expect(transport.sendText).not.toHaveBeenCalledWith(
+      {
+        chatId: 'chat-1',
+        replyToMessageId: 'message-1',
+      },
+      'Environment: backend=claude, mode=code, cwd=/tmp/project',
+    );
+    expect(transport.sendText).toHaveBeenCalledWith({
+      chatId: 'chat-1',
+      replyToMessageId: 'message-1',
+    }, 'continued reply');
+  });
 });

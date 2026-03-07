@@ -194,12 +194,16 @@ async function streamAgentToFeishu(
   transport: FeishuRuntimeTransport,
   target: FeishuTarget,
   events: AsyncIterable<AgentStreamEvent>,
+  showEnvironment: boolean,
 ): Promise<void> {
   let finalText = '';
   const chunks: string[] = [];
 
   for await (const event of events) {
     if (event.type === 'environment') {
+      if (!showEnvironment) {
+        continue;
+      }
       await transport.sendText(target, formatEnvironmentSummary(event));
       continue;
     }
@@ -283,7 +287,8 @@ export async function runFeishuConversation(options: {
     defaultCwd: options.defaultCwd,
     attachments: mergedAttachments,
     attachmentFetchImpl: options.attachmentFetchImpl,
-    render: ({ target }, events) => streamAgentToFeishu(options.transport, target, events),
+    render: ({ target, showEnvironment }, events) =>
+      streamAgentToFeishu(options.transport, target, events, showEnvironment),
     publishArtifacts: async ({ files, warnings, target }) => {
       for (const filePath of files) {
         await options.transport.uploadFile(target, filePath);

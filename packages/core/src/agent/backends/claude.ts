@@ -85,34 +85,66 @@ function extractStreamEvent(payload: Record<string, unknown>): AgentStreamEvent[
   return [];
 }
 
-export function extractEvents(payload: unknown): AgentStreamEvent[] {
+function extractSessionLifecycleEvents(
+  payload: Record<string, unknown>,
+  messageType: string,
+): AgentStreamEvent[] {
+  if (messageType === 'result' || messageType === 'error') {
+    return [];
+  }
+
+  const sessionId = asString(payload.session_id);
+  if (!sessionId) {
+    return [];
+  }
+
+  return [{ type: 'session', sessionId, status: 'confirmed' }];
+}
+
+function isAuthoritativeClaudeResumeFailure(error: string): boolean {
+  return [
+    /resume session not found/i,
+    /invalid session/i,
+    /session .*invalid/i,
+    /unknown session/i,
+    /cannot resume/i,
+    /not resumable/i,
+  ].some(pattern => pattern.test(error));
+}
+
+export function extractEvents(
+  payload: unknown,
+  options: { resumeSessionId?: string } = {},
+): AgentStreamEvent[] {
   if (!isRecord(payload)) return [];
   const messageType = asString(payload.type);
   if (!messageType) return [];
 
+  const sessionEvents = extractSessionLifecycleEvents(payload, messageType);
+
   if (messageType === 'stream_event') {
-    return extractStreamEvent(payload);
+    return [...sessionEvents, ...extractStreamEvent(payload)];
   }
 
   if (messageType === 'assistant') {
     const deltaEvents = extractDeltaEvents(payload.delta);
     if (deltaEvents.length > 0) {
-      return deltaEvents;
+      return [...sessionEvents, ...deltaEvents];
     }
 
     const message = payload.message;
     if (!isRecord(message)) return [];
-    return extractContentEvents(message.content);
+    return [...sessionEvents, ...extractContentEvents(message.content)];
   }
 
   if (messageType === 'tool_use_summary') {
     const summary = asString(payload.summary);
-    return summary ? [{ type: 'tool', summary }] : [];
+    return summary ? [...sessionEvents, { type: 'tool', summary }] : sessionEvents;
   }
 
   if (messageType === 'system') {
     const status = asString(payload.status) ?? asString(payload.subtype);
-    return status ? [{ type: 'status', status }] : [];
+    return status ? [...sessionEvents, { type: 'status', status }] : sessionEvents;
   }
 
   if (messageType === 'result') {
@@ -123,7 +155,16 @@ export function extractEvents(payload: unknown): AgentStreamEvent[] {
 
   if (messageType === 'error') {
     const error = asString(payload.error) ?? asString(payload.message) ?? 'Claude CLI request failed';
-    return [{ type: 'error', error }];
+    return options.resumeSessionId && isAuthoritativeClaudeResumeFailure(error)
+      ? [
+          {
+            type: 'session-invalidated',
+            sessionId: options.resumeSessionId,
+            reason: error,
+          },
+          { type: 'error', error },
+        ]
+      : [{ type: 'error', error }];
   }
 
   return [];
@@ -227,7 +268,7 @@ async function* streamClaude(options: AgentSessionOptions): AsyncGenerator<Agent
         continue;
       }
 
-      const events = extractEvents(payload);
+      const events = extractEvents(payload, { resumeSessionId: options.resumeSessionId });
       for (const event of events) {
         yield event;
       }

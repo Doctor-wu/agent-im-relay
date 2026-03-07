@@ -86,6 +86,20 @@ describe('codex backend', () => {
 
   it('extracts text and tool events from Codex JSONL items', () => {
     expect(extractCodexEvents({
+      type: 'thread.started',
+      thread_id: 'thread-123',
+    })).toEqual([
+      { type: 'session', sessionId: 'thread-123', status: 'confirmed' },
+    ]);
+
+    expect(extractCodexEvents({
+      type: 'thread.resumed',
+      thread_id: 'thread-456',
+    })).toEqual([
+      { type: 'session', sessionId: 'thread-456', status: 'resumed' },
+    ]);
+
+    expect(extractCodexEvents({
       type: 'item.started',
       item: {
         id: 'item_1',
@@ -106,6 +120,31 @@ describe('codex backend', () => {
       },
     })).toEqual([
       { type: 'text', delta: 'Working directory: /tmp/project\nDone.' },
+    ]);
+  });
+
+  it('emits a structured invalidation event for authoritative resume failures', () => {
+    expect(extractCodexEvents({
+      type: 'error',
+      error: 'Resume session not found',
+    }, {
+      resumeSessionId: 'thread-123',
+    })).toEqual([
+      {
+        type: 'session-invalidated',
+        sessionId: 'thread-123',
+        reason: 'Resume session not found',
+      },
+      { type: 'error', error: 'Resume session not found' },
+    ]);
+  });
+
+  it('does not emit invalidation events for authoritative errors outside resume mode', () => {
+    expect(extractCodexEvents({
+      type: 'error',
+      error: 'Resume session not found',
+    })).toEqual([
+      { type: 'error', error: 'Resume session not found' },
     ]);
   });
 
@@ -145,6 +184,7 @@ describe('codex backend', () => {
       },
     });
     expect(events.slice(1)).toEqual([
+      { type: 'session', sessionId: 'thread-123', status: 'confirmed' },
       { type: 'text', delta: 'Hello world' },
       { type: 'done', result: 'Hello world', sessionId: 'thread-123' },
     ]);
