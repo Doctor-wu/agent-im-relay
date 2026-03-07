@@ -43,6 +43,24 @@ export interface FeishuConfig {
   feishuVerificationToken?: string;
   feishuBaseUrl: string;
   feishuPort: number;
+  feishuClientId: string;
+  feishuClientToken: string;
+}
+
+export interface FeishuRelayClientConfig {
+  agentTimeoutMs: number;
+  claudeModel?: string;
+  claudeCwd: string;
+  stateFile: string;
+  artifactsBaseDir: string;
+  artifactRetentionDays: number;
+  artifactMaxSizeBytes: number;
+  claudeBin: string;
+  codexBin: string;
+  feishuGatewayUrl: string;
+  feishuClientId: string;
+  feishuClientToken: string;
+  feishuClientPollIntervalMs: number;
 }
 
 function readCoreConfig(env: NodeJS.ProcessEnv): Omit<FeishuConfig, 'feishuAppId' | 'feishuAppSecret' | 'feishuEncryptKey' | 'feishuVerificationToken' | 'feishuBaseUrl' | 'feishuPort'> {
@@ -68,5 +86,17 @@ export function readFeishuConfig(env: NodeJS.ProcessEnv = process.env): FeishuCo
     feishuVerificationToken: optionalEnv(env, 'FEISHU_VERIFICATION_TOKEN'),
     feishuBaseUrl: optionalEnv(env, 'FEISHU_BASE_URL') || 'https://open.feishu.cn',
     feishuPort: numberEnv(env, 'FEISHU_PORT', 3001),
+    feishuClientId: requireEnv(env, 'FEISHU_CLIENT_ID'),
+    feishuClientToken: requireEnv(env, 'FEISHU_CLIENT_TOKEN'),
+  };
+}
+
+export function readManagedFeishuClientConfig(env: NodeJS.ProcessEnv = process.env): FeishuRelayClientConfig {
+  return {
+    ...readCoreConfig(env),
+    feishuGatewayUrl: requireEnv(env, 'FEISHU_GATEWAY_URL'),
+    feishuClientId: requireEnv(env, 'FEISHU_CLIENT_ID'),
+    feishuClientToken: requireEnv(env, 'FEISHU_CLIENT_TOKEN'),
+    feishuClientPollIntervalMs: numberEnv(env, 'FEISHU_CLIENT_POLL_INTERVAL_MS', 1_000),
   };
 }

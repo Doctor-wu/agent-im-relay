@@ -1,19 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { runConversationWithRenderer, persistState, streamAgentToDiscord, prepareAttachmentPrompt } = vi.hoisted(() => ({
-  runConversationWithRenderer: vi.fn(async (options) => {
-    const prepared = await options.preparePrompt?.({
-      conversationId: options.conversationId,
-      prompt: options.prompt,
-      sourceMessageId: options.sourceMessageId,
-    });
-
+const { runPlatformConversation, persistState, streamAgentToDiscord } = vi.hoisted(() => ({
+  runPlatformConversation: vi.fn(async (options) => {
     await options.render(
       { target: options.target, showEnvironment: !options.sourceMessageId },
       (async function* () {
-        if (prepared?.prompt) {
-          yield { type: 'status', status: prepared.prompt };
-        }
         yield { type: 'done', result: 'done', sessionId: 'resolved-session' };
       })(),
     );
@@ -22,24 +13,19 @@ const { runConversationWithRenderer, persistState, streamAgentToDiscord, prepare
   }),
   persistState: vi.fn(),
   streamAgentToDiscord: vi.fn(async () => {}),
-  prepareAttachmentPrompt: vi.fn(async ({ prompt }) => ({ prompt, attachments: [] })),
 }));
 
 vi.mock('@agent-im-relay/core', async () => {
   const actual = await vi.importActual<typeof import('@agent-im-relay/core')>('@agent-im-relay/core');
   return {
     ...actual,
-    runConversationWithRenderer,
+    runPlatformConversation,
     persistState,
   };
 });
 
 vi.mock('../stream.js', () => ({
   streamAgentToDiscord,
-}));
-
-vi.mock('../files.js', () => ({
-  prepareAttachmentPrompt,
 }));
 
 import {
@@ -61,26 +47,15 @@ describe('runMentionConversation', () => {
     conversationModels.clear();
     conversationSessions.clear();
     persistState.mockReset();
-    runConversationWithRenderer.mockClear();
-    prepareAttachmentPrompt.mockReset();
+    runPlatformConversation.mockClear();
     streamAgentToDiscord.mockReset();
-    prepareAttachmentPrompt.mockImplementation(async ({ prompt }) => ({ prompt, attachments: [] }));
-    runConversationWithRenderer.mockImplementation(async (options) => {
-      const prepared = await options.preparePrompt?.({
-        conversationId: options.conversationId,
-        prompt: options.prompt,
-        sourceMessageId: options.sourceMessageId,
-      });
-
+    runPlatformConversation.mockImplementation(async (options) => {
       await options.render(
         {
           target: options.target,
           showEnvironment: !conversationSessions.has(options.conversationId),
         },
         (async function* () {
-          if (prepared?.prompt) {
-            yield { type: 'status', status: prepared.prompt };
-          }
           yield { type: 'done', result: 'done', sessionId: 'resolved-session' };
         })(),
       );
@@ -100,7 +75,7 @@ describe('runMentionConversation', () => {
     const started = await runMentionConversation(thread, 'hello');
 
     expect(started).toBe(true);
-    expect(runConversationWithRenderer).toHaveBeenCalledWith(expect.objectContaining({
+    expect(runPlatformConversation).toHaveBeenCalledWith(expect.objectContaining({
       conversationId: thread.id,
       target: thread,
       prompt: 'hello',
@@ -111,7 +86,7 @@ describe('runMentionConversation', () => {
     );
   });
 
-  it('prepares attachment context before starting the agent run', async () => {
+  it('passes shared attachment metadata into the new core wrapper', async () => {
     const thread = { id: 'thread-attachments' } as any;
     const attachments = [
       {
@@ -122,37 +97,12 @@ describe('runMentionConversation', () => {
         size: 12,
       },
     ];
-    prepareAttachmentPrompt.mockResolvedValue({
-      prompt: [
-        'Attached files are available locally for this run:',
-        '- spec.md | markdown, 12 B | text/markdown',
-        '  path: /tmp/thread-attachments/incoming/spec.md',
-        '  preview: # Spec',
-        '',
-        'User request:',
-        'hello',
-      ].join('\n'),
-      attachments: [],
-    });
 
     const started = await runMentionConversation(thread, 'hello', { id: 'msg-1' } as any, { attachments });
 
     expect(started).toBe(true);
-    expect(prepareAttachmentPrompt).toHaveBeenCalledWith({
-      conversationId: thread.id,
-      prompt: 'hello',
-      attachments,
-      sourceMessageId: 'msg-1',
-    });
-    const runnerOptions = runConversationWithRenderer.mock.calls[0]?.[0];
-    const prepared = await runnerOptions.preparePrompt({
-      conversationId: thread.id,
-      prompt: 'hello',
-      sourceMessageId: 'msg-1',
-    });
-    expect(prepared.prompt).toContain('spec.md');
-    expect(prepared.prompt).toContain('/tmp/thread-attachments/incoming/spec.md');
-    expect(prepared.prompt).toContain('preview: # Spec');
+    const runnerOptions = runPlatformConversation.mock.calls[0]?.[0];
+    expect(runnerOptions.attachments).toEqual(attachments);
   });
 
   it('skips environment after a session already exists', async () => {
@@ -162,7 +112,7 @@ describe('runMentionConversation', () => {
     const started = await runMentionConversation(thread, 'hello again');
 
     expect(started).toBe(true);
-    expect(runConversationWithRenderer).toHaveBeenCalledWith(expect.objectContaining({
+    expect(runPlatformConversation).toHaveBeenCalledWith(expect.objectContaining({
       conversationId: thread.id,
       prompt: 'hello again',
     }));
@@ -180,7 +130,7 @@ describe('runMentionConversation', () => {
     const started = await runMentionConversation(thread, 'hello', triggerMsg, { setReaction });
 
     expect(started).toBe(true);
-    const runnerOptions = runConversationWithRenderer.mock.calls[0]?.[0];
+    const runnerOptions = runPlatformConversation.mock.calls[0]?.[0];
     expect(runnerOptions).toEqual(expect.objectContaining({
       conversationId: thread.id,
       target: thread,

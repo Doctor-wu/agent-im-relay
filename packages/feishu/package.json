@@ -12,8 +12,12 @@
   },
   "scripts": {
     "build": "tsdown",
-    "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.mjs",
+    "dev": "pnpm dev:gateway",
+    "dev:gateway": "tsx watch src/index.ts",
+    "dev:client": "tsx watch src/bin/client.ts",
+    "start": "pnpm start:gateway",
+    "start:gateway": "node dist/index.mjs",
+    "start:client": "tsx src/bin/client.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

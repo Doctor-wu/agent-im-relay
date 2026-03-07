@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { AnyThreadChannel, Message } from 'discord.js';
 import {
-  runConversationWithRenderer,
+  runPlatformConversation,
   type AgentBackend,
   type BackendName,
   conversationBackend,
@@ -42,7 +42,7 @@ export async function runMentionConversation(
     await options.setReaction(triggerMsg, 'thinking', 'received');
   }
 
-  return runConversationWithRenderer({
+  return runPlatformConversation({
     conversationId: thread.id,
     target: thread,
     prompt,
@@ -52,18 +52,14 @@ export async function runMentionConversation(
     defaultCwd: config.claudeCwd,
     createSessionId: options.createSessionId ?? (() => randomUUID()),
     persist: options.persist ?? persistState,
-    preparePrompt: async ({ conversationId, prompt: rawPrompt, sourceMessageId }) => prepareAttachmentPrompt({
-      conversationId,
-      prompt: rawPrompt,
-      attachments: options.attachments ?? [],
-      sourceMessageId,
-    }),
+    attachments: options.attachments ?? [],
     render: ({ target, showEnvironment }, events) =>
       (options.streamToDiscord ?? streamAgentToDiscord)({ channel: target, showEnvironment }, events),
-    publishArtifacts: async ({ conversationId, cwd, resultText, sourceMessageId, target }) => publishConversationArtifacts({
+    publishArtifacts: async ({ conversationId, cwd, files, warnings, sourceMessageId, target }) => publishConversationArtifacts({
       conversationId,
       cwd,
-      resultText,
+      stagedFiles: files,
+      warnings,
       channel: target,
       sourceMessageId,
     }),

@@ -35,12 +35,37 @@ export type { AgentMode } from './agent/tools.js';
 export { runConversationWithRenderer } from './runtime/conversation-runner.js';
 export type { ConversationRunPhase } from './runtime/conversation-runner.js';
 export {
+  applyConversationControlAction,
+  evaluateConversationRunRequest,
+  runPlatformConversation,
+} from './platform/conversation.js';
+export type {
+  ConversationControlAction,
+  ConversationControlResult,
+  ConversationRunEvaluation,
+} from './platform/conversation.js';
+export {
   buildAttachmentPromptContext,
   downloadIncomingAttachments,
   prepareAttachmentPrompt,
   stageOutgoingArtifacts,
 } from './runtime/files.js';
 export type { DownloadedAttachment, RemoteAttachmentLike, StagedArtifactsResult } from './runtime/files.js';
+export type {
+  ClientHeartbeatEvent,
+  ClientHelloEvent,
+  ClientToGatewayEvent,
+  ConversationCardEvent,
+  ConversationControlCommand,
+  ConversationDoneEvent,
+  ConversationErrorEvent,
+  ConversationFileCommand,
+  ConversationFileEvent,
+  ConversationRunCommand,
+  ConversationTextEvent,
+  GatewayToClientCommand,
+  ManagedBridgeTarget,
+} from './bridge/protocol.js';
 
 // State
 export {

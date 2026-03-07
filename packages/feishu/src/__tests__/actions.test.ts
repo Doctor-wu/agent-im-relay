@@ -35,11 +35,13 @@ describe('Feishu actions', () => {
     expect(dispatchFeishuCardAction({ conversationId: 'conv-actions', type: 'interrupt' })).toEqual({
       kind: 'interrupt',
       conversationId: 'conv-actions',
+      interrupted: false,
     });
 
     expect(dispatchFeishuCardAction({ conversationId: 'conv-actions', type: 'done' })).toEqual({
       kind: 'done',
       conversationId: 'conv-actions',
+      continuationCleared: true,
     });
     expect(conversationSessions.has('conv-actions')).toBe(false);
 

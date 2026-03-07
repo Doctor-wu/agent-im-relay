@@ -6,8 +6,10 @@ type ArtifactUploadChannel = {
 
 type PublishConversationArtifactsOptions = {
   conversationId: string;
-  cwd: string;
-  resultText: string;
+  cwd?: string;
+  resultText?: string;
+  stagedFiles?: string[];
+  warnings?: string[];
   channel: ArtifactUploadChannel;
   sourceMessageId?: string;
 };
@@ -16,15 +18,19 @@ export async function publishConversationArtifacts({
   conversationId,
   cwd,
   resultText,
+  stagedFiles,
+  warnings: providedWarnings,
   channel,
   sourceMessageId,
 }: PublishConversationArtifactsOptions): Promise<void> {
-  const staged = await stageOutgoingArtifacts({
-    conversationId,
-    cwd,
-    resultText,
-    sourceMessageId,
-  });
+  const staged = (stagedFiles && providedWarnings)
+    ? { files: stagedFiles, warnings: providedWarnings }
+    : await stageOutgoingArtifacts({
+      conversationId,
+      cwd: cwd ?? '',
+      resultText: resultText ?? '',
+      sourceMessageId,
+    });
 
   const warnings = [...staged.warnings];
 

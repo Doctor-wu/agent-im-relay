@@ -1,8 +1,23 @@
 import { createServer, type Server } from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { readFeishuConfig, type FeishuConfig } from './config.js';
+import { createFeishuClient } from './api.js';
+import { createManagedFeishuRelayClient } from './client.js';
+import {
+  readFeishuConfig,
+  readManagedFeishuClientConfig,
+  type FeishuConfig,
+  type FeishuRelayClientConfig,
+} from './config.js';
+import { createFeishuCallbackHandler } from './server.js';
 export { readFeishuConfig } from './config.js';
-export type { FeishuConfig } from './config.js';
+export { readManagedFeishuClientConfig } from './config.js';
+export type { FeishuConfig, FeishuRelayClientConfig } from './config.js';
+export { createFeishuClient } from './api.js';
+export {
+  buildManagedClientHeartbeatEvent,
+  buildManagedClientHelloEvent,
+  createManagedFeishuRelayClient,
+} from './client.js';
 export {
   buildSessionControlCard,
   createBackendConfirmationCard,
@@ -11,21 +26,34 @@ export {
 export type {
   BackendConfirmationCard,
   BackendSelectionCard,
+  FeishuCardContext,
 } from './cards.js';
 export {
+  buildFeishuBackendConfirmationCardPayload,
+  buildFeishuBackendSelectionCardPayload,
+  buildFeishuSessionControlCardPayload,
+} from './cards.js';
+export {
+  extractFeishuFileInfo,
+  extractFeishuMessageText,
   normalizeFeishuEvent,
   resolveConversationId,
   resolveConversationIdFromAction,
+  shouldProcessFeishuMessage,
 } from './conversation.js';
 export type { FeishuRawEvent, NormalizedFeishuEvent } from './conversation.js';
 export {
   beginFeishuConversationRun,
+  buildFeishuCardContext,
   buildSessionControlCard as buildSessionControlCardFromRuntime,
   confirmBackendChange,
   dispatchFeishuCardAction,
+  handleFeishuControlAction,
   rememberFeishuConversationMode,
+  queuePendingFeishuAttachments,
   requestBackendChange,
   resolveFeishuMessageRequest,
+  runFeishuConversation,
 } from './runtime.js';
 export { ingestFeishuFiles, uploadFeishuArtifacts } from './files.js';
 export type { FeishuFileLike } from './files.js';
@@ -35,6 +63,10 @@ export {
   parseFeishuCallbackPayload,
   validateFeishuSignature,
 } from './security.js';
+export { createFeishuCallbackHandler } from './server.js';
+export type { FeishuCallbackResponse } from './server.js';
+export { createGatewayBridge } from './gateway-bridge.js';
+export { createGatewayStateStore } from './gateway-state.js';
 
 export interface FeishuServer {
   readonly started: boolean;
@@ -73,17 +105,24 @@ export function createFeishuServer(config?: FeishuConfig): FeishuServer {
       }
 
       const resolvedConfig = config ?? readFeishuConfig();
-      server = createServer((request, response) => {
-        if (request.method === 'GET' && request.url === '/healthz') {
-          response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
-          response.end('ok');
-          return;
+      const handler = createFeishuCallbackHandler(resolvedConfig, {
+        client: createFeishuClient(resolvedConfig),
+      });
+      server = createServer(async (request, response) => {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
         }
 
-        response.writeHead(501, { 'content-type': 'application/json; charset=utf-8' });
-        response.end(JSON.stringify({
-          error: 'Feishu callback ingress is not implemented yet.',
-        }));
+        const handled = await handler({
+          method: request.method ?? 'GET',
+          url: request.url ?? '/',
+          headers: request.headers as Record<string, string | undefined>,
+          body: Buffer.concat(chunks).toString('utf-8'),
+        });
+
+        response.writeHead(handled.status, handled.headers);
+        response.end(handled.body);
       });
 
       await new Promise<void>((resolve, reject) => {
@@ -137,6 +176,11 @@ export async function startFeishuServer(): Promise<FeishuServer> {
   const server = createFeishuServer();
   await server.start();
   return server;
+}
+
+export async function startManagedFeishuRelayClient(): Promise<void> {
+  const client = createManagedFeishuRelayClient(readManagedFeishuClientConfig());
+  await client.start();
 }
 
 if (isMainModule()) {
