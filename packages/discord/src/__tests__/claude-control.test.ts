@@ -7,11 +7,15 @@ beforeEach(() => {
 });
 
 describe('claudeControlCommands', () => {
-  it('registers a cwd command with a handler', () => {
+  it('registers cwd and omits removed legacy session commands', () => {
     const commandNames = claudeControlCommands.map((command) => command.toJSON().name);
 
     expect(commandNames).toContain('cwd');
+    expect(commandNames).not.toContain('resume');
+    expect(commandNames).not.toContain('clear');
     expect(claudeControlCommandHandlers.has('cwd')).toBe(true);
+    expect(claudeControlCommandHandlers.has('resume')).toBe(false);
+    expect(claudeControlCommandHandlers.has('clear')).toBe(false);
   });
 
   it('sets, shows, and clears cwd overrides for the current thread', async () => {
