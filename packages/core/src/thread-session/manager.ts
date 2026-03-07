@@ -25,6 +25,12 @@ export function openThreadSessionBinding(
   const lastSeenAt = resolveTimestamp(input.now);
 
   if (existing && !existing.closedAt) {
+    if (existing.nativeSessionStatus === 'confirmed' && existing.nativeSessionId) {
+      conversationSessions.set(input.conversationId, existing.nativeSessionId);
+    } else {
+      conversationSessions.delete(input.conversationId);
+    }
+
     const binding = {
       ...existing,
       backend: input.backend,

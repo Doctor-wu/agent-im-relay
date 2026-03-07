@@ -6,7 +6,11 @@ import {
   conversationEffort,
   conversationModels,
   conversationSessions,
+  openThreadSessionBinding,
   pendingBackendChanges,
+  threadContinuationSnapshots,
+  threadSessionBindings,
+  updateThreadContinuationSnapshot,
 } from '../../index.js';
 import {
   applyConversationControlAction,
@@ -21,6 +25,8 @@ describe('platform conversation setup and controls', () => {
     conversationModels.clear();
     conversationSessions.clear();
     pendingBackendChanges.clear();
+    threadSessionBindings.clear();
+    threadContinuationSnapshots.clear();
   });
 
   it('gates execution when backend selection is required but not configured', () => {
@@ -60,6 +66,17 @@ describe('platform conversation setup and controls', () => {
   it('applies interrupt, done, backend confirmation, confirm, cancel, model, and effort actions', () => {
     conversationBackend.set('conv-actions', 'claude');
     conversationSessions.set('conv-actions', 'session-1');
+    openThreadSessionBinding({
+      conversationId: 'conv-actions',
+      backend: 'claude',
+      now: '2026-03-07T00:00:00.000Z',
+    });
+    updateThreadContinuationSnapshot({
+      conversationId: 'conv-actions',
+      taskSummary: 'Keep the current thread sticky.',
+      whyStopped: 'completed',
+      updatedAt: '2026-03-07T00:01:00.000Z',
+    });
 
     expect(applyConversationControlAction({
       conversationId: 'conv-actions',
@@ -69,6 +86,8 @@ describe('platform conversation setup and controls', () => {
       conversationId: 'conv-actions',
       interrupted: false,
     });
+    expect(threadSessionBindings.has('conv-actions')).toBe(true);
+    expect(threadContinuationSnapshots.has('conv-actions')).toBe(true);
 
     expect(applyConversationControlAction({
       conversationId: 'conv-actions',
@@ -108,6 +127,8 @@ describe('platform conversation setup and controls', () => {
     });
     expect(conversationBackend.get('conv-actions')).toBe('codex');
     expect(conversationSessions.has('conv-actions')).toBe(false);
+    expect(threadSessionBindings.has('conv-actions')).toBe(false);
+    expect(threadContinuationSnapshots.has('conv-actions')).toBe(false);
 
     expect(applyConversationControlAction({
       conversationId: 'conv-actions',
@@ -139,6 +160,8 @@ describe('platform conversation setup and controls', () => {
       continuationCleared: true,
     });
     expect(conversationSessions.has('conv-actions')).toBe(false);
+    expect(threadSessionBindings.has('conv-actions')).toBe(false);
+    expect(threadContinuationSnapshots.has('conv-actions')).toBe(false);
   });
 
   it('delegates session control semantics to the session-control controller', () => {
