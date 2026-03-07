@@ -328,9 +328,12 @@ export function createFeishuCallbackHandler(
       headers,
       signingSecret: config.feishuAppSecret,
       runEvent: async (payload) => {
-        void processCallbackPayload(payload).catch((error) => {
-          console.error('[feishu] failed to process callback event:', error);
-        });
+        return {
+          deferred: processCallbackPayload(payload).catch((error) => {
+            console.error('[feishu] failed to process callback event:', error);
+            throw error;
+          }),
+        };
       },
     });
 

@@ -13,6 +13,10 @@ type FeishuCallbackPayload = {
   action?: Record<string, unknown>;
 };
 
+type FeishuCallbackRunEventResult = void | {
+  deferred: Promise<void>;
+};
+
 export function createFeishuSignature(options: {
   timestamp: string;
   nonce: string;
@@ -128,7 +132,7 @@ export async function handleFeishuCallback(options: {
   payloadBody?: string;
   headers: FeishuHeaders;
   signingSecret: string;
-  runEvent: (payload: FeishuCallbackPayload) => Promise<void>;
+  runEvent: (payload: FeishuCallbackPayload) => Promise<FeishuCallbackRunEventResult>;
 }): Promise<{ kind: 'accepted' | 'duplicate'; eventId: string }> {
   if (!validateFeishuSignature({
     headers: options.headers,
@@ -145,11 +149,30 @@ export async function handleFeishuCallback(options: {
   }
 
   inFlightEventIds.add(eventId);
+  let deferred: Promise<void> | undefined;
   try {
-    await options.runEvent(payload);
-    processedEventIds.add(eventId);
+    const result = await options.runEvent(payload);
+    deferred = result && typeof result === 'object' && 'deferred' in result
+      ? result.deferred
+      : undefined;
+
+    if (!deferred) {
+      processedEventIds.add(eventId);
+    }
+
     return { kind: 'accepted', eventId };
   } finally {
-    inFlightEventIds.delete(eventId);
+    if (deferred) {
+      void deferred
+        .then(() => {
+          processedEventIds.add(eventId);
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          inFlightEventIds.delete(eventId);
+        });
+    } else {
+      inFlightEventIds.delete(eventId);
+    }
   }
 }

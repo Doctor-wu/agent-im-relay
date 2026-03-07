@@ -59,6 +59,12 @@ export async function runCli(streams: PromptStreams = {}): Promise<void> {
     throw new Error(`No valid IM configuration found in ${paths.configFile}.`);
   }
 
+  if (loaded.availableIms.length > 1 && !canPrompt(streams)) {
+    throw new Error(
+      `Multiple IM configurations found in ${paths.configFile}. Run the program in an interactive terminal to choose one.`,
+    );
+  }
+
   const selectedIm = await selectIm(loaded.availableIms, streams);
   await startSelectedIm(selectedIm, loaded.runtime, paths);
 }
