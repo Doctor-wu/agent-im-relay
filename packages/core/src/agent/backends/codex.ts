@@ -115,7 +115,7 @@ export function extractCodexEvents(
       return [];
     }
 
-    return isAuthoritativeCodexResumeFailure(error)
+    return options.resumeSessionId && isAuthoritativeCodexResumeFailure(error)
       ? [
           {
             type: 'session-invalidated',

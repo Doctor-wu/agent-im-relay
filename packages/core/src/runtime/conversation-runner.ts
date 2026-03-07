@@ -170,7 +170,7 @@ export async function runConversationWithRenderer<TTarget, TTrigger = unknown>(
       model: conversationModels.get(conversationId),
       effort: conversationEffort.get(conversationId),
       cwd: runCwd,
-      backend: options.backend ?? conversationBackend.get(conversationId),
+      backend: options.backend ?? backendName,
       ...(resumeMode.type === 'native-resume'
         ? { resumeSessionId: resumeMode.nativeSessionId }
         : { sessionId }),

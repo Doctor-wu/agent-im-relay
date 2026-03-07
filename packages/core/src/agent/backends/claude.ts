@@ -155,7 +155,7 @@ export function extractEvents(
 
   if (messageType === 'error') {
     const error = asString(payload.error) ?? asString(payload.message) ?? 'Claude CLI request failed';
-    return isAuthoritativeClaudeResumeFailure(error)
+    return options.resumeSessionId && isAuthoritativeClaudeResumeFailure(error)
       ? [
           {
             type: 'session-invalidated',

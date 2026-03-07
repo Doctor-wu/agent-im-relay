@@ -139,6 +139,15 @@ describe('codex backend', () => {
     ]);
   });
 
+  it('does not emit invalidation events for authoritative errors outside resume mode', () => {
+    expect(extractCodexEvents({
+      type: 'error',
+      error: 'Resume session not found',
+    })).toEqual([
+      { type: 'error', error: 'Resume session not found' },
+    ]);
+  });
+
   it('emits text events from plain text output', async () => {
     vi.mocked(spawn).mockReturnValue(
       makeProcess([

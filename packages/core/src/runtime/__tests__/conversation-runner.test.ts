@@ -102,6 +102,31 @@ describe('runConversationWithRenderer', () => {
     });
   });
 
+  it('uses the existing sticky binding backend when no conversation backend is stored', async () => {
+    threadSessionBindings.set('conv-binding-backend', {
+      conversationId: 'conv-binding-backend',
+      backend: 'codex',
+      nativeSessionStatus: 'pending',
+      lastSeenAt: '2026-03-08T00:00:00.000Z',
+    });
+
+    const render = vi.fn(async (_options, events) => {
+      await drainEvents(events);
+    });
+
+    await runConversationWithRenderer({
+      conversationId: 'conv-binding-backend',
+      target: { id: 'channel-binding-backend' },
+      prompt: 'continue',
+      defaultCwd: '/tmp/workspace',
+      render,
+    });
+
+    expect(runConversationSession).toHaveBeenCalledWith('conv-binding-backend', expect.objectContaining({
+      backend: 'codex',
+    }));
+  });
+
   it('persists confirmed native session ids before terminal completion', async () => {
     const persist = vi.fn(async () => {});
     runConversationSession.mockImplementation(async function* () {

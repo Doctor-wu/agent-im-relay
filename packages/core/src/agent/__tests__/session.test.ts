@@ -154,6 +154,15 @@ describe('extractEvents', () => {
     ]);
   });
 
+  it('does not emit invalidation events for authoritative errors outside resume mode', () => {
+    expect(extractEvents({
+      type: 'error',
+      error: 'Invalid session ID for resume',
+    })).toEqual([
+      { type: 'error', error: 'Invalid session ID for resume' },
+    ]);
+  });
+
   it('emits a session lifecycle event when Claude exposes an authoritative session id', () => {
     expect(extractEvents({
       type: 'system',
