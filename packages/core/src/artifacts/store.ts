@@ -53,6 +53,16 @@ export function createEmptyArtifactMetadata(): ConversationArtifactMetadata {
   };
 }
 
+export function cloneConversationArtifactMetadata(
+  metadata: ConversationArtifactMetadata,
+): ConversationArtifactMetadata {
+  return {
+    incoming: [...metadata.incoming],
+    outgoing: [...metadata.outgoing],
+    lastUpdatedAt: metadata.lastUpdatedAt,
+  };
+}
+
 export function getConversationArtifactPaths(conversationId: string): ConversationArtifactPaths {
   const rootDir = path.join(config.artifactsBaseDir, conversationId);
   return {

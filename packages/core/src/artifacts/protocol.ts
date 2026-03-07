@@ -86,3 +86,17 @@ export function resolveArtifactPath(rootDir: string, artifactPath: string): stri
 
   return resolvedPath;
 }
+
+export function resolveArtifactCandidatePaths(rootDirs: string[], artifactPath: string): string[] {
+  const candidates: string[] = [];
+
+  for (const rootDir of rootDirs) {
+    try {
+      candidates.push(resolveArtifactPath(rootDir, artifactPath));
+    } catch {
+      // Ignore roots that do not allow this relative path.
+    }
+  }
+
+  return candidates;
+}

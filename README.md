@@ -5,10 +5,13 @@
 ![pnpm workspace](https://img.shields.io/badge/pnpm-workspace-F69220)
 ![TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6)
 ![Discord](https://img.shields.io/badge/platform-Discord-5865F2)
+![Feishu planned](https://img.shields.io/badge/platform-Feishu-in--progress-00B96B)
 
 A platform-agnostic bridge that connects Claude AI to instant messaging platforms. Built as a pnpm monorepo with a shared core and per-platform adapter packages.
 
 `agent-im-relay` lets you run agent workflows from chat threads while keeping the runtime logic portable across platforms. The shared core owns session state, streaming, interruption, backend integration, and orchestration; platform packages focus on delivery, UX, and command surfaces.
+
+Feishu support is currently in progress via a new `@agent-im-relay/feishu` package. This round stays adapter-first: extract only the minimum shared runtime needed in `@agent-im-relay/core`, and keep Feishu-specific cards, ingress, and file transport in the Feishu package until the abstractions prove reusable.
 
 ## Highlights
 
@@ -25,6 +28,7 @@ A platform-agnostic bridge that connects Claude AI to instant messaging platform
 packages/
   core/       @agent-im-relay/core     — Agent session, orchestrator, state, types
   discord/    @agent-im-relay/discord   — Discord bot adapter
+  feishu/     @agent-im-relay/feishu    — Feishu bot adapter (in progress)
 ```
 
 ### `@agent-im-relay/core`
@@ -52,6 +56,15 @@ Discord-specific implementation:
 - Discord attachments are downloaded into per-conversation artifact storage before each run
 - `/code` threads can return generated files by ending the final answer with an `artifacts` fenced JSON block
 - `/ask` can read uploaded files but does not upload generated artifacts back to Discord in v1
+
+### `@agent-im-relay/feishu`
+
+Planned adapter with:
+
+- Message-driven conversations with card-based session controls
+- Backend selection before the first run in a new conversation
+- Reply-aware conversation mapping for private chats and group threads
+- Inbound file download and outbound artifact upload support
 
 ## Setup
 

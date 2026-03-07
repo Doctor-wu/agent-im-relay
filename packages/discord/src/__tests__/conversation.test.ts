@@ -1,27 +1,31 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { runConversationSession, persistState, streamAgentToDiscord, prepareAttachmentPrompt } = vi.hoisted(() => ({
-  runConversationSession: vi.fn(),
+const { runPlatformConversation, persistState, streamAgentToDiscord } = vi.hoisted(() => ({
+  runPlatformConversation: vi.fn(async (options) => {
+    await options.render(
+      { target: options.target, showEnvironment: !options.sourceMessageId },
+      (async function* () {
+        yield { type: 'done', result: 'done', sessionId: 'resolved-session' };
+      })(),
+    );
+
+    return true;
+  }),
   persistState: vi.fn(),
   streamAgentToDiscord: vi.fn(async () => {}),
-  prepareAttachmentPrompt: vi.fn(async ({ prompt }) => ({ prompt, attachments: [] })),
 }));
 
 vi.mock('@agent-im-relay/core', async () => {
   const actual = await vi.importActual<typeof import('@agent-im-relay/core')>('@agent-im-relay/core');
   return {
     ...actual,
-    runConversationSession,
+    runPlatformConversation,
     persistState,
   };
 });
 
 vi.mock('../stream.js', () => ({
   streamAgentToDiscord,
-}));
-
-vi.mock('../files.js', () => ({
-  prepareAttachmentPrompt,
 }));
 
 import {
@@ -43,13 +47,25 @@ describe('runMentionConversation', () => {
     conversationModels.clear();
     conversationSessions.clear();
     persistState.mockReset();
-    prepareAttachmentPrompt.mockReset();
-    runConversationSession.mockReset();
-    streamAgentToDiscord.mockClear();
-    prepareAttachmentPrompt.mockImplementation(async ({ prompt }) => ({ prompt, attachments: [] }));
+    runPlatformConversation.mockClear();
+    streamAgentToDiscord.mockReset();
+    runPlatformConversation.mockImplementation(async (options) => {
+      await options.render(
+        {
+          target: options.target,
+          showEnvironment: !conversationSessions.has(options.conversationId),
+        },
+        (async function* () {
+          yield { type: 'done', result: 'done', sessionId: 'resolved-session' };
+        })(),
+      );
 
-    runConversationSession.mockImplementation(async function* () {
-      yield { type: 'done', result: 'done', sessionId: 'resolved-session' };
+      return true;
+    });
+    streamAgentToDiscord.mockImplementation(async (_options, events) => {
+      for await (const _event of events) {
+        // Drain the stream to trigger conversation side effects.
+      }
     });
   });
 
@@ -59,13 +75,18 @@ describe('runMentionConversation', () => {
     const started = await runMentionConversation(thread, 'hello');
 
     expect(started).toBe(true);
+    expect(runPlatformConversation).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: thread.id,
+      target: thread,
+      prompt: 'hello',
+    }));
     expect(streamAgentToDiscord).toHaveBeenCalledWith(
       { channel: thread, showEnvironment: true },
       expect.any(Object),
     );
   });
 
-  it('prepares attachment context before starting the agent run', async () => {
+  it('passes shared attachment metadata into the new core wrapper', async () => {
     const thread = { id: 'thread-attachments' } as any;
     const attachments = [
       {
@@ -76,37 +97,12 @@ describe('runMentionConversation', () => {
         size: 12,
       },
     ];
-    prepareAttachmentPrompt.mockResolvedValue({
-      prompt: [
-        'Attached files are available locally for this run:',
-        '- spec.md | markdown, 12 B | text/markdown',
-        '  path: /tmp/thread-attachments/incoming/spec.md',
-        '  preview: # Spec',
-        '',
-        'User request:',
-        'hello',
-      ].join('\n'),
-      attachments: [],
-    });
 
     const started = await runMentionConversation(thread, 'hello', { id: 'msg-1' } as any, { attachments });
 
     expect(started).toBe(true);
-    expect(prepareAttachmentPrompt).toHaveBeenCalledWith({
-      conversationId: thread.id,
-      prompt: 'hello',
-      attachments,
-      sourceMessageId: 'msg-1',
-    });
-    expect(runConversationSession).toHaveBeenCalledWith(thread.id, expect.objectContaining({
-      prompt: expect.stringContaining('spec.md'),
-    }));
-    expect(runConversationSession).toHaveBeenCalledWith(thread.id, expect.objectContaining({
-      prompt: expect.stringContaining('/tmp/thread-attachments/incoming/spec.md'),
-    }));
-    expect(runConversationSession).toHaveBeenCalledWith(thread.id, expect.objectContaining({
-      prompt: expect.stringContaining('preview: # Spec'),
-    }));
+    const runnerOptions = runPlatformConversation.mock.calls[0]?.[0];
+    expect(runnerOptions.attachments).toEqual(attachments);
   });
 
   it('skips environment after a session already exists', async () => {
@@ -116,9 +112,35 @@ describe('runMentionConversation', () => {
     const started = await runMentionConversation(thread, 'hello again');
 
     expect(started).toBe(true);
+    expect(runPlatformConversation).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: thread.id,
+      prompt: 'hello again',
+    }));
     expect(streamAgentToDiscord).toHaveBeenCalledWith(
       { channel: thread, showEnvironment: false },
       expect.any(Object),
     );
+  });
+
+  it('passes backend state and reaction handlers into the extracted runner wrapper', async () => {
+    const thread = { id: 'thread-regression' } as any;
+    const triggerMsg = { id: 'msg-regression' } as any;
+    const setReaction = vi.fn(async () => {});
+    conversationBackend.set(thread.id, 'codex');
+    const started = await runMentionConversation(thread, 'hello', triggerMsg, { setReaction });
+
+    expect(started).toBe(true);
+    const runnerOptions = runPlatformConversation.mock.calls[0]?.[0];
+    expect(runnerOptions).toEqual(expect.objectContaining({
+      conversationId: thread.id,
+      target: thread,
+      sourceMessageId: 'msg-regression',
+      backend: 'codex',
+    }));
+    await runnerOptions.onPhaseChange('tools', 'thinking', triggerMsg);
+    await runnerOptions.onPhaseChange('done', 'tools', triggerMsg);
+    expect(setReaction).toHaveBeenNthCalledWith(1, triggerMsg, 'thinking', 'received');
+    expect(setReaction).toHaveBeenNthCalledWith(2, triggerMsg, 'tools', 'thinking');
+    expect(setReaction).toHaveBeenNthCalledWith(3, triggerMsg, 'done', 'tools');
   });
 });

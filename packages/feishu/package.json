@@ -1,0 +1,34 @@
+{
+  "name": "@agent-im-relay/feishu",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "types": "dist/index.d.mts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "types": "./dist/index.d.mts"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "pnpm dev:gateway",
+    "dev:gateway": "tsx watch src/index.ts",
+    "dev:client": "tsx watch src/bin/client.ts",
+    "start": "pnpm start:gateway",
+    "start:gateway": "node dist/index.mjs",
+    "start:client": "tsx src/bin/client.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@agent-im-relay/core": "workspace:*",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsdown": "^0.20.1",
+    "tsx": "^4.19.2",
+    "vitest": "^3.2.4"
+  }
+}

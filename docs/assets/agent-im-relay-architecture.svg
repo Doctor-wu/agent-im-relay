@@ -1,0 +1,241 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1180" viewBox="0 0 1600 1180" role="img" aria-labelledby="title desc">
+  <title id="title">agent-im-relay architecture</title>
+  <desc id="desc">Architecture diagram for agent-im-relay showing Discord adapter, platform-agnostic core runtime, agent backends, artifact storage, and numbered runtime flows.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f6f3ea"/>
+      <stop offset="100%" stop-color="#e6eef5"/>
+    </linearGradient>
+    <linearGradient id="coreFill" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e9f2f0"/>
+      <stop offset="100%" stop-color="#d7ebe6"/>
+    </linearGradient>
+    <linearGradient id="discordFill" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#eef0ff"/>
+      <stop offset="100%" stop-color="#dce1ff"/>
+    </linearGradient>
+    <linearGradient id="futureFill" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fff4df"/>
+      <stop offset="100%" stop-color="#f7e2bd"/>
+    </linearGradient>
+    <linearGradient id="storageFill" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f4efe7"/>
+      <stop offset="100%" stop-color="#eadfce"/>
+    </linearGradient>
+    <marker id="arrowBlue" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#4361ee"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#2a9d8f"/>
+    </marker>
+    <marker id="arrowOrange" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#d97706"/>
+    </marker>
+    <style>
+      .title { font: 700 34px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #152238; }
+      .subtitle { font: 500 17px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #344054; }
+      .section { font: 700 18px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #102a43; }
+      .label { font: 600 15px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #16324f; }
+      .body { font: 500 13px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #27435f; }
+      .mono { font: 12px ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; fill: #20364c; }
+      .small { font: 500 12px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #52667a; }
+      .flow { font: 700 13px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #14324d; }
+      .legend { font: 600 13px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #344054; }
+      .frame { fill: #ffffff; stroke: #c7d3df; stroke-width: 2; rx: 28; }
+      .box { fill: #ffffff; stroke: #b8c7d3; stroke-width: 1.6; rx: 18; }
+      .soft { fill: #fdfefe; stroke: #c9d4de; stroke-width: 1.2; rx: 14; }
+      .dashed { fill: #fffdfa; stroke: #d39a38; stroke-width: 2; stroke-dasharray: 10 8; rx: 18; }
+      .pill { fill: #16324f; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1180" fill="url(#bg)"/>
+  <rect x="28" y="24" width="1544" height="1132" class="frame"/>
+
+  <text x="58" y="72" class="title">agent-im-relay Architecture</text>
+  <text x="58" y="102" class="subtitle">Multi-IM relay with a platform-specific delivery layer and a platform-agnostic agent runtime</text>
+
+  <rect x="58" y="128" width="220" height="34" rx="17" fill="#16324f"/>
+  <text x="78" y="150" fill="#ffffff" class="legend">Current implementation + future path</text>
+
+  <rect x="58" y="190" width="260" height="232" rx="24" fill="#ffffff" stroke="#cdd7e1" stroke-width="2"/>
+  <text x="82" y="222" class="section">Actors / entry point</text>
+  <rect x="82" y="242" width="212" height="70" rx="18" class="soft"/>
+  <text x="98" y="268" class="label">Discord user</text>
+  <text x="98" y="289" class="body">Slash commands: /ask /code /interrupt /done</text>
+  <text x="98" y="308" class="body">Or thread mention / follow-up message</text>
+  <rect x="82" y="328" width="212" height="72" rx="18" class="soft"/>
+  <text x="98" y="354" class="label">Discord thread</text>
+  <text x="98" y="375" class="body">Conversation boundary</text>
+  <text x="98" y="394" class="body">Conversation ID = thread ID</text>
+
+  <rect x="338" y="164" width="356" height="432" rx="26" fill="url(#discordFill)" stroke="#8fa3ff" stroke-width="2.4"/>
+  <text x="364" y="198" class="section">@agent-im-relay/discord</text>
+  <text x="364" y="220" class="small">Delivery, UX, thread lifecycle, attachment ingress, and result publishing</text>
+
+  <rect x="364" y="244" width="304" height="74" rx="18" class="box"/>
+  <text x="382" y="270" class="label">Command + thread surface</text>
+  <text x="382" y="291" class="mono">commands/*.ts, thread.ts, index.ts</text>
+  <text x="382" y="309" class="body">Maps Discord interactions to a thread-scoped conversation</text>
+
+  <rect x="364" y="334" width="304" height="96" rx="18" class="box"/>
+  <text x="382" y="360" class="label">Conversation runner</text>
+  <text x="382" y="381" class="mono">runMentionConversation()</text>
+  <text x="382" y="399" class="body">Rejects concurrent runs, resumes session IDs,</text>
+  <text x="382" y="417" class="body">captures auto-detected cwd, persists session state</text>
+
+  <rect x="364" y="446" width="304" height="62" rx="18" class="box"/>
+  <text x="382" y="472" class="label">Attachment ingress</text>
+  <text x="382" y="493" class="mono">prepareAttachmentPrompt(), files.ts</text>
+
+  <rect x="364" y="522" width="304" height="62" rx="18" class="box"/>
+  <text x="382" y="548" class="label">Streaming renderer</text>
+  <text x="382" y="569" class="mono">streamAgentToDiscord(), stream.ts</text>
+
+  <rect x="724" y="144" width="520" height="492" rx="28" fill="url(#coreFill)" stroke="#6ba99f" stroke-width="2.6"/>
+  <text x="754" y="182" class="section">@agent-im-relay/core</text>
+  <text x="754" y="205" class="small">Portable runtime, state, capability interfaces, backend abstraction, artifact protocol</text>
+
+  <rect x="754" y="230" width="456" height="88" rx="18" class="box"/>
+  <text x="776" y="257" class="label">Runtime + session entry</text>
+  <text x="776" y="278" class="mono">runConversationSession(), interruptConversationRun()</text>
+  <text x="776" y="296" class="body">Owns AbortController registry and guards one active run per conversation</text>
+
+  <rect x="754" y="332" width="220" height="106" rx="18" class="box"/>
+  <text x="776" y="359" class="label">Prompt/session builder</text>
+  <text x="776" y="380" class="mono">buildAgentPrompt()</text>
+  <text x="776" y="398" class="body">Injects artifact return contract</text>
+  <text x="776" y="416" class="body">and forwards stream options</text>
+
+  <rect x="990" y="332" width="220" height="106" rx="18" class="box"/>
+  <text x="1012" y="359" class="label">Backend registry</text>
+  <text x="1012" y="380" class="mono">registerBackend(), getBackend()</text>
+  <text x="1012" y="398" class="body">Swaps Claude / Codex behind</text>
+  <text x="1012" y="416" class="body">the same stream interface</text>
+
+  <rect x="754" y="454" width="220" height="150" rx="18" class="box"/>
+  <text x="776" y="481" class="label">Conversation state</text>
+  <text x="776" y="502" class="mono">conversationSessions</text>
+  <text x="776" y="520" class="mono">conversationCwd / backend / model / effort</text>
+  <text x="776" y="538" class="mono">activeConversations / processedMessages</text>
+  <text x="776" y="559" class="body">Thread-scoped memory persisted in</text>
+  <text x="776" y="577" class="body">data/sessions.json</text>
+
+  <rect x="990" y="454" width="220" height="150" rx="18" class="box"/>
+  <text x="1012" y="481" class="label">Artifact store + protocol</text>
+  <text x="1012" y="502" class="mono">ensureConversationArtifactPaths()</text>
+  <text x="1012" y="520" class="mono">parseArtifactManifest(), resolveArtifactPath()</text>
+  <text x="1012" y="541" class="body">Owns metadata, path safety, retention,</text>
+  <text x="1012" y="559" class="body">incoming/outgoing directories</text>
+  <text x="1012" y="577" class="body">under data/artifacts/&lt;conversationId&gt;</text>
+
+  <rect x="1268" y="180" width="248" height="204" rx="24" fill="#ffffff" stroke="#cfd8e1" stroke-width="2"/>
+  <text x="1292" y="214" class="section">Agent backends</text>
+  <rect x="1292" y="234" width="200" height="56" rx="16" class="soft"/>
+  <text x="1310" y="259" class="label">Claude backend</text>
+  <text x="1310" y="279" class="body">CLI session + event stream</text>
+  <rect x="1292" y="304" width="200" height="56" rx="16" class="soft"/>
+  <text x="1310" y="329" class="label">Codex backend</text>
+  <text x="1310" y="349" class="body">Same runtime contract</text>
+
+  <rect x="1268" y="408" width="248" height="188" rx="24" fill="url(#storageFill)" stroke="#ba9b71" stroke-width="2"/>
+  <text x="1292" y="442" class="section">Persisted storage</text>
+  <text x="1292" y="470" class="mono">data/sessions.json</text>
+  <text x="1292" y="488" class="body">session IDs, cwd, backend, model</text>
+  <text x="1292" y="520" class="mono">data/artifacts/&lt;conversationId&gt;/</text>
+  <text x="1292" y="538" class="body">incoming/   user attachments</text>
+  <text x="1292" y="556" class="body">outgoing/   returned files</text>
+  <text x="1292" y="574" class="body">meta.json   artifact metadata</text>
+
+  <rect x="58" y="458" width="260" height="138" rx="24" fill="url(#futureFill)" stroke="#d39a38" stroke-width="2.2" stroke-dasharray="9 6"/>
+  <text x="82" y="492" class="section">Future IM adapters</text>
+  <rect x="82" y="510" width="96" height="42" rx="14" class="soft"/>
+  <text x="106" y="536" class="label">Slack</text>
+  <rect x="190" y="510" width="96" height="42" rx="14" class="soft"/>
+  <text x="209" y="536" class="label">Telegram</text>
+  <rect x="82" y="560" width="204" height="42" rx="14" class="soft"/>
+  <text x="105" y="586" class="label">Feishu / other adapters</text>
+
+  <line x1="294" y1="277" x2="338" y2="277" stroke="#4361ee" stroke-width="4" marker-end="url(#arrowBlue)"/>
+  <line x1="294" y1="364" x2="338" y2="364" stroke="#4361ee" stroke-width="4" marker-end="url(#arrowBlue)"/>
+  <line x1="694" y1="388" x2="724" y2="388" stroke="#2a9d8f" stroke-width="4" marker-end="url(#arrowGreen)"/>
+  <line x1="1244" y1="274" x2="1268" y2="274" stroke="#2a9d8f" stroke-width="4" marker-end="url(#arrowGreen)"/>
+  <line x1="1130" y1="604" x2="1280" y2="604" stroke="#d97706" stroke-width="4" marker-end="url(#arrowOrange)"/>
+  <line x1="286" y1="530" x2="724" y2="530" stroke="#d39a38" stroke-width="3.5" stroke-dasharray="10 8" marker-end="url(#arrowOrange)"/>
+  <text x="402" y="520" class="small">same capability boundary / reusable core</text>
+
+  <rect x="58" y="642" width="1458" height="476" rx="28" fill="#ffffff" stroke="#d0dae4" stroke-width="2.2"/>
+  <text x="88" y="682" class="section">Runtime flow (current Discord implementation)</text>
+  <text x="88" y="706" class="small">Solid blue = request path, solid green = stream/result path, dashed orange = files/storage path</text>
+
+  <rect x="90" y="738" width="192" height="72" rx="18" class="soft"/>
+  <text x="108" y="764" class="label">1. User sends message</text>
+  <text x="108" y="785" class="body">command + optional files</text>
+
+  <rect x="320" y="738" width="246" height="72" rx="18" class="soft"/>
+  <text x="340" y="764" class="label">2. Discord command surface</text>
+  <text x="340" y="785" class="body">creates / finds target thread</text>
+
+  <rect x="604" y="738" width="266" height="72" rx="18" class="soft"/>
+  <text x="624" y="764" class="label">3. runMentionConversation</text>
+  <text x="624" y="785" class="body">loads session ID, cwd, backend, mode</text>
+
+  <rect x="908" y="738" width="260" height="72" rx="18" class="soft"/>
+  <text x="928" y="764" class="label">4. prepareAttachmentPrompt</text>
+  <text x="928" y="785" class="body">downloads and summarizes attachments</text>
+
+  <rect x="1206" y="738" width="256" height="72" rx="18" class="soft"/>
+  <text x="1226" y="764" class="label">5. Core runtime starts</text>
+  <text x="1226" y="785" class="body">build prompt and open backend stream</text>
+
+  <line x1="282" y1="774" x2="320" y2="774" stroke="#4361ee" stroke-width="4" marker-end="url(#arrowBlue)"/>
+  <line x1="566" y1="774" x2="604" y2="774" stroke="#4361ee" stroke-width="4" marker-end="url(#arrowBlue)"/>
+  <line x1="870" y1="774" x2="908" y2="774" stroke="#4361ee" stroke-width="4" marker-end="url(#arrowBlue)"/>
+  <line x1="1168" y1="774" x2="1206" y2="774" stroke="#4361ee" stroke-width="4" marker-end="url(#arrowBlue)"/>
+
+  <rect x="126" y="886" width="290" height="92" rx="18" class="soft"/>
+  <text x="146" y="914" class="label">6. Backend emits events</text>
+  <text x="146" y="935" class="body">environment, status, tool, text, done, error</text>
+  <text x="146" y="955" class="body">Claude and Codex share the same stream contract</text>
+
+  <rect x="474" y="886" width="296" height="92" rx="18" class="soft"/>
+  <text x="494" y="914" class="label">7. Discord renderer updates thread</text>
+  <text x="494" y="935" class="body">message edits, tool summaries, environment block</text>
+  <text x="494" y="955" class="body">status reactions: thinking / tools / done / error</text>
+
+  <rect x="828" y="886" width="292" height="92" rx="18" class="soft"/>
+  <text x="848" y="914" class="label">8. Result may include artifacts block</text>
+  <text x="848" y="935" class="body">core protocol parses only the last valid manifest</text>
+  <text x="848" y="955" class="body">paths must stay inside cwd or artifact root</text>
+
+  <rect x="1178" y="886" width="278" height="92" rx="18" class="soft"/>
+  <text x="1198" y="914" class="label">9. Files are copied + uploaded</text>
+  <text x="1198" y="935" class="body">outgoing files saved locally, then posted back</text>
+  <text x="1198" y="955" class="body">warnings are reported without crashing the run</text>
+
+  <line x1="416" y1="930" x2="474" y2="930" stroke="#2a9d8f" stroke-width="4" marker-end="url(#arrowGreen)"/>
+  <line x1="770" y1="930" x2="828" y2="930" stroke="#2a9d8f" stroke-width="4" marker-end="url(#arrowGreen)"/>
+  <line x1="1120" y1="930" x2="1178" y2="930" stroke="#2a9d8f" stroke-width="4" marker-end="url(#arrowGreen)"/>
+
+  <path d="M 1038 824 C 1038 858, 1038 858, 1038 886" fill="none" stroke="#d97706" stroke-width="4" stroke-dasharray="10 8" marker-end="url(#arrowOrange)"/>
+  <text x="1060" y="852" class="flow">files land in incoming/ + meta.json</text>
+
+  <path d="M 1316 978 C 1316 1024, 1390 1024, 1390 978" fill="none" stroke="#d97706" stroke-width="4" stroke-dasharray="10 8"/>
+  <text x="1188" y="1038" class="flow">outgoing/ copy precedes Discord upload</text>
+
+  <rect x="86" y="1038" width="1040" height="50" rx="18" fill="#f8fafc" stroke="#d4dde6" stroke-width="1.4"/>
+  <text x="108" y="1068" class="body">Key architectural point: Discord owns interaction UX and transport, while the core owns concurrency control, backend abstraction, session state, and artifact protocol.</text>
+
+  <rect x="1152" y="1030" width="322" height="64" rx="18" fill="#fef6e7" stroke="#d39a38" stroke-width="1.6"/>
+  <text x="1172" y="1058" class="label">Expansion model</text>
+  <text x="1172" y="1079" class="body">Add a new adapter package, keep the same core runtime</text>
+
+  <circle cx="104" cy="150" r="6" fill="#4361ee"/>
+  <text x="118" y="155" class="legend">request / control path</text>
+  <circle cx="286" cy="150" r="6" fill="#2a9d8f"/>
+  <text x="300" y="155" class="legend">stream / result path</text>
+  <circle cx="464" cy="150" r="6" fill="#d97706"/>
+  <text x="478" y="155" class="legend">file / storage path</text>
+  <rect x="632" y="144" width="16" height="12" rx="5" fill="#f7e2bd" stroke="#d39a38" stroke-width="1"/>
+  <text x="654" y="155" class="legend">future adapters</text>
+</svg>

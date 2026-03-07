@@ -15,11 +15,14 @@ export const conversationModels = new Map<string, string>();
 export const conversationEffort = new Map<string, string>();
 export const conversationCwd = new Map<string, string>();
 export const conversationBackend = new Map<string, BackendName>();
+export const conversationMode = new Map<string, 'code' | 'ask'>();
 export const conversationArtifacts = new Map<string, ConversationArtifactMetadata>();
 export const savedCwdList: string[] = [];
 export const activeConversations = new Set<string>();
 export const processedMessages = new Set<string>();
+export const processedEventIds = new Set<string>();
 export const pendingConversationCreation = new Set<string>();
+export const pendingBackendChanges = new Map<string, BackendName>();
 
 function cloneArtifactMetadata(metadata: ConversationArtifactMetadata): ConversationArtifactMetadata {
   return {
@@ -36,6 +39,8 @@ function trackedConversationIds(): string[] {
     ...conversationEffort.keys(),
     ...conversationCwd.keys(),
     ...conversationBackend.keys(),
+    ...conversationMode.keys(),
+    ...pendingBackendChanges.keys(),
   ])];
 }
 

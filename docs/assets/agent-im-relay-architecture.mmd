@@ -1,0 +1,50 @@
+%%{init: {"flowchart": {"nodeSpacing": 36, "rankSpacing": 54}} }%%
+flowchart TB
+    user["Discord user<br/>slash commands / thread replies"]
+    thread["Discord thread<br/>conversation boundary"]
+
+    subgraph discord["@agent-im-relay/discord"]
+      commands["commands/*.ts + thread.ts<br/>entry and thread setup"]
+      runner["runMentionConversation()<br/>resume session, cwd, backend"]
+      ingress["prepareAttachmentPrompt()<br/>download and summarize attachments"]
+      stream["streamAgentToDiscord()<br/>message edits and reactions"]
+      upload["publishConversationArtifacts()<br/>upload returned files"]
+    end
+
+    subgraph core["@agent-im-relay/core"]
+      runtime["runConversationSession()<br/>interruptConversationRun()"]
+      prompt["buildAgentPrompt()<br/>artifact contract injection"]
+      registry["backend registry<br/>Claude | Codex"]
+      state["conversation state maps<br/>session/model/effort/cwd/backend"]
+      artifacts["artifact store + protocol<br/>incoming/outgoing/meta.json"]
+      contracts["capability interfaces<br/>PlatformAdapter and formatters"]
+    end
+
+    subgraph backends["Agent backends"]
+      claude["Claude backend"]
+      codex["Codex backend"]
+    end
+
+    subgraph storage["Persisted storage"]
+      sessions["data/sessions.json"]
+      files["data/artifacts/<conversationId>/"]
+    end
+
+    future["Future adapters<br/>Slack / Telegram / Feishu"]
+
+    user --> thread --> commands --> runner
+    runner --> ingress
+    runner --> runtime
+    ingress -. "incoming files" .-> artifacts
+    runtime --> prompt --> registry
+    registry --> claude
+    registry --> codex
+    claude --> stream
+    codex --> stream
+    stream --> thread
+    stream --> upload
+    upload -. "outgoing files" .-> artifacts
+    state --> sessions
+    artifacts --> files
+    future -. "same core boundary" .-> contracts
+    contracts --> runner
