@@ -101,6 +101,8 @@ describe('artifact store', () => {
       effort: {},
       cwd: {},
       backend: {},
+      threadSessionBindings: {},
+      threadContinuationSnapshots: {},
       savedCwdList: [],
     });
     expect(JSON.stringify(persistedState)).not.toContain('spec.md');

@@ -19,7 +19,8 @@ Feishu support is available through `@agent-im-relay/feishu` as a managed-gatewa
 - Discord adapter with thread-based conversations and slash commands
 - Backend-agnostic control flow that can support multiple agent providers
 - Monorepo structure that makes it easy to add more IM platforms over time
-- Backend-provided environment summaries appear only on the first agent run in a thread
+- Sticky per-thread agent sessions that stay continuous until explicit teardown with `/done`
+- Backend-provided environment summaries appear only on real fresh starts, not ordinary follow-up messages
 - Working directory overrides are managed separately from backend setup
 
 ## Project Structure
@@ -37,7 +38,7 @@ Platform-agnostic foundation:
 
 - **Agent** — Spawns Claude CLI sessions with streaming events
 - **Orchestrator** — Drives the message → agent → reply flow through capability interfaces
-- **State** — Conversation sessions, models, effort, cwd persistence
+- **State** — Sticky thread-session bindings, continuation snapshots, models, effort, cwd persistence
 - **Skills** — Markdown-based skill discovery and parsing
 - **Types** — `PlatformAdapter` and 6 capability interfaces (`MessageSender`, `ConversationManager`, `StatusIndicator`, `CommandRegistry`, `InteractiveUI`, `MarkdownFormatter`)
 
@@ -49,9 +50,9 @@ Discord-specific implementation:
 - Streaming agent output with live message edits
 - Thread-based conversation management
 - Markdown → Discord formatting with embed support
-- `/interrupt` stops the currently running agent task in the thread without clearing saved session state
-- `/done` ends the saved session for the thread without acting as an interrupt control
-- Environment summaries show backend, model, working directory, git branch, and mode only on the first agent run in a thread
+- `/interrupt` stops the currently running agent task in the thread without tearing down the sticky session
+- `/done` is the explicit teardown path that resets the thread to a fresh-start state next time
+- Environment summaries show backend, model, working directory, git branch, and mode only on fresh starts
 - `/cwd` manages per-thread working directory overrides; otherwise backends auto-detect the project directory
 - Discord attachments are downloaded into per-conversation artifact storage before each run
 - `/code` threads can return generated files by ending the final answer with an `artifacts` fenced JSON block
@@ -64,6 +65,7 @@ Feishu-specific implementation with:
 - Managed gateway ingress that receives Feishu callbacks and forwards work to a local relay client
 - Card-based session controls for backend selection, interrupt, done, model, and effort changes
 - Reply-aware conversation mapping for private chats and group reply chains
+- Sticky per-conversation session continuity until explicit teardown through the control card
 - Inbound file download and outbound artifact upload support
 - Optional callback decryption via `FEISHU_ENCRYPT_KEY`
 
