@@ -216,6 +216,59 @@ describe('Feishu security', () => {
     expect(runEvent).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps deferred events retryable when background processing fails', async () => {
+    const eventBody = JSON.stringify({
+      header: {
+        event_id: 'event-deferred-retry',
+        event_type: 'im.message.receive_v1',
+      },
+      event: {
+        message: {
+          chat_id: 'chat-1',
+          chat_type: 'p2p',
+          message_id: 'message-1',
+        },
+      },
+    });
+    const signature = createFeishuSignature({
+      body: eventBody,
+      nonce: 'nonce-deferred',
+      signingSecret: 'test-secret',
+      timestamp: '1700000000',
+    });
+    const deferredFailure = Promise.reject(new Error('background failure'));
+    const runEvent = vi.fn()
+      .mockResolvedValueOnce({ deferred: deferredFailure })
+      .mockResolvedValueOnce(undefined);
+
+    await expect(handleFeishuCallback({
+      body: eventBody,
+      headers: {
+        'x-lark-request-timestamp': '1700000000',
+        'x-lark-request-nonce': 'nonce-deferred',
+        'x-lark-signature': signature,
+      },
+      signingSecret: 'test-secret',
+      runEvent,
+    })).resolves.toEqual({ kind: 'accepted', eventId: 'event-deferred-retry' });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await expect(handleFeishuCallback({
+      body: eventBody,
+      headers: {
+        'x-lark-request-timestamp': '1700000000',
+        'x-lark-request-nonce': 'nonce-deferred',
+        'x-lark-signature': signature,
+      },
+      signingSecret: 'test-secret',
+      runEvent,
+    })).resolves.toEqual({ kind: 'accepted', eventId: 'event-deferred-retry' });
+
+    expect(runEvent).toHaveBeenCalledTimes(2);
+  });
+
   it('validates signatures against the raw request body while parsing the decrypted payload', async () => {
     const payloadBody = JSON.stringify({
       header: {

@@ -137,3 +137,8 @@ export type { SkillInfo } from './skills.js';
 
 // Config
 export { config } from './config.js';
+export { readCoreConfig } from './config.js';
+export { applyCoreConfigEnvironment } from './config.js';
+export type { CoreConfig } from './config.js';
+export { resolveRelayHomeDir, resolveRelayPaths } from './paths.js';
+export type { RelayPaths } from './paths.js';

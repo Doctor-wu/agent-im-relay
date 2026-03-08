@@ -7,7 +7,7 @@ import {
 } from '../index.js';
 
 describe('resolveConversationId', () => {
-  it('maps private chats to chat_id', () => {
+  it('maps private launcher chats to chat_id for launcher bookkeeping', () => {
     expect(resolveConversationId(normalizeFeishuEvent({
       header: { event_type: 'im.message.receive_v1' },
       event: {
@@ -20,7 +20,7 @@ describe('resolveConversationId', () => {
     }))).toBe('chat-private');
   });
 
-  it('maps group replies to root_message_id', () => {
+  it('maps group replies to chat_id so session groups own the conversation id', () => {
     expect(resolveConversationId(normalizeFeishuEvent({
       header: { event_type: 'im.message.receive_v1' },
       event: {
@@ -31,7 +31,7 @@ describe('resolveConversationId', () => {
           root_message_id: 'root-1',
         },
       },
-    }))).toBe('root-1');
+    }))).toBe('chat-group');
   });
 
   it('maps group non-replies to chat_id', () => {
@@ -47,7 +47,7 @@ describe('resolveConversationId', () => {
     }))).toBe('chat-group');
   });
 
-  it('keeps follow-up group replies on the same sticky conversation id', () => {
+  it('keeps follow-up group replies on the same chat-scoped conversation id', () => {
     const firstReply = resolveConversationId(normalizeFeishuEvent({
       header: { event_type: 'im.message.receive_v1' },
       event: {
@@ -71,8 +71,8 @@ describe('resolveConversationId', () => {
       },
     }));
 
-    expect(firstReply).toBe('root-sticky');
-    expect(secondReply).toBe('root-sticky');
+    expect(firstReply).toBe('chat-group');
+    expect(secondReply).toBe('chat-group');
   });
 });
 

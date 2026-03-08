@@ -233,7 +233,7 @@ describe('streamAgentSession', () => {
 
     expect(spawn).toHaveBeenCalledTimes(1);
     const [bin, args] = vi.mocked(spawn).mock.calls[0] ?? [];
-    expect(bin).toBe('/opt/homebrew/bin/claude');
+    expect(bin).toBe('claude');
     expect(args).toEqual(expect.arrayContaining(['-p', '--output-format', 'stream-json', '--verbose']));
     expect(args).toEqual(expect.arrayContaining(['--dangerously-skip-permissions']));
     expect(args.at(-1)).toContain('test prompt');

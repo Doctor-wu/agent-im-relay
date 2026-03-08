@@ -74,6 +74,158 @@ describe('Feishu API client', () => {
     })).resolves.toBe('message-1');
   });
 
+  it('creates a session group chat with the bot and one target user', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0,
+        tenant_access_token: 'tenant-token',
+        expire: 120,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0,
+        data: {
+          chat_id: 'chat-session-1',
+          name: 'Alice · Fix relay startup · a1f4',
+        },
+      }), { status: 200 }));
+
+    const client = createFeishuClient(testConfig(), { fetchImpl: fetchImpl as typeof fetch });
+
+    await expect(client.createSessionChat({
+      name: 'Alice · Fix relay startup · a1f4',
+      userOpenId: 'ou_user_1',
+    })).resolves.toEqual({
+      chatId: 'chat-session-1',
+      name: 'Alice · Fix relay startup · a1f4',
+    });
+
+    expect(fetchImpl).toHaveBeenLastCalledWith(
+      'https://open.feishu.cn/open-apis/im/v1/chats?user_id_type=open_id',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer tenant-token',
+          'content-type': 'application/json; charset=utf-8',
+        }),
+        body: JSON.stringify({
+          name: 'Alice · Fix relay startup · a1f4',
+          user_id_list: ['ou_user_1'],
+          chat_mode: 'group',
+          chat_type: 'private',
+        }),
+      }),
+    );
+  });
+
+  it('posts a private-chat index message', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0,
+        tenant_access_token: 'tenant-token',
+        expire: 120,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0,
+        data: { message_id: 'message-index-1' },
+      }), { status: 200 }));
+
+    const client = createFeishuClient(testConfig(), { fetchImpl: fetchImpl as typeof fetch });
+
+    await expect(client.sendPrivateChatIndexMessage({
+      chatId: 'p2p-chat-1',
+      text: '会话已创建：Alice · Fix relay startup · a1f4',
+    })).resolves.toBe('message-index-1');
+
+    expect(fetchImpl).toHaveBeenLastCalledWith(
+      'https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer tenant-token',
+          'content-type': 'application/json; charset=utf-8',
+        }),
+        body: JSON.stringify({
+          receive_id: 'p2p-chat-1',
+          msg_type: 'text',
+          content: JSON.stringify({ text: '会话已创建：Alice · Fix relay startup · a1f4' }),
+        }),
+      }),
+    );
+  });
+
+  it('keeps existing text, card, and file message helpers intact', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0,
+        tenant_access_token: 'tenant-token',
+        expire: 120,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0,
+        data: { message_id: 'message-text-1' },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0,
+        data: { message_id: 'message-card-1' },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0,
+        data: { message_id: 'message-file-1' },
+      }), { status: 200 }));
+
+    const client = createFeishuClient(testConfig(), { fetchImpl: fetchImpl as typeof fetch });
+
+    await expect(client.sendMessage({
+      receiveId: 'chat-1',
+      msgType: 'text',
+      content: JSON.stringify({ text: 'hello again' }),
+    })).resolves.toBe('message-text-1');
+
+    await expect(client.sendCard('chat-1', {
+      schema: '2.0',
+      body: { elements: [] },
+    })).resolves.toBe('message-card-1');
+
+    await expect(client.sendFileMessage('chat-1', 'file-key-1')).resolves.toBe('message-file-1');
+  });
+
+  it('updates interactive card messages in place', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0,
+        tenant_access_token: 'tenant-token',
+        expire: 120,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0,
+      }), { status: 200 }));
+
+    const client = createFeishuClient(testConfig(), { fetchImpl: fetchImpl as typeof fetch });
+
+    await expect(client.updateCardMessage('message-card-1', {
+      schema: '2.0',
+      body: { elements: [] },
+    })).resolves.toBeUndefined();
+
+    expect(fetchImpl).toHaveBeenLastCalledWith(
+      'https://open.feishu.cn/open-apis/im/v1/messages/message-card-1',
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer tenant-token',
+          'content-type': 'application/json; charset=utf-8',
+        }),
+        body: JSON.stringify({
+          msg_type: 'interactive',
+          content: JSON.stringify({
+            schema: '2.0',
+            body: { elements: [] },
+          }),
+        }),
+      }),
+    );
+  });
+
   it('uploads files and returns file key', async () => {
     const tempDir = await createTempDir('feishu-api-');
     const filePath = path.join(tempDir, 'summary.txt');

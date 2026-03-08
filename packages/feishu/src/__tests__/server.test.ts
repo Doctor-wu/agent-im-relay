@@ -1,64 +1,61 @@
-import { createCipheriv, createHash } from 'node:crypto';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdtemp } from 'node:fs/promises';
+import { join } from 'node:path';
+import type { FeishuConfig } from '../config.js';
+import { resetConversationRuntimeForTests } from '@agent-im-relay/core';
 import { createFeishuSignature } from '../security.js';
+
+const runtimeMocks = vi.hoisted(() => ({
+  runFeishuConversation: vi.fn(),
+}));
+
+vi.mock('../runtime.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../runtime.js')>();
+  return {
+    ...actual,
+    runFeishuConversation: runtimeMocks.runFeishuConversation,
+  };
+});
+
 import { createFeishuCallbackHandler } from '../server.js';
 
-function testConfig() {
-  return {
-    agentTimeoutMs: 1_000,
-    claudeCwd: process.cwd(),
-    stateFile: '/tmp/feishu-state.json',
-    artifactsBaseDir: '/tmp/feishu-artifacts',
-    artifactRetentionDays: 14,
-    artifactMaxSizeBytes: 8 * 1024 * 1024,
-    claudeBin: '/opt/homebrew/bin/claude',
-    codexBin: '/opt/homebrew/bin/codex',
-    feishuAppId: 'app-id',
-    feishuAppSecret: 'test-secret',
-    feishuVerificationToken: 'verify-token',
-    feishuBaseUrl: 'https://open.feishu.cn',
-    feishuPort: 3001,
-    feishuClientId: 'client-a',
-    feishuClientToken: 'client-token',
-  };
-}
-
-function signedRequest(body: string, nonce: string) {
-  return {
-    method: 'POST',
-    url: '/feishu/callback',
-    headers: {
-      'x-lark-request-timestamp': '1700000000',
-      'x-lark-request-nonce': nonce,
-      'x-lark-signature': createFeishuSignature({
-        body,
-        nonce,
-        signingSecret: 'test-secret',
-        timestamp: '1700000000',
-      }),
-    },
+function sign(body: string, timestamp: string, nonce: string): string {
+  return createFeishuSignature({
+    timestamp,
+    nonce,
     body,
-  };
-}
-
-function encryptFeishuBody(body: string, encryptKey: string, iv = Buffer.from('fedcba9876543210')): string {
-  const key = createHash('sha256').update(encryptKey).digest();
-  const cipher = createCipheriv('aes-256-cbc', key, iv);
-  cipher.setAutoPadding(true);
-  const ciphertext = Buffer.concat([
-    cipher.update(body, 'utf8'),
-    cipher.final(),
-  ]);
-
-  return JSON.stringify({
-    encrypt: Buffer.concat([iv, ciphertext]).toString('base64'),
+    signingSecret: 'test-secret',
   });
 }
 
+async function createConfig(): Promise<FeishuConfig> {
+  const tempDir = await mkdtemp(join('/tmp', 'agent-inbox-feishu-'));
+
+  return {
+    agentTimeoutMs: 1_000,
+    claudeCwd: process.cwd(),
+    stateFile: join(tempDir, 'state', 'sessions.json'),
+    artifactsBaseDir: join(tempDir, 'artifacts'),
+    artifactRetentionDays: 14,
+    artifactMaxSizeBytes: 8 * 1024 * 1024,
+    claudeBin: 'claude',
+    codexBin: 'codex',
+    feishuAppId: 'test-app-id',
+    feishuAppSecret: 'test-secret',
+    feishuBaseUrl: 'https://open.feishu.cn',
+    feishuPort: 3001,
+  };
+}
+
+afterEach(() => {
+  runtimeMocks.runFeishuConversation.mockReset();
+  resetConversationRuntimeForTests();
+});
+
 describe('Feishu callback handler', () => {
   it('handles URL verification', async () => {
-    const handler = createFeishuCallbackHandler(testConfig(), {
-      client: {} as any,
+    const handler = createFeishuCallbackHandler(await createConfig(), {
+      client: {} as never,
     });
 
     const response = await handler({
@@ -67,361 +64,118 @@ describe('Feishu callback handler', () => {
       headers: {},
       body: JSON.stringify({
         type: 'url_verification',
-        token: 'verify-token',
-        challenge: 'challenge-1',
+        challenge: 'verify-me',
       }),
     });
 
     expect(response.status).toBe(200);
-    expect(response.body).toContain('challenge-1');
+    expect(response.body).toBe(JSON.stringify({ challenge: 'verify-me' }));
   });
 
-  it('routes text messages into the managed bridge instead of executing locally', async () => {
-    const bridge = {
-      dispatchRunCommand: vi.fn(() => ({
-        kind: 'queued',
-        clientId: 'client-a',
-        requestId: 'request-1',
-      })),
-      dispatchControlCommand: vi.fn(),
-      registerClient: vi.fn(),
-      pullCommands: vi.fn(),
-      consumeClientEvent: vi.fn(),
-      queueAttachments: vi.fn(),
-    };
-    const handler = createFeishuCallbackHandler(testConfig(), {
+  it('responds to a message by presenting backend selection in single-process mode', async () => {
+    runtimeMocks.runFeishuConversation.mockResolvedValue({ kind: 'blocked' });
+    const replyMessage = vi.fn(async () => {});
+    const handler = createFeishuCallbackHandler(await createConfig(), {
       client: {
-        sendMessage: vi.fn(async () => undefined),
-        replyMessage: vi.fn(async () => undefined),
-        sendCard: vi.fn(async () => undefined),
-        uploadFile: vi.fn(async () => 'file-key'),
-        uploadFileContent: vi.fn(async () => 'file-key'),
-        sendFileMessage: vi.fn(async () => undefined),
-        getTenantAccessToken: vi.fn(async () => 'tenant-token'),
-        downloadMessageResource: vi.fn(),
-      } as any,
-      bridge: bridge as any,
-    });
-
-    const body = JSON.stringify({
-      header: {
-        event_id: 'event-message',
-        event_type: 'im.message.receive_v1',
-      },
-      event: {
-        message: {
-          chat_id: 'chat-1',
-          chat_type: 'p2p',
-          message_id: 'message-1',
-          message_type: 'text',
-          content: JSON.stringify({ text: 'hello bot' }),
-        },
-      },
-    });
-
-    const response = await handler(signedRequest(body, 'nonce-1'));
-
-    expect(response.status).toBe(200);
-    expect(bridge.dispatchRunCommand).toHaveBeenCalledWith(expect.objectContaining({
-      conversationId: 'chat-1',
-      prompt: 'hello bot',
-      mode: 'code',
-    }));
-  });
-
-  it('routes card actions into managed control commands', async () => {
-    const bridge = {
-      dispatchRunCommand: vi.fn(),
-      dispatchControlCommand: vi.fn(() => ({
-        kind: 'queued',
-        clientId: 'client-a',
-        requestId: 'request-2',
-      })),
-      dispatchPendingRun: vi.fn(() => ({
-        kind: 'missing',
-        reason: 'setup-not-found',
-      })),
-      registerClient: vi.fn(),
-      pullCommands: vi.fn(),
-      consumeClientEvent: vi.fn(),
-      queueAttachments: vi.fn(),
-    };
-    const handler = createFeishuCallbackHandler(testConfig(), {
-      client: {
-        sendMessage: vi.fn(async () => undefined),
-        replyMessage: vi.fn(async () => undefined),
-        sendCard: vi.fn(async () => undefined),
-        uploadFile: vi.fn(async () => 'file-key'),
-        uploadFileContent: vi.fn(async () => 'file-key'),
-        sendFileMessage: vi.fn(async () => undefined),
-        getTenantAccessToken: vi.fn(async () => 'tenant-token'),
-        downloadMessageResource: vi.fn(),
-      } as any,
-      bridge: bridge as any,
-    });
-
-    const body = JSON.stringify({
-      header: {
-        event_id: 'event-action',
-        event_type: 'im.message.action.trigger',
-      },
-      action: {
-        value: {
-          conversationId: 'conv-1',
-          chatId: 'chat-1',
-          action: 'backend',
-          value: 'codex',
-        },
-      },
-    });
-
-    await handler(signedRequest(body, 'nonce-2'));
-
-    expect(bridge.dispatchControlCommand).toHaveBeenCalledWith(expect.objectContaining({
-      conversationId: 'conv-1',
-      action: {
-        conversationId: 'conv-1',
-        type: 'backend',
-        value: 'codex',
-      },
-    }));
-    expect(bridge.dispatchPendingRun).toHaveBeenCalledWith('conv-1');
-  });
-
-  it('sends a clear fallback message when the relay client is offline', async () => {
-    const replyMessage = vi.fn(async () => undefined);
-    const bridge = {
-      dispatchRunCommand: vi.fn(() => ({
-        kind: 'offline',
-        reason: 'client-offline',
-      })),
-      dispatchControlCommand: vi.fn(),
-      registerClient: vi.fn(),
-      pullCommands: vi.fn(),
-      consumeClientEvent: vi.fn(),
-      queueAttachments: vi.fn(),
-    };
-    const handler = createFeishuCallbackHandler(testConfig(), {
-      client: {
-        sendMessage: vi.fn(async () => undefined),
         replyMessage,
-        sendCard: vi.fn(async () => undefined),
-        uploadFile: vi.fn(async () => 'file-key'),
-        uploadFileContent: vi.fn(async () => 'file-key'),
-        sendFileMessage: vi.fn(async () => undefined),
-        getTenantAccessToken: vi.fn(async () => 'tenant-token'),
-        downloadMessageResource: vi.fn(),
-      } as any,
-      bridge: bridge as any,
+      } as never,
     });
 
     const body = JSON.stringify({
+      event: {
+        sender: { sender_id: { open_id: 'user-1' } },
+        message: {
+          message_id: 'message-1',
+          chat_id: 'chat-1',
+          chat_type: 'group',
+          mentions: [{ key: '@_user_1', id: { open_id: 'bot-open-id' }, name: 'relay-bot' }],
+          content: JSON.stringify({ text: '@_user_1 hello bot' }),
+        },
+      },
       header: {
-        event_id: 'event-offline',
+        event_id: 'event-1',
+        token: 'token',
+        create_time: String(Date.now()),
         event_type: 'im.message.receive_v1',
       },
-      event: {
-        message: {
-          chat_id: 'chat-1',
-          chat_type: 'p2p',
-          message_id: 'message-1',
-          message_type: 'text',
-          content: JSON.stringify({ text: 'hello bot' }),
-        },
-      },
     });
+    const timestamp = String(Date.now());
 
-    await handler(signedRequest(body, 'nonce-3'));
-
-    expect(replyMessage).toHaveBeenCalledWith(expect.objectContaining({
-      messageId: 'message-1',
-      msgType: 'text',
-      content: JSON.stringify({
-        text: 'Relay client is offline. Start the local Feishu relay client and try again.',
-      }),
-    }));
-  });
-
-  it('replies cards and files to the original message target when bridge events arrive', async () => {
-    const replyMessage = vi.fn(async () => undefined);
-    const uploadFileContent = vi.fn(async () => 'file-key-bridge');
-    const handler = createFeishuCallbackHandler(testConfig(), {
-      client: {
-        sendMessage: vi.fn(async () => undefined),
-        replyMessage,
-        sendCard: vi.fn(async () => undefined),
-        uploadFile: vi.fn(async () => 'file-key'),
-        uploadFileContent,
-        sendFileMessage: vi.fn(async () => undefined),
-        getTenantAccessToken: vi.fn(async () => 'tenant-token'),
-        downloadMessageResource: vi.fn(),
-      } as any,
-    });
-
-    await handler({
+    const response = await handler({
       method: 'POST',
-      url: '/feishu/bridge/hello',
-      headers: {},
-      body: JSON.stringify({
-        clientId: 'client-a',
-        token: 'client-token',
-      }),
-    });
-
-    const body = JSON.stringify({
-      header: {
-        event_id: 'event-bridge-reply',
-        event_type: 'im.message.receive_v1',
+      url: '/feishu/callback',
+      headers: {
+        'x-lark-request-timestamp': timestamp,
+        'x-lark-request-nonce': 'nonce-1',
+        'x-lark-signature': sign(body, timestamp, 'nonce-1'),
       },
-      event: {
-        message: {
-          chat_id: 'chat-1',
-          chat_type: 'p2p',
-          message_id: 'message-1',
-          message_type: 'text',
-          content: JSON.stringify({ text: 'hello bot' }),
-        },
-      },
+      body,
     });
-
-    await handler(signedRequest(body, 'nonce-4'));
-
-    const pullResponse = await handler({
-      method: 'POST',
-      url: '/feishu/bridge/pull',
-      headers: {},
-      body: JSON.stringify({
-        clientId: 'client-a',
-        token: 'client-token',
-        limit: 1,
-      }),
-    });
-    const requestId = (JSON.parse(pullResponse.body) as {
-      commands: Array<{ requestId: string }>;
-    }).commands[0]?.requestId;
-
-    await handler({
-      method: 'POST',
-      url: '/feishu/bridge/events',
-      headers: {},
-      body: JSON.stringify({
-        clientId: 'client-a',
-        token: 'client-token',
-        event: {
-          type: 'conversation.card',
-          clientId: 'client-a',
-          requestId,
-          conversationId: 'chat-1',
-          timestamp: '2026-03-07T00:00:01.000Z',
-          payload: {
-            card: {
-              schema: '2.0',
-              body: {
-                elements: [],
-              },
-            },
-          },
-        },
-      }),
-    });
-
-    await handler({
-      method: 'POST',
-      url: '/feishu/bridge/events',
-      headers: {},
-      body: JSON.stringify({
-        clientId: 'client-a',
-        token: 'client-token',
-        event: {
-          type: 'conversation.file',
-          clientId: 'client-a',
-          requestId,
-          conversationId: 'chat-1',
-          timestamp: '2026-03-07T00:00:02.000Z',
-          payload: {
-            fileName: 'result.txt',
-            data: Buffer.from('artifact').toString('base64'),
-          },
-        },
-      }),
-    });
-
-    expect(replyMessage).toHaveBeenCalledWith(expect.objectContaining({
-      messageId: 'message-1',
-      msgType: 'interactive',
-      content: JSON.stringify({
-        schema: '2.0',
-        body: {
-          elements: [],
-        },
-      }),
-    }));
-    expect(uploadFileContent).toHaveBeenCalledWith(expect.objectContaining({
-      fileName: 'result.txt',
-    }));
-    expect(replyMessage).toHaveBeenCalledWith(expect.objectContaining({
-      messageId: 'message-1',
-      msgType: 'file',
-      content: JSON.stringify({
-        file_key: 'file-key-bridge',
-      }),
-    }));
-  });
-
-  it('decrypts encrypted callbacks before routing them into the managed bridge', async () => {
-    const bridge = {
-      dispatchRunCommand: vi.fn(() => ({
-        kind: 'queued',
-        clientId: 'client-a',
-        requestId: 'request-encrypted',
-      })),
-      dispatchControlCommand: vi.fn(),
-      registerClient: vi.fn(),
-      pullCommands: vi.fn(),
-      consumeClientEvent: vi.fn(),
-      queueAttachments: vi.fn(),
-    };
-    const handler = createFeishuCallbackHandler({
-      ...testConfig(),
-      feishuEncryptKey: 'encrypt-key',
-    }, {
-      client: {
-        sendMessage: vi.fn(async () => undefined),
-        replyMessage: vi.fn(async () => undefined),
-        sendCard: vi.fn(async () => undefined),
-        uploadFile: vi.fn(async () => 'file-key'),
-        uploadFileContent: vi.fn(async () => 'file-key'),
-        sendFileMessage: vi.fn(async () => undefined),
-        getTenantAccessToken: vi.fn(async () => 'tenant-token'),
-        downloadMessageResource: vi.fn(),
-      } as any,
-      bridge: bridge as any,
-    });
-
-    const payloadBody = JSON.stringify({
-      header: {
-        event_id: 'event-encrypted-message',
-        event_type: 'im.message.receive_v1',
-      },
-      event: {
-        message: {
-          chat_id: 'chat-1',
-          chat_type: 'p2p',
-          message_id: 'message-1',
-          message_type: 'text',
-          content: JSON.stringify({ text: 'encrypted hello bot' }),
-        },
-      },
-    });
-    const body = encryptFeishuBody(payloadBody, 'encrypt-key');
-
-    const response = await handler(signedRequest(body, 'nonce-encrypted'));
 
     expect(response.status).toBe(200);
-    expect(bridge.dispatchRunCommand).toHaveBeenCalledWith(expect.objectContaining({
-      conversationId: 'chat-1',
-      prompt: 'encrypted hello bot',
-      mode: 'code',
+    await vi.waitFor(() => {
+      expect(runtimeMocks.runFeishuConversation).toHaveBeenCalledWith(expect.objectContaining({
+        conversationId: 'chat-1',
+        prompt: 'hello bot',
+      }));
+    });
+  });
+
+  it('acknowledges the callback before a long-running conversation finishes', async () => {
+    let resolveRun: ((value: { kind: 'started' }) => void) | undefined;
+    runtimeMocks.runFeishuConversation.mockImplementation(() => new Promise((resolve) => {
+      resolveRun = resolve as (value: { kind: 'started' }) => void;
     }));
+
+    const handler = createFeishuCallbackHandler(await createConfig(), {
+      client: {
+        replyMessage: vi.fn(async () => {}),
+      } as never,
+    });
+
+    const body = JSON.stringify({
+      event: {
+        sender: { sender_id: { open_id: 'user-1' } },
+        message: {
+          message_id: 'message-2',
+          chat_id: 'chat-2',
+          chat_type: 'group',
+          mentions: [{ key: '@_user_1', id: { open_id: 'bot-open-id' }, name: 'relay-bot' }],
+          content: JSON.stringify({ text: '@_user_1 hello bot' }),
+        },
+      },
+      header: {
+        event_id: 'event-2',
+        token: 'token',
+        create_time: String(Date.now()),
+        event_type: 'im.message.receive_v1',
+      },
+    });
+    const timestamp = String(Date.now());
+
+    const response = await Promise.race([
+      handler({
+        method: 'POST',
+        url: '/feishu/callback',
+        headers: {
+          'x-lark-request-timestamp': timestamp,
+          'x-lark-request-nonce': 'nonce-2',
+          'x-lark-signature': sign(body, timestamp, 'nonce-2'),
+        },
+        body,
+      }),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('callback was not acknowledged promptly')), 50);
+      }),
+    ]);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe(JSON.stringify({ code: 0 }));
+    await vi.waitFor(() => {
+      expect(runtimeMocks.runFeishuConversation).toHaveBeenCalledOnce();
+    });
+    expect(resolveRun).toBeTypeOf('function');
+
+    resolveRun?.({ kind: 'started' });
   });
 });

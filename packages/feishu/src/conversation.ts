@@ -23,6 +23,7 @@ export interface FeishuActionPayload {
     replyToMessageId?: string;
     prompt?: string;
     mode?: 'code' | 'ask';
+    source?: 'card' | 'menu';
     [key: string]: unknown;
   };
 }
@@ -48,6 +49,9 @@ export type NormalizedFeishuEvent =
   | {
     kind: 'action';
     conversationId?: string;
+    chatId?: string;
+    action?: string;
+    source: 'card' | 'menu';
   };
 
 export function normalizeFeishuEvent(event: FeishuRawEvent): NormalizedFeishuEvent {
@@ -65,16 +69,14 @@ export function normalizeFeishuEvent(event: FeishuRawEvent): NormalizedFeishuEve
   return {
     kind: 'action',
     conversationId: event.action?.value?.conversationId,
+    chatId: event.action?.value?.chatId,
+    action: event.action?.value?.action,
+    source: event.action?.value?.source === 'menu' ? 'menu' : 'card',
   };
 }
 
 export function resolveConversationId(event: NormalizedFeishuEvent): string | undefined {
   if (event.kind !== 'message') return undefined;
-
-  if (event.chatType === 'group' && event.rootMessageId) {
-    return event.rootMessageId;
-  }
-
   return event.chatId;
 }
 

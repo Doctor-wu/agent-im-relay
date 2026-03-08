@@ -3,6 +3,7 @@ import type { FeishuConfig } from './config.js';
 
 export type FeishuReceiveIdType = 'chat_id' | 'open_id' | 'union_id' | 'email' | 'user_id';
 export type FeishuMessageType = 'text' | 'interactive' | 'file';
+export type FeishuUserIdType = 'open_id' | 'union_id' | 'user_id';
 
 type FetchLike = typeof fetch;
 
@@ -30,7 +31,8 @@ function assertFeishuSuccess(
   context: string,
 ): void {
   if (!response.ok) {
-    throw new Error(`${context} failed with HTTP ${response.status}.`);
+    const suffix = payload.msg ? `: ${payload.msg}` : '.';
+    throw new Error(`${context} failed with HTTP ${response.status}${suffix}`);
   }
 
   if (payload.code && payload.code !== 0) {
@@ -43,6 +45,23 @@ export function createFeishuClient(
   options: FeishuClientOptions = {},
 ): {
   getTenantAccessToken(): Promise<string>;
+  createChat(options: {
+    name: string;
+    userIdList: string[];
+    userIdType?: FeishuUserIdType;
+    chatMode?: string;
+    chatType?: string;
+  }): Promise<{
+    chatId: string;
+    name?: string;
+  }>;
+  createSessionChat(options: {
+    name: string;
+    userOpenId: string;
+  }): Promise<{
+    chatId: string;
+    name?: string;
+  }>;
   sendMessage(options: {
     receiveId: string;
     msgType: FeishuMessageType;
@@ -55,9 +74,14 @@ export function createFeishuClient(
     content: string;
   }): Promise<string | undefined>;
   sendCard(receiveId: string, card: Record<string, unknown>, receiveIdType?: FeishuReceiveIdType): Promise<string | undefined>;
+  updateCardMessage(messageId: string, card: Record<string, unknown>): Promise<void>;
   uploadFile(options: { filePath: string; fileName: string }): Promise<string>;
   uploadFileContent(options: { fileName: string; data: Buffer | Uint8Array | ArrayBuffer }): Promise<string>;
   sendFileMessage(receiveId: string, fileKey: string, receiveIdType?: FeishuReceiveIdType): Promise<string | undefined>;
+  sendPrivateChatIndexMessage(options: {
+    chatId: string;
+    text: string;
+  }): Promise<string | undefined>;
   downloadMessageResource(messageId: string, fileKey: string): Promise<Response>;
 } {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
@@ -111,6 +135,67 @@ export function createFeishuClient(
         Authorization: `Bearer ${token}`,
         ...(init.headers ?? {}),
       },
+    });
+  }
+
+  async function createChat(options: {
+    name: string;
+    userIdList: string[];
+    userIdType?: FeishuUserIdType;
+    chatMode?: string;
+    chatType?: string;
+  }): Promise<{
+    chatId: string;
+    name?: string;
+  }> {
+    const url = buildUrl(config.feishuBaseUrl, '/open-apis/im/v1/chats');
+    url.searchParams.set('user_id_type', options.userIdType ?? 'open_id');
+
+    const response = await authorizedFetch(url.toString(), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+      },
+      body: JSON.stringify({
+        name: options.name,
+        user_id_list: options.userIdList,
+        chat_mode: options.chatMode ?? 'group',
+        chat_type: options.chatType ?? 'private',
+      }),
+    });
+    const payload = await readJsonResponse<{
+      code?: number;
+      msg?: string;
+      data?: {
+        chat_id?: string;
+        name?: string;
+      };
+    }>(response);
+    assertFeishuSuccess(response, payload, 'Feishu create chat');
+
+    if (!payload.data?.chat_id) {
+      throw new Error('Feishu create chat did not return chat_id.');
+    }
+
+    return {
+      chatId: payload.data.chat_id,
+      name: payload.data.name,
+    };
+  }
+
+  async function createSessionChat(options: {
+    name: string;
+    userOpenId: string;
+  }): Promise<{
+    chatId: string;
+    name?: string;
+  }> {
+    return createChat({
+      name: options.name,
+      userIdList: [options.userOpenId],
+      userIdType: 'open_id',
+      chatMode: 'group',
+      chatType: 'private',
     });
   }
 
@@ -183,6 +268,27 @@ export function createFeishuClient(
     });
   }
 
+  async function updateCardMessage(messageId: string, card: Record<string, unknown>): Promise<void> {
+    const response = await authorizedFetch(
+      buildUrl(config.feishuBaseUrl, `/open-apis/im/v1/messages/${messageId}`).toString(),
+      {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json; charset=utf-8',
+        },
+        body: JSON.stringify({
+          msg_type: 'interactive',
+          content: JSON.stringify(card),
+        }),
+      },
+    );
+    const payload = await readJsonResponse<{
+      code?: number;
+      msg?: string;
+    }>(response);
+    assertFeishuSuccess(response, payload, 'Feishu update card message');
+  }
+
   async function uploadBinary(options: {
     fileName: string;
     data: Buffer | Uint8Array | ArrayBuffer;
@@ -237,6 +343,18 @@ export function createFeishuClient(
     });
   }
 
+  async function sendPrivateChatIndexMessage(options: {
+    chatId: string;
+    text: string;
+  }): Promise<string | undefined> {
+    return sendMessage({
+      receiveId: options.chatId,
+      receiveIdType: 'chat_id',
+      msgType: 'text',
+      content: JSON.stringify({ text: options.text }),
+    });
+  }
+
   async function downloadMessageResource(messageId: string, fileKey: string): Promise<Response> {
     const url = buildUrl(config.feishuBaseUrl, `/open-apis/im/v1/messages/${messageId}/resources/${fileKey}`);
     url.searchParams.set('type', 'file');
@@ -247,12 +365,16 @@ export function createFeishuClient(
 
   return {
     getTenantAccessToken,
+    createChat,
+    createSessionChat,
     sendMessage,
     replyMessage,
     sendCard,
+    updateCardMessage,
     uploadFile,
     uploadFileContent: uploadBinary,
     sendFileMessage,
+    sendPrivateChatIndexMessage,
     downloadMessageResource,
   };
 }
