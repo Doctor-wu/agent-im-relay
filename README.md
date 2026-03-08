@@ -5,13 +5,13 @@
 ![pnpm workspace](https://img.shields.io/badge/pnpm-workspace-F69220)
 ![TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6)
 ![Discord](https://img.shields.io/badge/platform-Discord-5865F2)
-![Feishu managed gateway](https://img.shields.io/badge/platform-Feishu-managed_gateway-00B96B)
+![Feishu long connection](https://img.shields.io/badge/platform-Feishu-long_connection-00B96B)
 
 A platform-agnostic bridge that connects Claude AI to instant messaging platforms. Built as a pnpm monorepo with a shared core and per-platform adapter packages.
 
 `agent-im-relay` lets you run agent workflows from chat threads while keeping the runtime logic portable across platforms. The shared core owns session state, streaming, interruption, backend integration, and orchestration; platform packages focus on delivery, UX, and command surfaces.
 
-Feishu support is available through `@agent-im-relay/feishu` as a managed-gateway plus local relay-client pair. This round stays adapter-first: extract only the minimum shared runtime needed in `@agent-im-relay/core`, and keep Feishu-specific cards, ingress, and file transport in the Feishu package until the abstractions prove reusable.
+Feishu support is available through `@agent-im-relay/feishu` as a long-connection runtime that receives Feishu events directly over the official WebSocket channel. This round stays adapter-first: extract only the minimum shared runtime needed in `@agent-im-relay/core`, and keep Feishu-specific cards, ingress, and file transport in the Feishu package until the abstractions prove reusable.
 
 ## Highlights
 
@@ -62,12 +62,12 @@ Discord-specific implementation:
 
 Feishu-specific implementation with:
 
-- Managed gateway ingress that receives Feishu callbacks and forwards work to a local relay client
-- Card-based session controls for backend selection, interrupt, done, model, and effort changes
-- Reply-aware conversation mapping for private chats and group reply chains
-- Sticky per-conversation session continuity until explicit teardown through the control card
+- Long-connection ingress through the Feishu event dispatcher and WebSocket client
+- Menu-first session controls with an anchor-card fallback for backend, model, effort, interrupt, and done actions
+- Private-chat launchers that create dedicated session chats and remember anchor metadata across restarts
+- Sticky per-conversation session continuity until explicit teardown through `/done` or control actions
 - Inbound file download and outbound artifact upload support
-- Optional callback decryption via `FEISHU_ENCRYPT_KEY`
+- Optional Feishu event verification and decryption settings via `FEISHU_VERIFICATION_TOKEN` and `FEISHU_ENCRYPT_KEY`
 
 ## Setup
 
@@ -85,11 +85,8 @@ pnpm build
 # Run the Discord bot
 pnpm dev:discord
 
-# Run the Feishu managed gateway
-pnpm dev:feishu:gateway
-
-# In a second terminal, run the Feishu local relay client
-pnpm dev:feishu:client
+# Run the Feishu long-connection runtime
+pnpm dev:feishu
 ```
 
 ## Environment Variables
@@ -99,43 +96,41 @@ pnpm dev:feishu:client
 | `DISCORD_TOKEN` | Yes | — | Discord bot token |
 | `DISCORD_CLIENT_ID` | Yes | — | Discord application client ID |
 | `GUILD_IDS` | No | (all guilds) | Comma-separated guild IDs to restrict bot |
-| `FEISHU_APP_ID` | Feishu gateway | — | Feishu app ID used by the managed gateway |
-| `FEISHU_APP_SECRET` | Feishu gateway | — | Feishu app secret used for API access and callback validation |
-| `FEISHU_ENCRYPT_KEY` | No | — | Callback decrypt key when Feishu event encryption is enabled |
-| `FEISHU_VERIFICATION_TOKEN` | No | — | Verification token returned during URL verification |
+| `FEISHU_APP_ID` | Yes (Feishu) | — | Feishu app ID used by the long-connection runtime |
+| `FEISHU_APP_SECRET` | Yes (Feishu) | — | Feishu app secret used for API access and WebSocket auth |
+| `FEISHU_ENCRYPT_KEY` | No | — | Optional decrypt key when Feishu event encryption is enabled |
+| `FEISHU_VERIFICATION_TOKEN` | No | — | Optional verification token passed to the Feishu event dispatcher |
 | `FEISHU_BASE_URL` | No | `https://open.feishu.cn` | Override Feishu Open Platform base URL |
-| `FEISHU_PORT` | No | `3001` | HTTP port for the managed Feishu gateway |
-| `FEISHU_CLIENT_ID` | Feishu gateway/client | — | Shared logical client ID used by gateway and local relay client |
-| `FEISHU_CLIENT_TOKEN` | Feishu gateway/client | — | Shared secret used by gateway and local relay client |
-| `FEISHU_GATEWAY_URL` | Feishu client | — | Base URL for the managed Feishu gateway |
-| `FEISHU_CLIENT_POLL_INTERVAL_MS` | No | `1000` | Long-poll interval for the local Feishu relay client |
 | `CLAUDE_MODEL` | No | (Claude default) | Claude model override |
 | `CLAUDE_CWD` | No | `process.cwd()` | Working directory for Claude sessions |
 | `AGENT_TIMEOUT_MS` | No | `600000` | Agent request timeout (ms) |
-| `STATE_FILE` | No | `data/sessions.json` | Path to state persistence file |
-| `ARTIFACTS_BASE_DIR` | No | `data/artifacts` | Base directory for inbound and outbound conversation files |
+| `STATE_FILE` | No | `<cwd>/.agent-inbox/state/sessions.json` | Path to state persistence file |
+| `ARTIFACTS_BASE_DIR` | No | `<cwd>/.agent-inbox/artifacts` | Base directory for inbound and outbound conversation files |
 | `ARTIFACT_RETENTION_DAYS` | No | `14` | Lazy cleanup window for old conversation artifact directories |
 | `ARTIFACT_MAX_SIZE_BYTES` | No | `8388608` | Max size for downloaded or uploaded artifacts |
 | `STREAM_UPDATE_INTERVAL_MS` | No | `1000` | Discord message edit frequency (ms) |
 | `DISCORD_MESSAGE_CHAR_LIMIT` | No | `1900` | Max characters per Discord message chunk |
 
+If the current working directory is not writable, the relay falls back to a writable user or temp directory for `.agent-inbox`.
+
 ## Feishu Runtime Model
 
-Feishu runs in two processes:
+Feishu runs in a single long-connection process:
 
-- `gateway` receives Feishu callbacks, validates signatures, optionally decrypts encrypted callbacks, and talks back to Feishu APIs
-- `client` runs on the machine with Claude Code or Codex access, polls the gateway for commands, executes the conversation locally, and streams text/cards/files back
+- The runtime opens Feishu's persistent event connection with `FEISHU_APP_ID` and `FEISHU_APP_SECRET`
+- Incoming messages, card actions, and bot-menu actions are routed locally into the shared conversation runtime
+- Session controls are menu-first, with a session anchor card kept in the session chat as a fallback surface
 
 Typical startup flow:
 
-1. Configure the Feishu app callback URL to point at `POST /feishu/callback` on the managed gateway.
-2. Start `pnpm dev:feishu:gateway` in the environment reachable by Feishu.
-3. Start `pnpm dev:feishu:client` on the machine that has the agent CLI tools and working copy.
-4. Set `FEISHU_ENCRYPT_KEY` if the Feishu app enables callback encryption.
+1. In the Feishu developer console, enable persistent connection mode for event delivery.
+2. Set `FEISHU_APP_ID` and `FEISHU_APP_SECRET`, plus `FEISHU_ENCRYPT_KEY` / `FEISHU_VERIFICATION_TOKEN` if your app uses them.
+3. Start `pnpm dev:feishu` on the machine that has the agent CLI tools and working copy.
+4. Use the bot menu to open session controls, or the session anchor fallback card if the menu is unavailable.
 
 ## File Transfer
 
-Discord users can attach up to three files to `/code`, `/ask`, or active thread messages. The relay stores them under `data/artifacts/<conversationId>/incoming/` and prepends a short local-path summary to the agent prompt so the agent can read them with normal file tools.
+Discord users can attach up to three files to `/code`, `/ask`, or active thread messages. By default the relay stores them under `<cwd>/.agent-inbox/artifacts/<conversationId>/incoming/` (or under `ARTIFACTS_BASE_DIR` if you override it) and prepends a short local-path summary to the agent prompt so the agent can read them with normal file tools.
 
 For `/code` runs, the relay also injects an artifact return contract. If the agent wants Discord to receive generated files, it should end the final answer with an `artifacts` block like this:
 
@@ -153,7 +148,7 @@ For `/code` runs, the relay also injects an artifact return contract. If the age
 ```
 ````
 
-Only the last valid `artifacts` block is used. Paths must stay inside the working directory or the conversation artifact directory. Approved files are copied into `data/artifacts/<conversationId>/outgoing/` before Discord upload. Oversized or invalid files are skipped with a warning instead of crashing the session.
+Only the last valid `artifacts` block is used. Paths must stay inside the working directory or the conversation artifact directory. Approved files are copied into `<ARTIFACTS_BASE_DIR>/<conversationId>/outgoing/` before Discord upload. Oversized or invalid files are skipped with a warning instead of crashing the session.
 
 ## Development
 
@@ -166,6 +161,9 @@ pnpm build
 
 # Run Discord bot in dev mode (with watch)
 pnpm dev:discord
+
+# Run Feishu long-connection runtime in dev mode (with watch)
+pnpm dev:feishu
 ```
 
 ## Adding a New Platform
