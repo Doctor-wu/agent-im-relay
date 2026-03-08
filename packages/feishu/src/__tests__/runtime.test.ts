@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const coreMocks = vi.hoisted(() => ({
   applySessionControlCommand: vi.fn(),
@@ -17,7 +17,15 @@ vi.mock('@agent-im-relay/core', async (importOriginal) => {
 });
 
 import { conversationMode } from '@agent-im-relay/core';
-import { runFeishuConversation } from '../runtime.js';
+import {
+  resetFeishuRuntimeForTests,
+  resumePendingFeishuRun,
+  runFeishuConversation,
+} from '../runtime.js';
+
+afterEach(() => {
+  resetFeishuRuntimeForTests();
+});
 
 describe('Feishu runtime', () => {
   beforeEach(() => {
@@ -116,5 +124,60 @@ describe('Feishu runtime', () => {
       chatId: 'chat-1',
       replyToMessageId: 'message-1',
     }, 'continued reply');
+  });
+
+  it('stores blocked runs and resumes them after backend selection', async () => {
+    coreMocks.evaluateConversationRunRequest
+      .mockReturnValueOnce({
+        kind: 'setup-required',
+        conversationId: 'conv-gated',
+        reason: 'backend-selection',
+      })
+      .mockReturnValueOnce({
+        kind: 'ready',
+        conversationId: 'conv-gated',
+        backend: 'claude',
+      });
+
+    const transport = {
+      sendText: vi.fn(async () => undefined),
+      sendCard: vi.fn(async () => undefined),
+      uploadFile: vi.fn(async () => undefined),
+    };
+    const attachments = [
+      {
+        name: 'spec.md',
+        url: 'https://example.com/spec.md',
+        contentType: 'text/markdown',
+      },
+    ];
+
+    await expect(runFeishuConversation({
+      conversationId: 'conv-gated',
+      target: {
+        chatId: 'chat-1',
+        replyToMessageId: 'message-1',
+      },
+      prompt: 'ship it',
+      mode: 'code',
+      transport,
+      defaultCwd: process.cwd(),
+      attachments,
+    })).resolves.toEqual({ kind: 'blocked' });
+
+    expect(coreMocks.runPlatformConversation).not.toHaveBeenCalled();
+
+    await expect(resumePendingFeishuRun({
+      conversationId: 'conv-gated',
+      transport,
+      defaultCwd: process.cwd(),
+    })).resolves.toEqual({ kind: 'started' });
+
+    expect(coreMocks.runPlatformConversation).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 'conv-gated',
+      prompt: 'ship it',
+      attachments,
+      backend: 'claude',
+    }));
   });
 });

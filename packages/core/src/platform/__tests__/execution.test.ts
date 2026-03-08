@@ -1,3 +1,5 @@
+import { mkdtemp } from 'node:fs/promises';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { runConversationWithRenderer } = vi.hoisted(() => ({
@@ -12,15 +14,16 @@ vi.mock('../../runtime/conversation-runner.js', async () => {
   };
 });
 
-import { runPlatformConversation } from '../conversation.js';
-
 describe('runPlatformConversation', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
     runConversationWithRenderer.mockReset();
     runConversationWithRenderer.mockResolvedValue(true);
+    process.env['ARTIFACTS_BASE_DIR'] = join(await mkdtemp('/tmp/agent-inbox-execution-'), 'artifacts');
   });
 
   it('delegates to the shared runner and prepares attachment prompts', async () => {
+    const { runPlatformConversation } = await import('../conversation.js');
     const render = vi.fn(async () => {});
     const publish = vi.fn(async () => {});
 
@@ -78,6 +81,7 @@ describe('runPlatformConversation', () => {
   });
 
   it('passes through phase callbacks and runner status', async () => {
+    const { runPlatformConversation } = await import('../conversation.js');
     const onPhaseChange = vi.fn(async () => {});
 
     await expect(runPlatformConversation({

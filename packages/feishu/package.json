@@ -12,12 +12,8 @@
   },
   "scripts": {
     "build": "tsdown",
-    "dev": "pnpm dev:gateway",
-    "dev:gateway": "tsx watch src/index.ts",
-    "dev:client": "tsx watch src/bin/client.ts",
-    "start": "pnpm start:gateway",
-    "start:gateway": "node dist/index.mjs",
-    "start:client": "tsx src/bin/client.ts",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -27,7 +23,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "tsdown": "^0.20.1",
+    "tsdown": "^0.21.0",
     "tsx": "^4.19.2",
     "vitest": "^3.2.4"
   }

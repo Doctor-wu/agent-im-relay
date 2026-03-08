@@ -1,7 +1,9 @@
 {
   "references": [
     { "path": "packages/core" },
-    { "path": "packages/discord" }
+    { "path": "packages/discord" },
+    { "path": "packages/feishu" },
+    { "path": "apps/agent-inbox" }
   ],
   "files": []
 }
