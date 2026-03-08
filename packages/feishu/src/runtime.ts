@@ -27,6 +27,7 @@ import {
   FEISHU_NON_SESSION_CONTROL_TEXT,
   type BackendConfirmationCard,
   type BackendSelectionCard,
+  FeishuCardContext,
 } from './cards.js';
 import { parseAskCommand } from './commands/ask.js';
 import {
