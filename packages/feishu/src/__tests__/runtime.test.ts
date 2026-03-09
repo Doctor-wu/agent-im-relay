@@ -195,17 +195,14 @@ describe('Feishu runtime', () => {
   });
 
   it('does not send persistent control ui for known session chats', async () => {
-    rememberFeishuSessionChat({
-      ...buildFeishuSessionChatRecord({
-        sourceP2pChatId: 'p2p-chat-1',
-        sourceMessageId: 'message-1',
-        sessionChatId: 'session-chat-1',
-        creatorOpenId: 'ou_user_1',
-        createdAt: '2026-03-08T10:00:00.000Z',
-        prompt: 'follow up',
-      }),
-      anchorMessageId: 'anchor-message-1',
-    });
+    rememberFeishuSessionChat(buildFeishuSessionChatRecord({
+      sourceP2pChatId: 'p2p-chat-1',
+      sourceMessageId: 'message-1',
+      sessionChatId: 'session-chat-1',
+      creatorOpenId: 'ou_user_1',
+      createdAt: '2026-03-08T10:00:00.000Z',
+      prompt: 'follow up',
+    }));
     const transport = {
       sendText: vi.fn(async () => undefined),
       sendCard: vi.fn(async () => 'anchor-message-2'),
@@ -331,17 +328,14 @@ describe('Feishu runtime', () => {
   });
 
   it('does not attempt anchor recovery for existing session chat metadata', async () => {
-    rememberFeishuSessionChat({
-      ...buildFeishuSessionChatRecord({
-        sourceP2pChatId: 'p2p-chat-1',
-        sourceMessageId: 'message-1',
-        sessionChatId: 'session-chat-2',
-        creatorOpenId: 'ou_user_1',
-        createdAt: '2026-03-08T10:00:00.000Z',
-        prompt: 'follow up',
-      }),
-      anchorMessageId: 'anchor-message-1',
-    });
+    rememberFeishuSessionChat(buildFeishuSessionChatRecord({
+      sourceP2pChatId: 'p2p-chat-1',
+      sourceMessageId: 'message-1',
+      sessionChatId: 'session-chat-2',
+      creatorOpenId: 'ou_user_1',
+      createdAt: '2026-03-08T10:00:00.000Z',
+      prompt: 'follow up',
+    }));
     const transport = {
       sendText: vi.fn(async () => undefined),
       sendCard: vi.fn(async () => 'anchor-message-2'),
@@ -368,17 +362,14 @@ describe('Feishu runtime', () => {
   });
 
   it('does not refresh persistent summaries after control changes', async () => {
-    rememberFeishuSessionChat({
-      ...buildFeishuSessionChatRecord({
-        sourceP2pChatId: 'p2p-chat-1',
-        sourceMessageId: 'message-1',
-        sessionChatId: 'session-chat-3',
-        creatorOpenId: 'ou_user_1',
-        createdAt: '2026-03-08T10:00:00.000Z',
-        prompt: 'follow up',
-      }),
-      anchorMessageId: 'anchor-message-1',
-    });
+    rememberFeishuSessionChat(buildFeishuSessionChatRecord({
+      sourceP2pChatId: 'p2p-chat-1',
+      sourceMessageId: 'message-1',
+      sessionChatId: 'session-chat-3',
+      creatorOpenId: 'ou_user_1',
+      createdAt: '2026-03-08T10:00:00.000Z',
+      prompt: 'follow up',
+    }));
     coreMocks.applySessionControlCommand.mockReturnValue({
       kind: 'backend',
       conversationId: 'session-chat-3',

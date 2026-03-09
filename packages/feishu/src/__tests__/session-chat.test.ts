@@ -71,7 +71,6 @@ describe('Feishu session chats', () => {
     expect(typeof feishu.rememberFeishuSessionChat).toBe('function');
     expect(typeof feishu.findFeishuSessionChatBySourceMessage).toBe('function');
     expect(typeof feishu.resolveFeishuChatSessionKind).toBe('function');
-    expect(typeof feishu.updateFeishuSessionChat).toBe('function');
     expect(feishu.resolveFeishuSessionChatStateFile('/tmp/relay/state/sessions.json')).toBe(
       '/tmp/relay/state/feishu-session-chats.json',
     );
@@ -99,7 +98,7 @@ describe('Feishu session chats', () => {
     })).toBeUndefined();
   });
 
-  it('stores anchor message metadata and last known session UI state', () => {
+  it('keeps the in-memory session chat record lean and launch-oriented', () => {
     const record = feishu.buildFeishuSessionChatRecord({
       sourceP2pChatId: 'p2p-chat-1',
       sourceMessageId: 'message-1',
@@ -110,22 +109,8 @@ describe('Feishu session chats', () => {
     });
 
     feishu.rememberFeishuSessionChat(record);
-    feishu.updateFeishuSessionChat('session-chat-1', {
-      anchorMessageId: 'anchor-message-1',
-      lastKnownBackend: 'codex',
-      lastKnownModel: 'gpt-5-codex',
-      lastKnownEffort: 'high',
-      lastRunStatus: 'running',
-    });
 
-    expect(feishu.getFeishuSessionChat('session-chat-1')).toEqual({
-      ...record,
-      anchorMessageId: 'anchor-message-1',
-      lastKnownBackend: 'codex',
-      lastKnownModel: 'gpt-5-codex',
-      lastKnownEffort: 'high',
-      lastRunStatus: 'running',
-    });
+    expect(feishu.getFeishuSessionChat('session-chat-1')).toEqual(record);
   });
 
   it('persists and reloads index records with prompt preview, source chat, session chat, and creator', async () => {
@@ -141,13 +126,6 @@ describe('Feishu session chats', () => {
     });
 
     feishu.rememberFeishuSessionChat(record);
-    feishu.updateFeishuSessionChat('session-chat-1', {
-      anchorMessageId: 'anchor-message-1',
-      lastKnownBackend: 'claude',
-      lastKnownModel: 'claude-3-7-sonnet',
-      lastKnownEffort: 'medium',
-      lastRunStatus: 'idle',
-    });
     await feishu.persistFeishuSessionChats(stateFile);
 
     const persisted = JSON.parse(
@@ -160,24 +138,12 @@ describe('Feishu session chats', () => {
       creatorOpenId: 'ou_user_1',
       createdAt: '2026-03-08T10:00:00.000Z',
       promptPreview: 'Review deployment plan',
-      anchorMessageId: 'anchor-message-1',
-      lastKnownBackend: 'claude',
-      lastKnownModel: 'claude-3-7-sonnet',
-      lastKnownEffort: 'medium',
-      lastRunStatus: 'idle',
     });
 
     feishu.resetFeishuSessionChatsForTests();
     await feishu.initializeFeishuSessionChats(stateFile);
 
-    expect(feishu.getFeishuSessionChat('session-chat-1')).toEqual({
-      ...record,
-      anchorMessageId: 'anchor-message-1',
-      lastKnownBackend: 'claude',
-      lastKnownModel: 'claude-3-7-sonnet',
-      lastKnownEffort: 'medium',
-      lastRunStatus: 'idle',
-    });
+    expect(feishu.getFeishuSessionChat('session-chat-1')).toEqual(record);
 
     await rm(tempDir, { recursive: true, force: true });
   });

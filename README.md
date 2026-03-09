@@ -58,8 +58,9 @@ packages/
 The Feishu adapter now stays inside `@agent-im-relay/feishu` and uses the official persistent connection flow directly:
 
 - Long-connection ingress through Feishu's event dispatcher and WebSocket client
-- Menu-first session controls with a session-anchor fallback card
-- Private-chat launchers that create dedicated session chats and persist anchor metadata
+- Private-chat launchers that create dedicated session chats and return native shared-chat receipts
+- Session-group reference messages plus mirrored original prompts for readable context
+- One-shot interrupt cards for each user message inside a session chat
 - Sticky per-conversation session continuity until explicit teardown
 - Inbound file download and outbound artifact upload support
 - Optional event verification and decryption via `FEISHU_VERIFICATION_TOKEN` and `FEISHU_ENCRYPT_KEY`
@@ -69,7 +70,7 @@ Typical startup flow:
 1. Enable persistent connection mode in the Feishu developer console.
 2. Configure `FEISHU_APP_ID` and `FEISHU_APP_SECRET`, plus `FEISHU_ENCRYPT_KEY` / `FEISHU_VERIFICATION_TOKEN` if your app uses them.
 3. Start `pnpm dev:feishu` on the machine that has the local agent CLI tools and workspace.
-4. Use the bot menu for session controls, with the session-anchor card as fallback when needed.
+4. Send the bot a private message to create a `Session · {promptPreview}` chat, then continue inside that session chat with the per-message interrupt card.
 
 ## Development
 

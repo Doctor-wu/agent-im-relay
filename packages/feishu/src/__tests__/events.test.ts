@@ -53,7 +53,6 @@ import {
   persistFeishuSessionChats,
   rememberFeishuSessionChat,
   resetFeishuSessionChatsForTests,
-  updateFeishuSessionChat,
 } from '../session-chat.js';
 
 const baseConfig = {
@@ -521,11 +520,6 @@ describe('Feishu long-connection events', () => {
     runtimeMocks.runFeishuConversation.mockImplementationOnce(async (options: {
       persistState?: () => Promise<void>;
     }) => {
-      updateFeishuSessionChat('session-chat-1', {
-        anchorMessageId: 'anchor-message-1',
-        lastKnownBackend: 'codex',
-        lastRunStatus: 'idle',
-      });
       await options.persistState?.();
       return { kind: 'started' };
     });

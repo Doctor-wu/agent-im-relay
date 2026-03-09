@@ -49,7 +49,7 @@ export function readCoreConfig(env: NodeJS.ProcessEnv = process.env): CoreConfig
   const relayPaths = resolveRelayPaths();
 
   return {
-    agentTimeoutMs: numberEnv(env, 'AGENT_TIMEOUT_MS', 10 * 60 * 1000),
+    agentTimeoutMs: numberEnv(env, 'AGENT_TIMEOUT_MS', 20 * 60 * 1000),
     claudeModel: optionalEnv(env, 'CLAUDE_MODEL'),
     claudeCwd: optionalEnv(env, 'CLAUDE_CWD') || process.cwd(),
     stateFile: optionalEnv(env, 'STATE_FILE') || relayPaths.stateFile,

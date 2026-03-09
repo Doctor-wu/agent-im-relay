@@ -15,17 +15,7 @@ export interface FeishuSessionChatRecord {
   creatorOpenId: string;
   createdAt: string;
   promptPreview: string;
-  anchorMessageId?: string;
-  lastKnownBackend?: string;
-  lastKnownModel?: string;
-  lastKnownEffort?: string;
-  lastRunStatus?: 'idle' | 'running';
 }
-
-export type FeishuSessionChatUpdate = Partial<Pick<
-  FeishuSessionChatRecord,
-  'anchorMessageId' | 'lastKnownBackend' | 'lastKnownModel' | 'lastKnownEffort' | 'lastRunStatus'
->>;
 
 export type FeishuChatSessionKind =
   | {
@@ -78,13 +68,6 @@ function readFeishuSessionChatRecord(value: unknown): FeishuSessionChatRecord | 
     creatorOpenId: record.creatorOpenId,
     createdAt: record.createdAt,
     promptPreview: record.promptPreview,
-    ...(typeof record.anchorMessageId === 'string' ? { anchorMessageId: record.anchorMessageId } : {}),
-    ...(typeof record.lastKnownBackend === 'string' ? { lastKnownBackend: record.lastKnownBackend } : {}),
-    ...(typeof record.lastKnownModel === 'string' ? { lastKnownModel: record.lastKnownModel } : {}),
-    ...(typeof record.lastKnownEffort === 'string' ? { lastKnownEffort: record.lastKnownEffort } : {}),
-    ...(record.lastRunStatus === 'idle' || record.lastRunStatus === 'running'
-      ? { lastRunStatus: record.lastRunStatus }
-      : {}),
   };
 }
 
@@ -141,23 +124,6 @@ export function findFeishuSessionChatBySourceMessage(input: {
   }
 
   return undefined;
-}
-
-export function updateFeishuSessionChat(
-  sessionChatId: string,
-  updates: FeishuSessionChatUpdate,
-): FeishuSessionChatRecord | undefined {
-  const current = sessionChats.get(sessionChatId);
-  if (!current) {
-    return undefined;
-  }
-
-  const next = {
-    ...current,
-    ...updates,
-  } satisfies FeishuSessionChatRecord;
-  sessionChats.set(sessionChatId, next);
-  return next;
 }
 
 export async function initializeFeishuSessionChats(stateFile: string): Promise<void> {

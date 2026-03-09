@@ -106,12 +106,10 @@ export {
   rememberFeishuSessionChat,
   resetFeishuSessionChatsForTests,
   resolveFeishuChatSessionKind,
-  updateFeishuSessionChat,
 } from './session-chat.js';
 export type {
   FeishuChatSessionKind,
   FeishuSessionChatRecord,
-  FeishuSessionChatUpdate,
 } from './session-chat.js';
 
 export type FeishuRuntimeConnection = {
