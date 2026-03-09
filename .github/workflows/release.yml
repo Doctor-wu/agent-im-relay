@@ -6,7 +6,7 @@ on:
     tags: ['v*.*.*']
 
 permissions:
-  contents: write
+  contents: read
   id-token: write
 
 jobs:
@@ -22,7 +22,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter ./apps/agent-inbox build
-      - run: pnpm --filter ./apps/agent-inbox test -- --run src/__tests__/packaging.test.ts src/__tests__/cli.test.ts src/__tests__/setup.test.ts
+      - run: pnpm --filter ./apps/agent-inbox test src/__tests__/packaging.test.ts src/__tests__/cli.test.ts src/__tests__/setup.test.ts
       - name: Pack npm tarball
         run: |
           mkdir -p artifacts

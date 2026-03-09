@@ -26,6 +26,10 @@ describe('npm packaging contract', () => {
       files?: string[];
       dependencies?: Record<string, string>;
       engines?: Record<string, string>;
+      publishConfig?: {
+        access?: string;
+        provenance?: boolean;
+      };
     }>(join(appDir, 'package.json'));
 
     expect(rootPackage.name).not.toBe(appPackage.name);
@@ -34,6 +38,10 @@ describe('npm packaging contract', () => {
     expect(appPackage.bin).toEqual({ 'agent-inbox': 'dist/index.mjs' });
     expect(appPackage.engines?.['node']).toBe('>=20');
     expect(appPackage.files).toContain('dist');
+    expect(appPackage.publishConfig).toMatchObject({
+      access: 'public',
+      provenance: true,
+    });
     expect(appPackage.dependencies).not.toHaveProperty('@agent-im-relay/core');
     expect(appPackage.dependencies).not.toHaveProperty('@agent-im-relay/discord');
     expect(appPackage.dependencies).not.toHaveProperty('@agent-im-relay/feishu');
