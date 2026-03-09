@@ -1,16 +1,26 @@
-import { createServer, type Server } from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { createFeishuClient } from './api.js';
 import {
+  EventDispatcher,
+  LoggerLevel,
+  WSClient,
+} from '@larksuiteoapi/node-sdk';
+import {
+  applyFeishuConfigEnvironment,
   readFeishuConfig,
   type FeishuConfig,
 } from './config.js';
-import { createFeishuCallbackHandler } from './server.js';
+import { createFeishuClient } from './api.js';
+import {
+  buildFeishuLongConnectionEventHandlers,
+  createFeishuEventRouter,
+} from './events.js';
 
 export { readFeishuConfig } from './config.js';
 export type { FeishuConfig } from './config.js';
+export { resolveFeishuSessionChatStateFile } from './config.js';
 export { createFeishuClient } from './api.js';
 export {
+  buildSessionAnchorCard,
   buildSessionControlCard,
   createBackendConfirmationCard,
   createBackendSelectionCard,
@@ -19,10 +29,12 @@ export type {
   BackendConfirmationCard,
   BackendSelectionCard,
   FeishuCardContext,
+  SessionAnchorCard,
 } from './cards.js';
 export {
   buildFeishuBackendConfirmationCardPayload,
   buildFeishuBackendSelectionCardPayload,
+  buildFeishuSessionAnchorCardPayload,
   buildFeishuSessionControlCardPayload,
 } from './cards.js';
 export {
@@ -35,12 +47,28 @@ export {
 } from './conversation.js';
 export type { FeishuRawEvent, NormalizedFeishuEvent } from './conversation.js';
 export {
+  buildFeishuLongConnectionEventHandlers,
+  createFeishuEventRouter,
+  FEISHU_CARD_ACTION_EVENT_TYPE,
+  FEISHU_MENU_ACTION_EVENT_TYPE,
+  FEISHU_MESSAGE_EVENT_TYPE,
+  normalizeFeishuCardActionTriggerEvent,
+  normalizeFeishuMenuActionTriggerEvent,
+  normalizeFeishuMessageReceiveEvent,
+} from './events.js';
+export type {
+  FeishuCardActionTriggerEvent,
+  FeishuMenuActionTriggerEvent,
+  FeishuMessageReceiveEvent,
+} from './events.js';
+export {
   beginFeishuConversationRun,
   buildFeishuCardContext,
   buildSessionControlCard as buildSessionControlCardFromRuntime,
   confirmBackendChange,
   dispatchFeishuCardAction,
   handleFeishuControlAction,
+  isFeishuDoneCommand,
   rememberFeishuConversationMode,
   queuePendingFeishuAttachments,
   requestBackendChange,
@@ -50,19 +78,29 @@ export {
 export { ingestFeishuFiles, uploadFeishuArtifacts } from './files.js';
 export type { FeishuFileLike } from './files.js';
 export {
-  createFeishuSignature,
-  handleFeishuCallback,
-  parseFeishuCallbackPayload,
-  unwrapFeishuCallbackBody,
-  validateFeishuSignature,
-} from './security.js';
-export { createFeishuCallbackHandler } from './server.js';
-export type { FeishuCallbackResponse } from './server.js';
+  buildFeishuSessionChatRecord,
+  findFeishuSessionChatBySourceMessage,
+  getFeishuSessionChat,
+  initializeFeishuSessionChats,
+  persistFeishuSessionChats,
+  rememberFeishuSessionChat,
+  resetFeishuSessionChatsForTests,
+  resolveFeishuChatSessionKind,
+  updateFeishuSessionChat,
+} from './session-chat.js';
+export type {
+  FeishuChatSessionKind,
+  FeishuSessionChatRecord,
+  FeishuSessionChatUpdate,
+} from './session-chat.js';
 
-export interface FeishuServer {
+export type FeishuRuntimeConnection = {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+};
+
+export interface FeishuRuntime {
   readonly started: boolean;
-  readonly port: number | null;
-  readonly baseUrl: string | null;
   start(): Promise<void>;
   stop(): Promise<void>;
 }
@@ -75,102 +113,78 @@ function isMainModule(): boolean {
   return fileURLToPath(import.meta.url) === process.argv[1];
 }
 
-export function createFeishuServer(config?: FeishuConfig): FeishuServer {
-  let server: Server | null = null;
+type FeishuRuntimeDependencies = {
+  createConnection?: (config: FeishuConfig) => FeishuRuntimeConnection;
+};
+
+function createDefaultConnection(config: FeishuConfig): FeishuRuntimeConnection {
+  const router = createFeishuEventRouter(config, {
+    client: createFeishuClient(config),
+  });
+  const eventDispatcher = new EventDispatcher({
+    verificationToken: config.feishuVerificationToken,
+    encryptKey: config.feishuEncryptKey,
+    loggerLevel: LoggerLevel.info,
+  }).register(buildFeishuLongConnectionEventHandlers(router));
+  const wsClient = new WSClient({
+    appId: config.feishuAppId,
+    appSecret: config.feishuAppSecret,
+    loggerLevel: LoggerLevel.info,
+  });
+
+  return {
+    async start(): Promise<void> {
+      await wsClient.start({
+        eventDispatcher,
+      });
+    },
+    async stop(): Promise<void> {
+      wsClient.close({
+        force: true,
+      });
+    },
+  };
+}
+
+export function createFeishuRuntime(
+  config: FeishuConfig = readFeishuConfig(),
+  dependencies: FeishuRuntimeDependencies = {},
+): FeishuRuntime {
+  applyFeishuConfigEnvironment(config);
+  const createConnection = dependencies.createConnection ?? createDefaultConnection;
+  let connection: FeishuRuntimeConnection | null = null;
   let started = false;
-  let port: number | null = null;
 
   return {
     get started(): boolean {
       return started;
-    },
-    get port(): number | null {
-      return port;
-    },
-    get baseUrl(): string | null {
-      return port === null ? null : `http://127.0.0.1:${port}`;
     },
     async start(): Promise<void> {
       if (started) {
         return;
       }
 
-      const resolvedConfig = config ?? readFeishuConfig();
-      const handler = createFeishuCallbackHandler(resolvedConfig, {
-        client: createFeishuClient(resolvedConfig),
-      });
-      server = createServer(async (request, response) => {
-        const chunks: Buffer[] = [];
-        for await (const chunk of request) {
-          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-        }
-
-        const handled = await handler({
-          method: request.method ?? 'GET',
-          url: request.url ?? '/',
-          headers: request.headers as Record<string, string | undefined>,
-          body: Buffer.concat(chunks).toString('utf-8'),
-        });
-
-        response.writeHead(handled.status, handled.headers);
-        response.end(handled.body);
-      });
-
-      await new Promise<void>((resolve, reject) => {
-        const currentServer = server!;
-        const handleError = (error: Error) => {
-          currentServer.off('listening', handleListening);
-          reject(error);
-        };
-        const handleListening = () => {
-          currentServer.off('error', handleError);
-          const address = currentServer.address();
-          if (!address || typeof address === 'string') {
-            reject(new Error('Feishu server did not expose a TCP port.'));
-            return;
-          }
-
-          port = address.port;
-          started = true;
-          console.log(`[feishu] listening on ${address.address}:${address.port}`);
-          resolve();
-        };
-
-        currentServer.once('error', handleError);
-        currentServer.once('listening', handleListening);
-        currentServer.listen(resolvedConfig.feishuPort, '0.0.0.0');
-      });
+      connection = createConnection(config);
+      await connection.start();
+      started = true;
     },
     async stop(): Promise<void> {
-      if (!server) {
+      if (!connection) {
         return;
       }
 
-      const currentServer = server;
-      server = null;
-      await new Promise<void>((resolve, reject) => {
-        currentServer.close((error) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-          resolve();
-        });
-      });
+      const currentConnection = connection;
+      connection = null;
+      await currentConnection.stop();
       started = false;
-      port = null;
     },
   };
 }
 
-export async function startFeishuServer(): Promise<FeishuServer> {
-  const server = createFeishuServer();
-  await server.start();
-  return server;
-}
-
-export async function startFeishuRuntime(): Promise<FeishuServer> {
-  return startFeishuServer();
+export async function startFeishuRuntime(): Promise<FeishuRuntime> {
+  const runtime = createFeishuRuntime();
+  await runtime.start();
+  return runtime;
 }
 
 if (isMainModule()) {

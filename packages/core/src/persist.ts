@@ -1,4 +1,5 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { config } from './config.js';
 import type { BackendName } from './agent/backend.js';
@@ -161,6 +162,18 @@ export async function loadState(
     savedCwdList.push(...cwds.filter((v): v is string => typeof v === 'string'));
     console.log(`[state] Loaded ${sessions.size} session(s) from ${config.stateFile}`);
   } catch (err) {
+    if (err instanceof SyntaxError) {
+      const backupPath = `${config.stateFile}.broken-${Date.now()}`;
+      try {
+        await mkdir(dirname(config.stateFile), { recursive: true });
+        await rename(config.stateFile, backupPath);
+        console.warn(`[state] Moved malformed state file to ${backupPath}`);
+      } catch (renameError) {
+        console.warn('[state] Could not quarantine malformed state file:', renameError);
+      }
+      return;
+    }
+
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
       console.warn('[state] Could not load persisted state:', err);
     }
@@ -189,7 +202,9 @@ export async function saveState(
   };
   try {
     await mkdir(dirname(config.stateFile), { recursive: true });
-    await writeFile(config.stateFile, JSON.stringify(data, null, 2), 'utf-8');
+    const tempFile = `${config.stateFile}.${randomUUID()}.tmp`;
+    await writeFile(tempFile, JSON.stringify(data, null, 2), 'utf-8');
+    await rename(tempFile, config.stateFile);
   } catch (err) {
     console.error('[state] Failed to save state:', err);
   }

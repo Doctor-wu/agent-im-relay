@@ -1,3 +1,5 @@
+import { mkdtemp } from 'node:fs/promises';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 afterEach(() => {
@@ -14,5 +16,55 @@ describe('core config', () => {
 
     vi.stubEnv('STATE_FILE', '/tmp/agent-inbox-state-b.json');
     expect(config.stateFile).toBe('/tmp/agent-inbox-state-b.json');
+  });
+
+  it('defaults to a HOME-scoped relay directory when HOME is writable', async () => {
+    const homeDir = await mkdtemp('/tmp/agent-inbox-home-');
+    vi.stubEnv('HOME', homeDir);
+    vi.stubEnv('INIT_CWD', '');
+    const env = {
+      ...process.env,
+    };
+    delete env.STATE_FILE;
+    delete env.ARTIFACTS_BASE_DIR;
+
+    const { readCoreConfig } = await import('../config.js');
+    const config = readCoreConfig(env);
+
+    expect(config.stateFile).toBe(join(homeDir, '.agent-inbox', 'state', 'sessions.json'));
+    expect(config.artifactsBaseDir).toBe(join(homeDir, '.agent-inbox', 'artifacts'));
+  });
+
+  it('falls back to a writable cwd-scoped relay directory when HOME is unavailable', async () => {
+    vi.stubEnv('HOME', '/definitely/missing-home');
+    vi.stubEnv('INIT_CWD', '');
+    const env = {
+      ...process.env,
+    };
+    delete env.STATE_FILE;
+    delete env.ARTIFACTS_BASE_DIR;
+
+    const { readCoreConfig } = await import('../config.js');
+    const config = readCoreConfig(env);
+
+    expect(config.stateFile).toBe(join(process.cwd(), '.agent-inbox', 'state', 'sessions.json'));
+    expect(config.artifactsBaseDir).toBe(join(process.cwd(), '.agent-inbox', 'artifacts'));
+  });
+
+  it('prefers INIT_CWD over process.cwd when HOME is unavailable', async () => {
+    const initCwd = await mkdtemp('/tmp/agent-inbox-init-cwd-');
+    vi.stubEnv('HOME', '/definitely/missing-home');
+    vi.stubEnv('INIT_CWD', initCwd);
+    const env = {
+      ...process.env,
+    };
+    delete env.STATE_FILE;
+    delete env.ARTIFACTS_BASE_DIR;
+
+    const { readCoreConfig } = await import('../config.js');
+    const config = readCoreConfig(env);
+
+    expect(config.stateFile).toBe(join(initCwd, '.agent-inbox', 'state', 'sessions.json'));
+    expect(config.artifactsBaseDir).toBe(join(initCwd, '.agent-inbox', 'artifacts'));
   });
 });

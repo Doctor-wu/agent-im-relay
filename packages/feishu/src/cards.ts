@@ -15,8 +15,22 @@ export interface BackendConfirmationCard {
   requestedBackend: BackendName;
 }
 
+export interface SessionAnchorAction {
+  type: 'control-panel' | 'interrupt';
+}
+
+export interface SessionAnchorCard {
+  type: 'session-anchor';
+  conversationId: string;
+  actions: SessionAnchorAction[];
+  backend?: string;
+  model?: string;
+  effort?: string;
+  status?: 'idle' | 'running';
+}
+
 export interface SessionControlAction {
-  type: 'interrupt' | 'done' | 'backend' | 'model' | 'effort';
+  type: 'done' | 'backend' | 'model' | 'effort';
 }
 
 export interface SessionControlCard {
@@ -31,6 +45,31 @@ export interface FeishuCardContext {
   replyToMessageId?: string;
   prompt?: string;
   mode?: AgentMode;
+}
+
+export const FEISHU_NON_SESSION_CONTROL_TEXT = 'This chat is not an agent session. Create or open a session chat first.';
+
+export function buildSessionAnchorCard(
+  conversationId: string,
+  summary: {
+    backend?: string;
+    model?: string;
+    effort?: string;
+    status?: 'idle' | 'running';
+  } = {},
+): SessionAnchorCard {
+  return {
+    type: 'session-anchor',
+    conversationId,
+    actions: [
+      { type: 'control-panel' },
+      { type: 'interrupt' },
+    ],
+    backend: summary.backend,
+    model: summary.model,
+    effort: summary.effort,
+    status: summary.status,
+  };
 }
 
 export function createBackendSelectionCard(conversationId: string, prompt: string): BackendSelectionCard {
@@ -60,7 +99,6 @@ export function buildSessionControlCard(conversationId: string): SessionControlC
     type: 'session-controls',
     conversationId,
     actions: [
-      { type: 'interrupt' },
       { type: 'done' },
       { type: 'backend' },
       { type: 'model' },
@@ -88,6 +126,21 @@ function plainText(content: string): Record<string, unknown> {
   };
 }
 
+function button(
+  text: string,
+  context: FeishuCardContext,
+  action: string,
+  extra: Record<string, unknown> = {},
+  type?: 'primary' | 'default',
+): Record<string, unknown> {
+  return {
+    tag: 'button',
+    text: plainText(text),
+    ...(type ? { type } : {}),
+    value: actionValue(context, action, extra),
+  };
+}
+
 export function buildFeishuBackendSelectionCardPayload(
   card: BackendSelectionCard,
   context: FeishuCardContext,
@@ -107,15 +160,13 @@ export function buildFeishuBackendSelectionCardPayload(
           tag: 'markdown',
           content: card.prompt.slice(0, 500),
         },
-        {
-          tag: 'action',
-          actions: card.backends.map((backend) => ({
-            tag: 'button',
-            text: plainText(backend),
-            type: backend === 'claude' ? 'primary' : 'default',
-            value: actionValue(context, 'backend', { value: backend }),
-          })),
-        },
+        ...card.backends.map((backend) => button(
+          backend,
+          context,
+          'backend',
+          { value: backend },
+          backend === 'claude' ? 'primary' : 'default',
+        )),
       ],
     },
   };
@@ -136,22 +187,8 @@ export function buildFeishuBackendConfirmationCardPayload(
           tag: 'markdown',
           content: `Switch backend from \`${card.currentBackend}\` to \`${card.requestedBackend}\`? This clears the current continuation.`,
         },
-        {
-          tag: 'action',
-          actions: [
-            {
-              tag: 'button',
-              text: plainText('Confirm'),
-              type: 'primary',
-              value: actionValue(context, 'confirm-backend', { value: card.requestedBackend }),
-            },
-            {
-              tag: 'button',
-              text: plainText('Cancel'),
-              value: actionValue(context, 'cancel-backend'),
-            },
-          ],
-        },
+        button('Confirm', context, 'confirm-backend', { value: card.requestedBackend }, 'primary'),
+        button('Cancel', context, 'cancel-backend'),
       ],
     },
   };
@@ -172,66 +209,61 @@ export function buildFeishuSessionControlCardPayload(
           tag: 'markdown',
           content: `Conversation \`${card.conversationId}\``,
         },
+        button('Done', context, 'done'),
+        button('Claude', context, 'backend', { value: 'claude' }),
+        button('Codex', context, 'backend', { value: 'codex' }),
+        button('Claude 3.7', context, 'model', { value: 'claude-3-7-sonnet' }),
+        button('GPT-5 Codex', context, 'model', { value: 'gpt-5-codex' }),
+        button('Low', context, 'effort', { value: 'low' }),
+        button('Medium', context, 'effort', { value: 'medium' }),
+        button('High', context, 'effort', { value: 'high' }),
+      ],
+    },
+  };
+}
+
+export function buildFeishuSessionControlPanelPayload(
+  conversationId: string,
+  context: FeishuCardContext,
+): Record<string, unknown> {
+  return buildFeishuSessionControlCardPayload(
+    buildSessionControlCard(conversationId),
+    context,
+  );
+}
+
+export function buildFeishuSessionAnchorCardPayload(
+  card: SessionAnchorCard,
+  context: FeishuCardContext,
+): Record<string, unknown> {
+  const summary = [
+    `Status: ${card.status ?? 'idle'}`,
+    card.backend ? `Backend: ${card.backend}` : undefined,
+    card.model ? `Model: ${card.model}` : undefined,
+    card.effort ? `Effort: ${card.effort}` : undefined,
+  ].filter(Boolean).join('\n');
+
+  return {
+    schema: '2.0',
+    header: {
+      title: plainText('Session'),
+    },
+    body: {
+      elements: [
         {
-          tag: 'action',
-          actions: [
-            {
-              tag: 'button',
-              text: plainText('Interrupt'),
-              value: actionValue(context, 'interrupt'),
-            },
-            {
-              tag: 'button',
-              text: plainText('Done'),
-              value: actionValue(context, 'done'),
-            },
-            {
-              tag: 'button',
-              text: plainText('Claude'),
-              value: actionValue(context, 'backend', { value: 'claude' }),
-            },
-            {
-              tag: 'button',
-              text: plainText('Codex'),
-              value: actionValue(context, 'backend', { value: 'codex' }),
-            },
-          ],
+          tag: 'markdown',
+          content: `Conversation \`${card.conversationId}\``,
         },
         {
-          tag: 'action',
-          actions: [
-            {
-              tag: 'button',
-              text: plainText('Claude 3.7'),
-              value: actionValue(context, 'model', { value: 'claude-3-7-sonnet' }),
-            },
-            {
-              tag: 'button',
-              text: plainText('GPT-5 Codex'),
-              value: actionValue(context, 'model', { value: 'gpt-5-codex' }),
-            },
-          ],
+          tag: 'markdown',
+          content: 'Use the bot menu for session controls. This card is a fallback if the menu is unavailable.',
         },
         {
-          tag: 'action',
-          actions: [
-            {
-              tag: 'button',
-              text: plainText('Low'),
-              value: actionValue(context, 'effort', { value: 'low' }),
-            },
-            {
-              tag: 'button',
-              text: plainText('Medium'),
-              value: actionValue(context, 'effort', { value: 'medium' }),
-            },
-            {
-              tag: 'button',
-              text: plainText('High'),
-              value: actionValue(context, 'effort', { value: 'high' }),
-            },
-          ],
+          tag: 'markdown',
+          content: summary,
         },
+        button('Fallback Controls', context, 'control-panel'),
+        button('Interrupt', context, 'interrupt'),
       ],
     },
   };

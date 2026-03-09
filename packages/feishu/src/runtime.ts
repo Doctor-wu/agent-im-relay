@@ -3,7 +3,9 @@ import {
   applySessionControlCommand,
   buildAttachmentPromptContext,
   conversationBackend,
+  conversationEffort,
   conversationMode,
+  conversationModels,
   evaluateConversationRunRequest,
   runPlatformConversation,
   type AgentStreamEvent,
@@ -16,16 +18,22 @@ import {
 import {
   buildFeishuBackendConfirmationCardPayload,
   buildFeishuBackendSelectionCardPayload,
-  buildFeishuSessionControlCardPayload,
+  buildFeishuSessionControlPanelPayload,
+  buildFeishuSessionAnchorCardPayload,
+  buildSessionAnchorCard,
   buildSessionControlCard,
   createBackendConfirmationCard,
   createBackendSelectionCard,
+  FEISHU_NON_SESSION_CONTROL_TEXT,
   type BackendConfirmationCard,
   type BackendSelectionCard,
-  type FeishuCardContext,
-  type SessionControlCard,
+  FeishuCardContext,
 } from './cards.js';
 import { parseAskCommand } from './commands/ask.js';
+import {
+  getFeishuSessionChat,
+  updateFeishuSessionChat,
+} from './session-chat.js';
 
 export type FeishuTarget = {
   chatId: string;
@@ -44,12 +52,73 @@ export type PendingFeishuRun = {
 
 export type FeishuRuntimeTransport = {
   sendText(target: FeishuTarget, text: string): Promise<void>;
-  sendCard(target: FeishuTarget, card: Record<string, unknown>): Promise<void>;
+  sendCard(target: FeishuTarget, card: Record<string, unknown>): Promise<string | undefined>;
+  updateCard(target: FeishuTarget, messageId: string, card: Record<string, unknown>): Promise<void>;
   uploadFile(target: FeishuTarget, filePath: string): Promise<void>;
 };
 
 const pendingAttachments = new Map<string, RemoteAttachmentLike[]>();
 const pendingRuns = new Map<string, PendingFeishuRun>();
+
+function buildSessionAnchorSummary(conversationId: string): {
+  backend?: string;
+  model?: string;
+  effort?: string;
+} {
+  return {
+    backend: conversationBackend.get(conversationId),
+    model: conversationModels.get(conversationId),
+    effort: conversationEffort.get(conversationId),
+  };
+}
+
+async function refreshSessionAnchor(options: {
+  conversationId: string;
+  target: FeishuTarget;
+  transport: FeishuRuntimeTransport;
+  persistState?: () => Promise<void>;
+  status: 'idle' | 'running';
+}): Promise<void> {
+  const sessionChat = getFeishuSessionChat(options.conversationId);
+  if (!sessionChat) {
+    return;
+  }
+
+  const summary = {
+    ...buildSessionAnchorSummary(options.conversationId),
+    status: options.status,
+  } as const;
+  const payload = buildFeishuSessionAnchorCardPayload(
+    buildSessionAnchorCard(options.conversationId, summary),
+    buildFeishuCardContext(options.conversationId, options.target),
+  );
+
+  const persistSummary = async (anchorMessageId?: string): Promise<void> => {
+    updateFeishuSessionChat(options.conversationId, {
+      lastKnownBackend: summary.backend,
+      lastKnownModel: summary.model,
+      lastKnownEffort: summary.effort,
+      ...(anchorMessageId ? { anchorMessageId } : {}),
+      lastRunStatus: options.status,
+    });
+    await options.persistState?.();
+  };
+
+  if (sessionChat.anchorMessageId) {
+    try {
+      await options.transport.updateCard(options.target, sessionChat.anchorMessageId, payload);
+      await persistSummary();
+      return;
+    } catch {
+      const anchorMessageId = await options.transport.sendCard(options.target, payload);
+      await persistSummary(anchorMessageId);
+      return;
+    }
+  }
+
+  const anchorMessageId = await options.transport.sendCard(options.target, payload);
+  await persistSummary(anchorMessageId);
+}
 
 export type FeishuRunGateResult =
   | {
@@ -159,6 +228,36 @@ export function resolveFeishuMessageRequest(content: string): {
   };
 }
 
+export function isFeishuDoneCommand(content: string): boolean {
+  return content.trim().toLowerCase() === '/done';
+}
+
+export async function openFeishuSessionControlPanel(options: {
+  conversationId: string;
+  target: FeishuTarget;
+  transport: FeishuRuntimeTransport;
+  requireKnownSessionChat?: boolean;
+}): Promise<{ kind: 'opened' | 'not-session-chat' }> {
+  const sessionChat = options.requireKnownSessionChat
+    ? getFeishuSessionChat(options.target.chatId)
+    : undefined;
+
+  if (options.requireKnownSessionChat && !sessionChat) {
+    await options.transport.sendText(options.target, FEISHU_NON_SESSION_CONTROL_TEXT);
+    return { kind: 'not-session-chat' };
+  }
+
+  const conversationId = sessionChat?.sessionChatId ?? options.conversationId;
+  await options.transport.sendCard(
+    options.target,
+    buildFeishuSessionControlPanelPayload(
+      conversationId,
+      buildFeishuCardContext(conversationId, options.target),
+    ),
+  );
+  return { kind: 'opened' };
+}
+
 export function rememberFeishuConversationMode(
   conversationId: string,
   mode: 'code' | 'ask',
@@ -184,6 +283,10 @@ function takePendingFeishuAttachments(conversationId: string): RemoteAttachmentL
   return attachments;
 }
 
+export function drainPendingFeishuAttachments(conversationId: string): RemoteAttachmentLike[] {
+  return takePendingFeishuAttachments(conversationId);
+}
+
 function storePendingFeishuRun(run: PendingFeishuRun): void {
   pendingRuns.set(run.conversationId, run);
 }
@@ -199,6 +302,14 @@ function formatEnvironmentSummary(event: Extract<AgentStreamEvent, { type: 'envi
   const backend = event.environment.backend;
   const mode = event.environment.mode;
   return `Environment: backend=${backend}, mode=${mode}, cwd=${cwd}`;
+}
+
+async function runFeishuBestEffort(label: string, fn: () => Promise<void>): Promise<void> {
+  try {
+    await fn();
+  } catch (error) {
+    console.warn(`[feishu] failed to ${label}:`, error);
+  }
 }
 
 async function streamAgentToFeishu(
@@ -250,6 +361,7 @@ export async function runFeishuConversation(options: {
   sourceMessageId?: string;
   attachments?: RemoteAttachmentLike[];
   attachmentFetchImpl?: typeof fetch;
+  persistState?: () => Promise<void>;
 }): Promise<{ kind: 'blocked' | 'started' | 'busy' }> {
   const gate = beginFeishuConversationRun({
     conversationId: options.conversationId,
@@ -286,17 +398,33 @@ export async function runFeishuConversation(options: {
 
   pendingRuns.delete(options.conversationId);
   rememberFeishuConversationMode(options.conversationId, options.mode);
-  await options.transport.sendText(
-    options.target,
-    options.mode === 'ask' ? 'Thinking…' : 'Starting run…',
-  );
-  await options.transport.sendCard(
-    options.target,
-    buildFeishuSessionControlCardPayload(
-      buildSessionControlCard(options.conversationId),
-      buildFeishuCardContext(options.conversationId, options.target),
-    ),
-  );
+  await runFeishuBestEffort('send startup text', async () => {
+    await options.transport.sendText(
+      options.target,
+      options.mode === 'ask' ? 'Thinking…' : 'Starting run…',
+    );
+  });
+  await runFeishuBestEffort('send session control card', async () => {
+    const sessionChat = getFeishuSessionChat(options.conversationId);
+    if (sessionChat) {
+      await refreshSessionAnchor({
+        conversationId: options.conversationId,
+        target: options.target,
+        transport: options.transport,
+        persistState: options.persistState,
+        status: 'running',
+      });
+      return;
+    }
+
+    await options.transport.sendCard(
+      options.target,
+      buildFeishuSessionControlPanelPayload(
+        options.conversationId,
+        buildFeishuCardContext(options.conversationId, options.target),
+      ),
+    );
+  });
 
   const started = await runPlatformConversation({
     conversationId: options.conversationId,
@@ -321,9 +449,21 @@ export async function runFeishuConversation(options: {
     },
     onPhaseChange: async (phase) => {
       if (phase === 'tools') {
-        await options.transport.sendText(options.target, 'Running tools…');
+        await runFeishuBestEffort('send tools status', async () => {
+          await options.transport.sendText(options.target, 'Running tools…');
+        });
       }
     },
+  });
+
+  await runFeishuBestEffort('refresh session control anchor', async () => {
+    await refreshSessionAnchor({
+      conversationId: options.conversationId,
+      target: options.target,
+      transport: options.transport,
+      persistState: options.persistState,
+      status: 'idle',
+    });
   });
 
   if (started) {
@@ -339,6 +479,7 @@ export async function resumePendingFeishuRun(options: {
   transport: FeishuRuntimeTransport;
   defaultCwd: string;
   fallback?: Omit<PendingFeishuRun, 'conversationId'>;
+  persistState?: () => Promise<void>;
 }): Promise<{ kind: 'none' | 'blocked' | 'started' | 'busy' }> {
   const pending = takePendingFeishuRun(options.conversationId);
   const run = pending ?? (options.fallback
@@ -362,6 +503,7 @@ export async function resumePendingFeishuRun(options: {
     sourceMessageId: run.sourceMessageId,
     attachments: run.attachments,
     attachmentFetchImpl: run.attachmentFetchImpl,
+    persistState: options.persistState,
   });
 }
 
@@ -385,6 +527,24 @@ export async function handleFeishuControlAction(options: {
 
   if (result.persist) {
     await options.persist?.();
+  }
+
+  const sessionChat = getFeishuSessionChat(result.conversationId);
+  if (sessionChat) {
+    updateFeishuSessionChat(result.conversationId, {
+      ...buildSessionAnchorSummary(result.conversationId),
+      lastRunStatus: result.kind === 'interrupt' ? 'idle' : sessionChat.lastRunStatus ?? 'idle',
+    });
+    await options.persist?.();
+    await runFeishuBestEffort('refresh session control anchor', async () => {
+      await refreshSessionAnchor({
+        conversationId: result.conversationId,
+        target: options.target,
+        transport: options.transport,
+        persistState: options.persist,
+        status: 'idle',
+      });
+    });
   }
 
   const text = (() => {

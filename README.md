@@ -1,6 +1,13 @@
 # Agent Inbox
 
-An inbox-first IM launcher for local Claude and Codex workflows. The repo still keeps a pnpm workspace for development, but the user-facing entry is now a single CLI app package that owns startup flow and runtime config.
+[![GitHub release](https://img.shields.io/github/v/release/Doctor-wu/agent-im-relay)](https://github.com/Doctor-wu/agent-im-relay/releases)
+![Node >=20](https://img.shields.io/badge/node-%3E%3D20-339933)
+![pnpm workspace](https://img.shields.io/badge/pnpm-workspace-F69220)
+![TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6)
+![Discord](https://img.shields.io/badge/platform-Discord-5865F2)
+![Feishu long connection](https://img.shields.io/badge/platform-Feishu-long_connection-00B96B)
+
+Agent Inbox is an inbox-first IM launcher for local Claude and Codex workflows. The repo keeps a pnpm workspace for development, while `apps/agent-inbox` is the user-facing launcher and the packages under `packages/` hold the shared runtime plus IM adapters.
 
 ## What Changed
 
@@ -8,12 +15,12 @@ An inbox-first IM launcher for local Claude and Codex workflows. The repo still 
 - Runtime config and data default to `~/.agent-inbox/`
 - Config file is `~/.agent-inbox/config.jsonl`
 - Only configured IM integrations appear in the launcher
-- Feishu is now single-process only
-- Runtime no longer depends on repo-root `.env` as the primary user contract
+- Feishu now runs as a single-process long-connection adapter
+- Repo-root `.env` is development-only convenience, not the primary user contract
+
+If `HOME` is unavailable or not writable, runtime state falls back to a writable `INIT_CWD`, current working directory, or temp directory before using `.agent-inbox/`.
 
 ## Runtime Layout
-
-The launcher owns these paths:
 
 ```text
 ~/.agent-inbox/
@@ -43,8 +50,26 @@ apps/
 packages/
   core/      @agent-im-relay/core     — Shared runtime, state, orchestration
   discord/   @agent-im-relay/discord  — Discord adapter runtime
-  feishu/    @agent-im-relay/feishu   — Feishu single-process adapter runtime
+  feishu/    @agent-im-relay/feishu   — Feishu adapter runtime
 ```
+
+## Feishu Runtime
+
+The Feishu adapter now stays inside `@agent-im-relay/feishu` and uses the official persistent connection flow directly:
+
+- Long-connection ingress through Feishu's event dispatcher and WebSocket client
+- Menu-first session controls with a session-anchor fallback card
+- Private-chat launchers that create dedicated session chats and persist anchor metadata
+- Sticky per-conversation session continuity until explicit teardown
+- Inbound file download and outbound artifact upload support
+- Optional event verification and decryption via `FEISHU_VERIFICATION_TOKEN` and `FEISHU_ENCRYPT_KEY`
+
+Typical startup flow:
+
+1. Enable persistent connection mode in the Feishu developer console.
+2. Configure `FEISHU_APP_ID` and `FEISHU_APP_SECRET`, plus `FEISHU_ENCRYPT_KEY` / `FEISHU_VERIFICATION_TOKEN` if your app uses them.
+3. Start `pnpm dev:feishu` on the machine that has the local agent CLI tools and workspace.
+4. Use the bot menu for session controls, with the session-anchor card as fallback when needed.
 
 ## Development
 
