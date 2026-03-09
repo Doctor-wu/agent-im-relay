@@ -5,6 +5,21 @@ import {
   resetFeishuSessionChatsForTests,
 } from '../index.js';
 
+function extractPostParagraphTexts(content: string): string[] {
+  const parsed = JSON.parse(content) as {
+    zh_cn?: {
+      content?: Array<Array<{ tag?: string; text?: string }>>;
+    };
+  };
+
+  return (parsed.zh_cn?.content ?? [])
+    .map(paragraph => paragraph
+      .filter(node => node.tag === 'text' && typeof node.text === 'string')
+      .map(node => node.text ?? '')
+      .join(''))
+    .filter(Boolean);
+}
+
 afterEach(() => {
   resetFeishuSessionChatsForTests();
 });
@@ -49,19 +64,35 @@ describe('Feishu launcher', () => {
     expect(client.sendMessage).toHaveBeenNthCalledWith(1, {
       receiveId: 'session-chat-1',
       receiveIdType: 'chat_id',
-      msgType: 'text',
+      msgType: 'post',
       content: JSON.stringify({
-        text: 'Common commands:\n/interrupt - stop the current run',
+        zh_cn: {
+          title: '',
+          content: [
+            [{ tag: 'text', text: '【Common commands】' }],
+            [{ tag: 'text', text: '/interrupt - stop the current run' }],
+          ],
+        },
       }),
     });
     expect(client.sendMessage).toHaveBeenNthCalledWith(2, {
       receiveId: 'session-chat-1',
       receiveIdType: 'chat_id',
-      msgType: 'text',
+      msgType: 'post',
       content: JSON.stringify({
-        text: '  重构\n Feishu 面板交互  ',
+        zh_cn: {
+          title: '',
+          content: [[{ tag: 'text', text: '重构 Feishu 面板交互' }]],
+        },
       }),
     });
+    expect(extractPostParagraphTexts(client.sendMessage.mock.calls[0]![0].content)).toEqual([
+      '【Common commands】',
+      '/interrupt - stop the current run',
+    ]);
+    expect(extractPostParagraphTexts(client.sendMessage.mock.calls[1]![0].content)).toEqual([
+      '重构 Feishu 面板交互',
+    ]);
     expect(getFeishuSessionChat('session-chat-1')).toEqual(expect.objectContaining({
       sourceP2pChatId: 'p2p-chat-1',
       sourceMessageId: 'message-1',

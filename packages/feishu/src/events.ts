@@ -10,6 +10,7 @@ import type { FeishuConfig } from './config.js';
 import {
   buildFeishuBackendConfirmationCardPayload,
 } from './cards.js';
+import { formatFeishuTextMessages } from './formatting.js';
 import {
   extractFeishuAttachmentInfos,
   extractFeishuMessageText,
@@ -313,23 +314,27 @@ function createTransport(
   readFileImpl: typeof readFile,
 ): FeishuRuntimeTransport {
   async function sendText(target: FeishuTarget, content: string): Promise<void> {
-    await withReplyFallback(
-      target,
-      async () => {
-        await client.replyMessage({
-          messageId: target.replyToMessageId!,
-          msgType: 'text',
-          content: JSON.stringify({ text: content }),
-        });
-      },
-      async () => {
-        await client.sendMessage({
-          receiveId: target.chatId,
-          msgType: 'text',
-          content: JSON.stringify({ text: content }),
-        });
-      },
-    );
+    const messages = formatFeishuTextMessages(content);
+
+    for (const message of messages) {
+      await withReplyFallback(
+        target,
+        async () => {
+          await client.replyMessage({
+            messageId: target.replyToMessageId!,
+            msgType: message.msgType,
+            content: message.content,
+          });
+        },
+        async () => {
+          await client.sendMessage({
+            receiveId: target.chatId,
+            msgType: message.msgType,
+            content: message.content,
+          });
+        },
+      );
+    }
   }
 
   async function sendCard(target: FeishuTarget, card: Record<string, unknown>): Promise<string | undefined> {
@@ -645,20 +650,25 @@ export function createFeishuEventRouter(
         return;
       }
 
-      await runFeishuSessionFlow({
-        conversationId,
-        target,
-        prompt: request.prompt,
-        mode: request.mode,
-        transport,
-        defaultCwd: config.claudeCwd,
-        sourceMessageId: message.message_id,
-        attachments: [
-          ...drainPendingFeishuAttachments(message.chat_id),
-          ...inlineAttachments,
-        ],
-        persistState: persistFeishuState,
-      });
+      try {
+        await runFeishuSessionFlow({
+          conversationId,
+          target,
+          prompt: request.prompt,
+          mode: request.mode,
+          transport,
+          defaultCwd: config.claudeCwd,
+          sourceMessageId: message.message_id,
+          attachments: [
+            ...drainPendingFeishuAttachments(message.chat_id),
+            ...inlineAttachments,
+          ],
+          persistState: persistFeishuState,
+        });
+      } catch (error) {
+        await transport.sendText(target, describeError(error)).catch(() => {});
+        return;
+      }
       succeeded = true;
     } finally {
       dedup.complete(succeeded);
@@ -735,23 +745,28 @@ export function createFeishuEventRouter(
       }
 
       if (actionType === 'backend' || actionType === 'confirm-backend') {
-        const resumed = await resumePendingFeishuRun({
-          conversationId,
-          transport,
-          defaultCwd: config.claudeCwd,
-          persistState: persistFeishuState,
-          fallback: typeof action.prompt === 'string' && action.prompt.trim()
-            ? {
-              target,
-              prompt: action.prompt.trim(),
-              mode: action.mode === 'ask' ? 'ask' : 'code',
-              sourceMessageId: target.replyToMessageId,
-            }
-            : undefined,
-        });
+        try {
+          const resumed = await resumePendingFeishuRun({
+            conversationId,
+            transport,
+            defaultCwd: config.claudeCwd,
+            persistState: persistFeishuState,
+            fallback: typeof action.prompt === 'string' && action.prompt.trim()
+              ? {
+                target,
+                prompt: action.prompt.trim(),
+                mode: action.mode === 'ask' ? 'ask' : 'code',
+                sourceMessageId: target.replyToMessageId,
+              }
+              : undefined,
+          });
 
-        if (resumed.kind === 'busy') {
-          await transport.sendText(target, 'Conversation is already running.');
+          if (resumed.kind === 'busy') {
+            await transport.sendText(target, 'Conversation is already running.');
+          }
+        } catch (error) {
+          await transport.sendText(target, describeError(error)).catch(() => {});
+          return;
         }
       }
       succeeded = true;

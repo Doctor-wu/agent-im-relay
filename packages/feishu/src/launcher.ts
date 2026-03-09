@@ -1,4 +1,5 @@
 import type { AgentMode } from '@agent-im-relay/core';
+import { formatFeishuTextMessages } from './formatting.js';
 import { buildFeishuSessionChatRecord, rememberFeishuSessionChat } from './session-chat.js';
 import { buildFeishuSessionChatName } from './naming.js';
 import { describeError } from './utils.js';
@@ -18,7 +19,7 @@ export type FeishuLauncherClient = {
   sendMessage(options: {
     receiveId: string;
     receiveIdType?: 'chat_id' | 'open_id' | 'union_id' | 'email' | 'user_id';
-    msgType: 'text' | 'interactive' | 'file' | 'share_chat';
+    msgType: 'text' | 'post' | 'interactive' | 'file' | 'share_chat';
     content: string;
   }): Promise<string | undefined>;
 };
@@ -34,6 +35,26 @@ const FEISHU_SESSION_REFERENCE_TEXT = 'Common commands:\n/interrupt - stop the c
 
 export function buildFeishuSessionReferenceText(): string {
   return FEISHU_SESSION_REFERENCE_TEXT;
+}
+
+async function sendFormattedFeishuText(options: {
+  client: FeishuLauncherClient;
+  receiveId: string;
+  receiveIdType?: 'chat_id' | 'open_id' | 'union_id' | 'email' | 'user_id';
+  text: string;
+}): Promise<string | undefined> {
+  let lastMessageId: string | undefined;
+
+  for (const message of formatFeishuTextMessages(options.text)) {
+    lastMessageId = await options.client.sendMessage({
+      receiveId: options.receiveId,
+      receiveIdType: options.receiveIdType,
+      msgType: message.msgType,
+      content: message.content,
+    });
+  }
+
+  return lastMessageId;
 }
 
 export async function launchFeishuSessionFromPrivateChat(options: {
@@ -77,13 +98,11 @@ export async function launchFeishuSessionFromPrivateChat(options: {
   }
 
   try {
-    await options.client.sendMessage({
+    await sendFormattedFeishuText({
+      client: options.client,
       receiveId: sessionChat.chatId,
       receiveIdType: 'chat_id',
-      msgType: 'text',
-      content: JSON.stringify({
-        text: buildFeishuSessionReferenceText(),
-      }),
+      text: buildFeishuSessionReferenceText(),
     });
   } catch (error) {
     throw new Error(`Could not initialize session chat: ${describeError(error)}`);
@@ -91,13 +110,11 @@ export async function launchFeishuSessionFromPrivateChat(options: {
 
   let mirroredMessageId: string | undefined;
   try {
-    mirroredMessageId = await options.client.sendMessage({
+    mirroredMessageId = await sendFormattedFeishuText({
+      client: options.client,
       receiveId: sessionChat.chatId,
       receiveIdType: 'chat_id',
-      msgType: 'text',
-      content: JSON.stringify({
-        text: options.prompt,
-      }),
+      text: options.prompt,
     });
   } catch (error) {
     throw new Error(`Could not initialize session chat: ${describeError(error)}`);

@@ -74,6 +74,45 @@ describe('Feishu API client', () => {
     })).resolves.toBe('message-1');
   });
 
+  it('sends post messages', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0,
+        tenant_access_token: 'tenant-token',
+        expire: 120,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0,
+        data: { message_id: 'message-post-1' },
+      }), { status: 200 }));
+
+    const client = createFeishuClient(testConfig(), { fetchImpl: fetchImpl as typeof fetch });
+    const content = JSON.stringify({
+      zh_cn: {
+        title: '',
+        content: [[{ tag: 'text', text: '【Summary】' }]],
+      },
+    });
+
+    await expect(client.sendMessage({
+      receiveId: 'chat-1',
+      msgType: 'post',
+      content,
+    })).resolves.toBe('message-post-1');
+
+    expect(fetchImpl).toHaveBeenLastCalledWith(
+      'https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          receive_id: 'chat-1',
+          msg_type: 'post',
+          content,
+        }),
+      }),
+    );
+  });
+
   it('creates a session group chat with the bot and one target user', async () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({
@@ -195,6 +234,44 @@ describe('Feishu API client', () => {
     })).resolves.toBe('message-card-1');
 
     await expect(client.sendFileMessage('chat-1', 'file-key-1')).resolves.toBe('message-file-1');
+  });
+
+  it('replies with post messages', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0,
+        tenant_access_token: 'tenant-token',
+        expire: 120,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0,
+        data: { message_id: 'message-reply-1' },
+      }), { status: 200 }));
+
+    const client = createFeishuClient(testConfig(), { fetchImpl: fetchImpl as typeof fetch });
+    const content = JSON.stringify({
+      zh_cn: {
+        title: '',
+        content: [[{ tag: 'text', text: 'Reply body' }]],
+      },
+    });
+
+    await expect(client.replyMessage({
+      messageId: 'message-1',
+      msgType: 'post',
+      content,
+    })).resolves.toBe('message-reply-1');
+
+    expect(fetchImpl).toHaveBeenLastCalledWith(
+      'https://open.feishu.cn/open-apis/im/v1/messages/message-1/reply',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          msg_type: 'post',
+          content,
+        }),
+      }),
+    );
   });
 
   it('updates interactive card messages in place', async () => {

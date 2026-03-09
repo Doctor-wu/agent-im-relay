@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import type { FeishuConfig } from './config.js';
 
 export type FeishuReceiveIdType = 'chat_id' | 'open_id' | 'union_id' | 'email' | 'user_id';
-export type FeishuMessageType = 'text' | 'interactive' | 'file' | 'share_chat';
+export type FeishuMessageType = 'text' | 'post' | 'interactive' | 'file' | 'share_chat';
 export type FeishuUserIdType = 'open_id' | 'union_id' | 'user_id';
 export type FeishuMessageResourceType = 'file' | 'image';
 

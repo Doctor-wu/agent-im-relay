@@ -69,6 +69,21 @@ const baseConfig = {
   feishuBaseUrl: 'https://open.feishu.cn',
 } as const;
 
+function extractPostParagraphTexts(content: string): string[] {
+  const parsed = JSON.parse(content) as {
+    zh_cn?: {
+      content?: Array<Array<{ tag?: string; text?: string }>>;
+    };
+  };
+
+  return (parsed.zh_cn?.content ?? [])
+    .map(paragraph => paragraph
+      .filter(node => node.tag === 'text' && typeof node.text === 'string')
+      .map(node => node.text ?? '')
+      .join(''))
+    .filter(Boolean);
+}
+
 afterEach(async () => {
   coreMocks.initState.mockClear();
   coreMocks.persistState.mockClear();
@@ -175,6 +190,109 @@ describe('Feishu long-connection events', () => {
     }));
   });
 
+  it('formats runtime text output as post replies by default', async () => {
+    const replyMessage = vi.fn(async () => undefined);
+    runtimeMocks.runFeishuConversation.mockImplementation(async (options) => {
+      await options.transport.sendText(options.target, [
+        '# Summary',
+        '',
+        '按方案 B 进入实现。',
+        '',
+        '- 保持列表层次',
+        '- 避免大段文字糊在一起',
+      ].join('\n'));
+      return { kind: 'started' };
+    });
+
+    const router = createFeishuEventRouter(baseConfig, {
+      client: {
+        replyMessage,
+        sendMessage: vi.fn(async () => undefined),
+        sendCard: vi.fn(async () => undefined),
+        uploadFileContent: vi.fn(async () => 'file-key'),
+        sendFileMessage: vi.fn(async () => undefined),
+        downloadMessageResource: vi.fn(async () => new Response()),
+      } as never,
+    });
+
+    await router.handleMessageEvent({
+      message: {
+        message_id: 'message-post-render-1',
+        chat_id: 'chat-1',
+        chat_type: 'group',
+        message_type: 'text',
+        mentions: [{ id: { open_id: 'bot-open-id' }, name: 'relay-bot' }],
+        content: JSON.stringify({ text: '@_user_1 hello bot' }),
+      },
+    });
+
+    const postReply = replyMessage.mock.calls
+      .map(call => call[0])
+      .find(call => call.msgType === 'post');
+
+    expect(postReply).toMatchObject({
+      messageId: 'message-post-render-1',
+      msgType: 'post',
+    });
+    expect(extractPostParagraphTexts(postReply!.content)).toEqual([
+      '【Summary】',
+      '按方案 B 进入实现。',
+      '• 保持列表层次',
+      '• 避免大段文字糊在一起',
+    ]);
+  });
+
+  it('falls back to plain text replies when runtime output contains fenced code', async () => {
+    const replyMessage = vi.fn(async () => undefined);
+    runtimeMocks.runFeishuConversation.mockImplementation(async (options) => {
+      const output = [
+        '先看实现：',
+        '',
+        '```ts',
+        'console.log("hello")',
+        '```',
+      ].join('\n');
+      await options.transport.sendText(options.target, output);
+      return { kind: 'started' };
+    });
+
+    const router = createFeishuEventRouter(baseConfig, {
+      client: {
+        replyMessage,
+        sendMessage: vi.fn(async () => undefined),
+        sendCard: vi.fn(async () => undefined),
+        uploadFileContent: vi.fn(async () => 'file-key'),
+        sendFileMessage: vi.fn(async () => undefined),
+        downloadMessageResource: vi.fn(async () => new Response()),
+      } as never,
+    });
+
+    await router.handleMessageEvent({
+      message: {
+        message_id: 'message-code-render-1',
+        chat_id: 'chat-1',
+        chat_type: 'group',
+        message_type: 'text',
+        mentions: [{ id: { open_id: 'bot-open-id' }, name: 'relay-bot' }],
+        content: JSON.stringify({ text: '@_user_1 hello bot' }),
+      },
+    });
+
+    expect(replyMessage).toHaveBeenCalledWith(expect.objectContaining({
+      messageId: 'message-code-render-1',
+      msgType: 'text',
+      content: JSON.stringify({
+        text: [
+          '先看实现：',
+          '',
+          '```ts',
+          'console.log("hello")',
+          '```',
+        ].join('\n'),
+      }),
+    }));
+  });
+
   it('creates a session group for private-chat launches and starts the first run there', async () => {
     runtimeMocks.runFeishuConversation.mockResolvedValue({ kind: 'started' });
     const createSessionChat = vi.fn(async () => ({
@@ -224,16 +342,21 @@ describe('Feishu long-connection events', () => {
     });
     expect(sendMessage).toHaveBeenNthCalledWith(1, expect.objectContaining({
       receiveId: 'session-chat-1',
-      msgType: 'text',
-      content: JSON.stringify({
-        text: 'Common commands:\n/interrupt - stop the current run',
-      }),
+      receiveIdType: 'chat_id',
+      msgType: 'post',
     }));
     expect(sendMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({
       receiveId: 'session-chat-1',
-      msgType: 'text',
-      content: JSON.stringify({ text: 'hello bot' }),
+      receiveIdType: 'chat_id',
+      msgType: 'post',
     }));
+    expect(extractPostParagraphTexts(sendMessage.mock.calls[0]![0].content)).toEqual([
+      '【Common commands】',
+      '/interrupt - stop the current run',
+    ]);
+    expect(extractPostParagraphTexts(sendMessage.mock.calls[1]![0].content)).toEqual([
+      'hello bot',
+    ]);
     expect(runtimeMocks.runFeishuConversation).toHaveBeenCalledWith(expect.objectContaining({
       conversationId: 'session-chat-1',
       target: {
@@ -431,9 +554,10 @@ describe('Feishu long-connection events', () => {
       .mockRejectedValueOnce(new Error('transient failure'))
       .mockResolvedValueOnce({ kind: 'started' });
 
+    const replyMessage = vi.fn(async () => undefined);
     const router = createFeishuEventRouter(baseConfig, {
       client: {
-        replyMessage: vi.fn(async () => undefined),
+        replyMessage,
         sendMessage: vi.fn(async () => undefined),
         sendCard: vi.fn(async () => undefined),
         uploadFileContent: vi.fn(async () => 'file-key'),
@@ -454,13 +578,20 @@ describe('Feishu long-connection events', () => {
       },
     } as const;
 
-    await expect(router.handleMessageEvent(firstDelivery)).rejects.toThrow(/transient failure/i);
+    await expect(router.handleMessageEvent(firstDelivery)).resolves.toBeUndefined();
     await expect(router.handleMessageEvent({
       ...firstDelivery,
       event_id: 'event-retry-2',
     })).resolves.toBeUndefined();
 
     expect(runtimeMocks.runFeishuConversation).toHaveBeenCalledTimes(2);
+    const errorReply = replyMessage.mock.calls
+      .map(call => call[0])
+      .find(call => call.msgType === 'post' && call.messageId === 'message-retry-1');
+    expect(errorReply).toBeDefined();
+    expect(extractPostParagraphTexts(errorReply!.content)).toEqual([
+      'transient failure',
+    ]);
   });
 
   it('returns a visible private-chat error when session-group creation fails', async () => {
@@ -498,9 +629,11 @@ describe('Feishu long-connection events', () => {
 
     expect(replyMessage).toHaveBeenCalledWith(expect.objectContaining({
       messageId: 'message-1',
-      msgType: 'text',
-      content: JSON.stringify({ text: 'Could not create session chat: permission denied' }),
+      msgType: 'post',
     }));
+    expect(extractPostParagraphTexts(replyMessage.mock.calls[0]![0].content)).toEqual([
+      'Could not create session chat: permission denied',
+    ]);
     expect(runtimeMocks.runFeishuConversation).not.toHaveBeenCalled();
   });
 
@@ -598,9 +731,11 @@ describe('Feishu long-connection events', () => {
 
     expect(replyMessage).toHaveBeenCalledWith(expect.objectContaining({
       messageId: 'message-1',
-      msgType: 'text',
-      content: JSON.stringify({ text: 'Could not share session chat: shared chat failed' }),
+      msgType: 'post',
     }));
+    expect(extractPostParagraphTexts(replyMessage.mock.calls[0]![0].content)).toEqual([
+      'Could not share session chat: shared chat failed',
+    ]);
     expect(sendMessage).not.toHaveBeenCalled();
     expect(runtimeMocks.runFeishuConversation).not.toHaveBeenCalled();
   });
@@ -644,8 +779,11 @@ describe('Feishu long-connection events', () => {
     );
     expect(replyMessage).toHaveBeenCalledWith(expect.objectContaining({
       messageId: 'message-file-1',
-      msgType: 'text',
+      msgType: 'post',
     }));
+    expect(extractPostParagraphTexts(replyMessage.mock.calls[0]![0].content)).toEqual([
+      'File received. Send a prompt to use it.',
+    ]);
   });
 
   it('queues image attachments from message events instead of treating them as missing prompts', async () => {
@@ -773,8 +911,16 @@ describe('Feishu long-connection events', () => {
     expect(replyMessage).toHaveBeenCalledOnce();
     expect(sendMessage).toHaveBeenCalledWith({
       receiveId: 'chat-1',
-      msgType: 'text',
-      content: JSON.stringify({ text: 'Please include a prompt after mentioning the bot.' }),
+      msgType: 'post',
+      content: JSON.stringify({
+        zh_cn: {
+          title: '',
+          content: [[{
+            tag: 'text',
+            text: 'Please include a prompt after mentioning the bot.',
+          }]],
+        },
+      }),
     });
   });
 
