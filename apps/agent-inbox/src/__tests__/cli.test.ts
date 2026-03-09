@@ -1,4 +1,3 @@
-import { PassThrough } from 'node:stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -9,10 +8,16 @@ const mocks = vi.hoisted(() => ({
     stateFile: '/tmp/agent-inbox-cli/.agent-inbox/state/sessions.json',
     artifactsDir: '/tmp/agent-inbox-cli/.agent-inbox/artifacts',
     logsDir: '/tmp/agent-inbox-cli/.agent-inbox/logs',
+    pidsDir: '/tmp/agent-inbox-cli/.agent-inbox/pids',
   })),
   loadAppConfig: vi.fn(),
   runSetup: vi.fn(),
+  getUnconfiguredPlatforms: vi.fn(() => []),
   startSelectedIm: vi.fn(),
+  acquirePidLock: vi.fn(async () => true),
+  registerPidCleanup: vi.fn(),
+  clackSelect: vi.fn(),
+  clackIsCancel: vi.fn(() => false),
 }));
 
 vi.mock('@agent-im-relay/core', async (importOriginal) => {
@@ -33,52 +38,78 @@ vi.mock('../config.js', async (importOriginal) => {
 
 vi.mock('../setup.js', () => ({
   runSetup: mocks.runSetup,
+  getUnconfiguredPlatforms: mocks.getUnconfiguredPlatforms,
+  PLATFORM_LABELS: { discord: 'Discord', feishu: 'Feishu (飞书)' },
+  ALL_PLATFORM_IDS: ['discord', 'feishu'],
 }));
 
 vi.mock('../runtime.js', () => ({
   startSelectedIm: mocks.startSelectedIm,
 }));
 
+vi.mock('../pid-lock.js', () => ({
+  acquirePidLock: mocks.acquirePidLock,
+  registerPidCleanup: mocks.registerPidCleanup,
+}));
+
+vi.mock('@clack/prompts', () => ({
+  intro: vi.fn(),
+  outro: vi.fn(),
+  cancel: vi.fn(),
+  log: { info: vi.fn(), success: vi.fn(), error: vi.fn() },
+  spinner: vi.fn(() => ({ start: vi.fn(), stop: vi.fn() })),
+  select: mocks.clackSelect,
+  isCancel: mocks.clackIsCancel,
+}));
+
 import { runCli } from '../cli.js';
 
 describe('cli', () => {
   beforeEach(() => {
-    mocks.loadAppConfig.mockReset();
-    mocks.runSetup.mockReset();
-    mocks.startSelectedIm.mockReset();
+    vi.clearAllMocks();
   });
 
-  it('fails fast in non-interactive mode when multiple IMs are configured', async () => {
+  it('starts the only configured IM directly after platform selection', async () => {
+    const im = {
+      id: 'discord' as const,
+      config: { token: 'discord-token', clientId: 'discord-client' },
+    };
+
     mocks.loadAppConfig.mockResolvedValue({
       records: [],
       runtime: {},
       errors: [],
-      availableIms: [
-        {
-          id: 'discord',
-          config: {
-            token: 'discord-token',
-            clientId: 'discord-client',
-          },
-        },
-        {
-          id: 'feishu',
-          config: {
-            appId: 'feishu-app',
-            appSecret: 'feishu-secret',
-          },
-        },
-      ],
+      availableIms: [im],
     });
 
-    const input = new PassThrough() as PassThrough & { isTTY?: boolean };
-    const output = new PassThrough() as PassThrough & { isTTY?: boolean };
-    input.isTTY = false;
-    output.isTTY = false;
+    mocks.clackSelect.mockResolvedValue('discord');
 
-    await expect(runCli({ input, output })).rejects.toThrow(
-      /multiple im configurations found/i,
+    await runCli();
+
+    expect(mocks.startSelectedIm).toHaveBeenCalledWith(
+      im,
+      {},
+      expect.objectContaining({ pidsDir: expect.any(String) }),
     );
+  });
+
+  it('rejects starting a platform that is already running', async () => {
+    const im = {
+      id: 'discord' as const,
+      config: { token: 'discord-token', clientId: 'discord-client' },
+    };
+
+    mocks.loadAppConfig.mockResolvedValue({
+      records: [],
+      runtime: {},
+      errors: [],
+      availableIms: [im],
+    });
+
+    mocks.clackSelect.mockResolvedValue('discord');
+    mocks.acquirePidLock.mockResolvedValue(false);
+
+    await runCli();
 
     expect(mocks.startSelectedIm).not.toHaveBeenCalled();
   });

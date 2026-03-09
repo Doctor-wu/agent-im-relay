@@ -1,82 +1,167 @@
+import * as p from '@clack/prompts';
 import type { RelayPaths } from '@agent-im-relay/core';
 import type {
   AppConfigRecord,
+  AvailableIm,
   DiscordImRecord,
   FeishuImRecord,
   LoadedAppConfig,
 } from './config.js';
 import { loadAppConfig, saveAppConfig, upsertRecord } from './config.js';
-import {
-  createPromptContext,
-  promptSelect,
-  promptText,
-  type PromptContext,
-  type PromptStreams,
-} from './prompts.js';
 
-async function buildDiscordRecord(context: PromptContext): Promise<DiscordImRecord> {
-  const token = await promptText(context, 'Discord bot token');
-  const clientId = await promptText(context, 'Discord application client ID');
-  const guildIdsRaw = await promptText(context, 'Optional guild IDs (comma-separated)', { optional: true });
+const ALL_PLATFORM_IDS = ['discord', 'feishu'] as const;
+type PlatformId = (typeof ALL_PLATFORM_IDS)[number];
+
+const PLATFORM_LABELS: Record<PlatformId, string> = {
+  discord: 'Discord',
+  feishu: 'Feishu (飞书)',
+};
+
+function getUnconfiguredPlatforms(availableIms: AvailableIm[]): PlatformId[] {
+  const configured = new Set(availableIms.map(im => im.id));
+  return ALL_PLATFORM_IDS.filter(id => !configured.has(id));
+}
+
+async function buildDiscordRecord(): Promise<DiscordImRecord> {
+  const result = await p.group(
+    {
+      token: () =>
+        p.text({
+          message: 'Discord bot token',
+          validate: v => (v.length === 0 ? 'Required' : undefined),
+        }),
+      clientId: () =>
+        p.text({
+          message: 'Application client ID',
+          validate: v => (v.length === 0 ? 'Required' : undefined),
+        }),
+      guildIds: () =>
+        p.text({
+          message: 'Guild IDs (comma-separated, optional)',
+          placeholder: 'Leave empty for global',
+          defaultValue: '',
+        }),
+    },
+    {
+      onCancel: () => {
+        p.cancel('Setup cancelled.');
+        process.exit(0);
+      },
+    },
+  );
 
   return {
     type: 'im',
     id: 'discord',
     enabled: true,
-    note: 'Discord bot credentials. Configure once, then the launcher can start Discord directly.',
+    note: 'Discord bot',
     config: {
-      token,
-      clientId,
-      guildIds: guildIdsRaw
-        ? guildIdsRaw.split(',').map(id => id.trim()).filter(Boolean)
+      token: result.token,
+      clientId: result.clientId,
+      guildIds: result.guildIds
+        ? result.guildIds
+            .split(',')
+            .map(id => id.trim())
+            .filter(Boolean)
         : undefined,
     },
   };
 }
 
-async function buildFeishuRecord(context: PromptContext): Promise<FeishuImRecord> {
-  const appId = await promptText(context, 'Feishu app ID');
-  const appSecret = await promptText(context, 'Feishu app secret');
-  const verificationToken = await promptText(context, 'Optional Feishu verification token', { optional: true });
-  const encryptKey = await promptText(context, 'Optional Feishu encrypt key', { optional: true });
-  const portRaw = await promptText(context, 'Optional local port', { optional: true, defaultValue: '3001' });
+async function buildFeishuRecord(): Promise<FeishuImRecord> {
+  const result = await p.group(
+    {
+      appId: () =>
+        p.text({
+          message: 'Feishu app ID',
+          validate: v => (v.length === 0 ? 'Required' : undefined),
+        }),
+      appSecret: () =>
+        p.text({
+          message: 'Feishu app secret',
+          validate: v => (v.length === 0 ? 'Required' : undefined),
+        }),
+      verificationToken: () =>
+        p.text({
+          message: 'Verification token (optional)',
+          defaultValue: '',
+        }),
+      encryptKey: () =>
+        p.text({
+          message: 'Encrypt key (optional)',
+          defaultValue: '',
+        }),
+      port: () =>
+        p.text({
+          message: 'Local port',
+          defaultValue: '3001',
+        }),
+    },
+    {
+      onCancel: () => {
+        p.cancel('Setup cancelled.');
+        process.exit(0);
+      },
+    },
+  );
 
   return {
     type: 'im',
     id: 'feishu',
     enabled: true,
-    note: 'Feishu single-process runtime. Only configured entries appear in the launcher.',
+    note: 'Feishu app',
     config: {
-      appId,
-      appSecret,
-      verificationToken: verificationToken || undefined,
-      encryptKey: encryptKey || undefined,
-      port: portRaw ? Number.parseInt(portRaw, 10) : undefined,
+      appId: result.appId,
+      appSecret: result.appSecret,
+      verificationToken: result.verificationToken || undefined,
+      encryptKey: result.encryptKey || undefined,
+      port: result.port ? Number.parseInt(result.port, 10) : undefined,
     },
   };
 }
 
 export async function runSetup(
   paths: RelayPaths,
-  options: PromptStreams = {},
+  unconfiguredPlatforms: PlatformId[],
 ): Promise<LoadedAppConfig> {
-  const context = createPromptContext(options);
+  let platformId: PlatformId;
 
-  try {
-    const selection = await promptSelect(context, 'Choose an IM to configure', [
-      { value: 'discord', label: 'Discord' },
-      { value: 'feishu', label: 'Feishu' },
-    ] as const);
+  if (unconfiguredPlatforms.length === 1) {
+    platformId = unconfiguredPlatforms[0]!;
+    p.log.info(`Configuring ${PLATFORM_LABELS[platformId]}...`);
+  } else {
+    const selected = await p.select({
+      message: 'Which platform to configure?',
+      options: unconfiguredPlatforms.map(id => ({
+        value: id,
+        label: PLATFORM_LABELS[id],
+      })),
+    });
 
-    const current = await loadAppConfig(paths);
-    const nextRecord = selection === 'discord'
-      ? await buildDiscordRecord(context)
-      : await buildFeishuRecord(context);
+    if (p.isCancel(selected)) {
+      p.cancel('Setup cancelled.');
+      process.exit(0);
+    }
 
-    const nextRecords = upsertRecord(current.records as AppConfigRecord[], nextRecord);
-    await saveAppConfig(paths, nextRecords);
-    return loadAppConfig(paths);
-  } finally {
-    context.rl?.close();
+    platformId = selected;
   }
+
+  const current = await loadAppConfig(paths);
+  const nextRecord =
+    platformId === 'discord'
+      ? await buildDiscordRecord()
+      : await buildFeishuRecord();
+
+  const nextRecords = upsertRecord(
+    current.records as AppConfigRecord[],
+    nextRecord,
+  );
+  await saveAppConfig(paths, nextRecords);
+
+  p.log.success(`${PLATFORM_LABELS[platformId]} configured successfully!`);
+
+  return loadAppConfig(paths);
 }
+
+export { getUnconfiguredPlatforms, ALL_PLATFORM_IDS, PLATFORM_LABELS };
+export type { PlatformId };

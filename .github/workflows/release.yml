@@ -1,0 +1,83 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  build-bundle:
+    name: Build JS Bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r build
+      - name: Package bundle
+        run: tar -czf agent-inbox-bundle.tar.gz -C apps/agent-inbox/dist .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent-inbox-bundle
+          path: agent-inbox-bundle.tar.gz
+
+  build-sea:
+    name: Build SEA (${{ matrix.os }}-${{ matrix.arch }})
+    strategy:
+      matrix:
+        include:
+          - os: darwin
+            arch: x64
+            runner: macos-13
+          - os: darwin
+            arch: arm64
+            runner: macos-14
+          - os: linux
+            arch: x64
+            runner: ubuntu-latest
+          - os: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r build
+      - name: Build SEA executable
+        working-directory: apps/agent-inbox
+        run: node scripts/build-executable.mjs
+      - name: Rename executable
+        run: mv apps/agent-inbox/dist/agent-inbox apps/agent-inbox/dist/agent-inbox-${{ matrix.os }}-${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent-inbox-${{ matrix.os }}-${{ matrix.arch }}
+          path: apps/agent-inbox/dist/agent-inbox-${{ matrix.os }}-${{ matrix.arch }}
+
+  release:
+    name: Create GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-bundle, build-sea]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: List artifacts
+        run: ls -la artifacts/
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true

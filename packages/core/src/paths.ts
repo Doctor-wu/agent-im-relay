@@ -9,6 +9,7 @@ export interface RelayPaths {
   stateFile: string;
   artifactsDir: string;
   logsDir: string;
+  pidsDir: string;
 }
 
 function canWriteDirectory(path: string): boolean {
@@ -52,5 +53,6 @@ export function resolveRelayPaths(baseDir: string = resolveDefaultRelayBaseDir()
     stateFile: join(homeDir, 'state', 'sessions.json'),
     artifactsDir: join(homeDir, 'artifacts'),
     logsDir: join(homeDir, 'logs'),
+    pidsDir: join(homeDir, 'pids'),
   };
 }

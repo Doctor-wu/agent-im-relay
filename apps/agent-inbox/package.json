@@ -8,7 +8,9 @@
     "agent-inbox": "dist/index.mjs"
   },
   "scripts": {
-    "build": "pnpm --filter @agent-im-relay/core build && pnpm --filter @agent-im-relay/discord build && pnpm --filter @agent-im-relay/feishu build && tsdown && node ./scripts/build-executable.mjs",
+    "build": "pnpm --filter @agent-im-relay/core build && pnpm --filter @agent-im-relay/discord build && pnpm --filter @agent-im-relay/feishu build && tsdown",
+    "build:sea": "node ./scripts/build-executable.mjs",
+    "build:all": "pnpm run build && pnpm run build:sea",
     "start": "node dist/index.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -16,7 +18,9 @@
   "dependencies": {
     "@agent-im-relay/core": "workspace:*",
     "@agent-im-relay/discord": "workspace:*",
-    "@agent-im-relay/feishu": "workspace:*"
+    "@agent-im-relay/feishu": "workspace:*",
+    "@clack/prompts": "^1.1.0",
+    "picocolors": "^1.1.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
