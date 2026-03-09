@@ -1,6 +1,6 @@
 {
   "name": "agent-inbox",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Inbox-first IM launcher for local AI agents",
   "type": "module",
