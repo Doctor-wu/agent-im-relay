@@ -81,3 +81,18 @@ export async function presentFeishuFinalOutput(options: {
   await options.transport.sendText(options.target, options.output);
   return result;
 }
+
+export async function presentFeishuErrorOutput(options: {
+  dispatchId: string;
+  error: string;
+  target: FeishuPresentationTarget;
+  transport: FeishuPresentationTransport;
+}): Promise<FeishuPresentationResult> {
+  const result = markDispatchMessage(options.dispatchId, 'error-output');
+  if (result.kind === 'skipped') {
+    return result;
+  }
+
+  await options.transport.sendText(options.target, options.error);
+  return result;
+}

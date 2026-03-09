@@ -27,4 +27,14 @@ describe('Feishu launch state', () => {
     expect(markFeishuDispatchMessageEmitted(dispatch.dispatchId, 'final-output')).toBe(true);
     expect(markFeishuDispatchMessageEmitted(dispatch.dispatchId, 'final-output')).toBe(false);
   });
+
+  it('evicts the oldest dispatch state after keeping 1000 active dispatches', () => {
+    for (let index = 0; index < 1001; index += 1) {
+      const dispatch = beginFeishuDispatch(`message-user-${index}`);
+      expect(markFeishuDispatchMessageEmitted(dispatch.dispatchId, 'interrupt-card')).toBe(true);
+    }
+
+    expect(markFeishuDispatchMessageEmitted('message-user-0', 'interrupt-card')).toBe(true);
+    expect(markFeishuDispatchMessageEmitted('message-user-1000', 'interrupt-card')).toBe(false);
+  });
 });

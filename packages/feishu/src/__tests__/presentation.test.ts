@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetFeishuLaunchStateForTests } from '../index.js';
 import {
   presentFeishuBusyNotice,
+  presentFeishuErrorOutput,
   presentFeishuFinalOutput,
   presentFeishuInterruptCard,
 } from '../presentation.js';
@@ -75,5 +76,32 @@ describe('Feishu presentation', () => {
     expect(transport.sendText).toHaveBeenCalledTimes(2);
     expect(transport.sendText).toHaveBeenNthCalledWith(1, target, 'Conversation is already running.');
     expect(transport.sendText).toHaveBeenNthCalledWith(2, target, 'final answer');
+  });
+
+  it('emits error output at most once per dispatch', async () => {
+    const transport = {
+      sendCard: vi.fn(async () => 'card-1'),
+      sendText: vi.fn(async () => undefined),
+    };
+    const target = {
+      chatId: 'session-chat-1',
+      replyToMessageId: 'message-3',
+    };
+
+    await expect(presentFeishuErrorOutput({
+      dispatchId: 'message-3',
+      error: '❌ failed',
+      target,
+      transport,
+    })).resolves.toEqual({ kind: 'emitted' });
+    await expect(presentFeishuErrorOutput({
+      dispatchId: 'message-3',
+      error: '❌ failed',
+      target,
+      transport,
+    })).resolves.toEqual({ kind: 'skipped' });
+
+    expect(transport.sendText).toHaveBeenCalledOnce();
+    expect(transport.sendText).toHaveBeenCalledWith(target, '❌ failed');
   });
 });

@@ -1,10 +1,32 @@
 const mirroredMessageIds = new Set<string>();
 const dispatchEmissions = new Map<string, Set<FeishuDispatchMessageKind>>();
+const FEISHU_DISPATCH_EMISSION_LIMIT = 1000;
 
 export type FeishuDispatchMessageKind =
   | 'interrupt-card'
   | 'busy'
-  | 'final-output';
+  | 'final-output'
+  | 'error-output';
+
+function rememberDispatchEmissionState(
+  dispatchId: string,
+  emittedKinds: Set<FeishuDispatchMessageKind>,
+): void {
+  if (dispatchEmissions.has(dispatchId)) {
+    dispatchEmissions.delete(dispatchId);
+  }
+
+  dispatchEmissions.set(dispatchId, emittedKinds);
+
+  while (dispatchEmissions.size > FEISHU_DISPATCH_EMISSION_LIMIT) {
+    const oldestDispatchId = dispatchEmissions.keys().next().value;
+    if (!oldestDispatchId) {
+      break;
+    }
+
+    dispatchEmissions.delete(oldestDispatchId);
+  }
+}
 
 export function rememberMirroredFeishuMessageId(messageId: string): void {
   if (!messageId) {
@@ -26,9 +48,10 @@ export function consumeMirroredFeishuMessageId(messageId: string): boolean {
 export function beginFeishuDispatch(sourceMessageId: string): {
   dispatchId: string;
 } {
-  if (!dispatchEmissions.has(sourceMessageId)) {
-    dispatchEmissions.set(sourceMessageId, new Set());
-  }
+  rememberDispatchEmissionState(
+    sourceMessageId,
+    dispatchEmissions.get(sourceMessageId) ?? new Set(),
+  );
 
   return {
     dispatchId: sourceMessageId,
@@ -45,7 +68,7 @@ export function markFeishuDispatchMessageEmitted(
   }
 
   emittedKinds.add(kind);
-  dispatchEmissions.set(dispatchId, emittedKinds);
+  rememberDispatchEmissionState(dispatchId, emittedKinds);
   return true;
 }
 

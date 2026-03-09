@@ -153,6 +153,14 @@ describe('Feishu API client', () => {
     );
   });
 
+  it('does not expose the removed private-chat index helper', () => {
+    const client = createFeishuClient(testConfig(), {
+      fetchImpl: vi.fn() as typeof fetch,
+    });
+
+    expect('sendPrivateChatIndexMessage' in client).toBe(false);
+  });
+
   it('keeps existing text, card, and file message helpers intact', async () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({

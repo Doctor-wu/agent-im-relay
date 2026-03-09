@@ -46,6 +46,7 @@ import {
   type FeishuTarget,
 } from './runtime.js';
 import { runFeishuSessionFlow } from './session-flow.js';
+import { describeError } from './utils.js';
 
 type FeishuClient = ReturnType<typeof createFeishuClient>;
 
@@ -279,14 +280,6 @@ function createFeishuIngressDeduplicator() {
 
 function resolveSenderOpenId(payload: FeishuMessageReceiveEvent): string | undefined {
   return payload.sender?.sender_id?.open_id;
-}
-
-function describeError(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message.trim();
-  }
-
-  return 'unknown error';
 }
 
 function shouldFallbackToChatSend(error: unknown): boolean {

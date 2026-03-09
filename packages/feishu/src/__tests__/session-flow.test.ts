@@ -84,4 +84,36 @@ describe('Feishu session flow', () => {
     expect(transport.sendText).toHaveBeenCalledOnce();
     expect(transport.sendText).toHaveBeenCalledWith(options.target, 'Conversation is already running.');
   });
+
+  it('routes runtime errors through presentation idempotency', async () => {
+    runtimeMocks.runFeishuConversation.mockImplementation(async (options) => {
+      await options.lifecycle?.onError?.('❌ failed');
+      return { kind: 'started' };
+    });
+
+    const transport = {
+      sendCard: vi.fn(async () => 'card-1'),
+      sendText: vi.fn(async () => undefined),
+      updateCard: vi.fn(async () => undefined),
+      uploadFile: vi.fn(async () => undefined),
+    };
+    const options = {
+      conversationId: 'session-chat-1',
+      target: {
+        chatId: 'session-chat-1',
+        replyToMessageId: 'message-error-1',
+      },
+      sourceMessageId: 'message-error-1',
+      prompt: 'follow up',
+      mode: 'code' as const,
+      transport,
+      defaultCwd: process.cwd(),
+    };
+
+    await expect(runFeishuSessionFlow(options)).resolves.toEqual({ kind: 'started' });
+    await expect(runFeishuSessionFlow(options)).resolves.toEqual({ kind: 'started' });
+
+    expect(transport.sendText).toHaveBeenCalledOnce();
+    expect(transport.sendText).toHaveBeenCalledWith(options.target, '❌ failed');
+  });
 });

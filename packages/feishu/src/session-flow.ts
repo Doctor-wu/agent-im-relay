@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { beginFeishuDispatch } from './launch-state.js';
 import {
   presentFeishuBusyNotice,
+  presentFeishuErrorOutput,
   presentFeishuFinalOutput,
   presentFeishuInterruptCard,
 } from './presentation.js';
@@ -50,6 +51,14 @@ export async function runFeishuSessionFlow(options: {
         await presentFeishuFinalOutput({
           dispatchId: dispatch.dispatchId,
           output,
+          target: options.target,
+          transport: options.transport,
+        });
+      },
+      onError: async (error) => {
+        await presentFeishuErrorOutput({
+          dispatchId: dispatch.dispatchId,
+          error,
           target: options.target,
           transport: options.transport,
         });

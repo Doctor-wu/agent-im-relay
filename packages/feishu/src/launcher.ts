@@ -1,6 +1,7 @@
 import type { AgentMode } from '@agent-im-relay/core';
 import { buildFeishuSessionChatRecord, rememberFeishuSessionChat } from './session-chat.js';
 import { buildFeishuSessionChatName } from './naming.js';
+import { describeError } from './utils.js';
 
 export type FeishuLauncherClient = {
   createSessionChat(options: {
@@ -35,12 +36,6 @@ export function buildFeishuSessionReferenceText(): string {
   return FEISHU_SESSION_REFERENCE_TEXT;
 }
 
-function describeLauncherError(error: unknown): string {
-  return error instanceof Error && error.message.trim()
-    ? error.message.trim()
-    : 'unknown error';
-}
-
 export async function launchFeishuSessionFromPrivateChat(options: {
   client: FeishuLauncherClient;
   sourceChatId: string;
@@ -60,7 +55,7 @@ export async function launchFeishuSessionFromPrivateChat(options: {
       userOpenId: options.creatorOpenId,
     });
   } catch (error) {
-    throw new Error(`Could not create session chat: ${describeLauncherError(error)}`);
+    throw new Error(`Could not create session chat: ${describeError(error)}`);
   }
 
   rememberFeishuSessionChat(buildFeishuSessionChatRecord({
@@ -78,7 +73,7 @@ export async function launchFeishuSessionFromPrivateChat(options: {
       chatId: sessionChat.chatId,
     });
   } catch (error) {
-    throw new Error(`Could not share session chat: ${describeLauncherError(error)}`);
+    throw new Error(`Could not share session chat: ${describeError(error)}`);
   }
 
   try {
@@ -91,7 +86,7 @@ export async function launchFeishuSessionFromPrivateChat(options: {
       }),
     });
   } catch (error) {
-    throw new Error(`Could not initialize session chat: ${describeLauncherError(error)}`);
+    throw new Error(`Could not initialize session chat: ${describeError(error)}`);
   }
 
   let mirroredMessageId: string | undefined;
@@ -105,7 +100,7 @@ export async function launchFeishuSessionFromPrivateChat(options: {
       }),
     });
   } catch (error) {
-    throw new Error(`Could not initialize session chat: ${describeLauncherError(error)}`);
+    throw new Error(`Could not initialize session chat: ${describeError(error)}`);
   }
 
   return {

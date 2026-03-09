@@ -82,10 +82,6 @@ export function createFeishuClient(
     receiveId: string;
     chatId: string;
   }): Promise<string | undefined>;
-  sendPrivateChatIndexMessage(options: {
-    chatId: string;
-    text: string;
-  }): Promise<string | undefined>;
   downloadMessageResource(messageId: string, fileKey: string): Promise<Response>;
 } {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
@@ -359,18 +355,6 @@ export function createFeishuClient(
     });
   }
 
-  async function sendPrivateChatIndexMessage(options: {
-    chatId: string;
-    text: string;
-  }): Promise<string | undefined> {
-    return sendMessage({
-      receiveId: options.chatId,
-      receiveIdType: 'chat_id',
-      msgType: 'text',
-      content: JSON.stringify({ text: options.text }),
-    });
-  }
-
   async function downloadMessageResource(messageId: string, fileKey: string): Promise<Response> {
     const url = buildUrl(config.feishuBaseUrl, `/open-apis/im/v1/messages/${messageId}/resources/${fileKey}`);
     url.searchParams.set('type', 'file');
@@ -391,7 +375,6 @@ export function createFeishuClient(
     uploadFileContent: uploadBinary,
     sendFileMessage,
     sendSharedChatMessage,
-    sendPrivateChatIndexMessage,
     downloadMessageResource,
   };
 }
