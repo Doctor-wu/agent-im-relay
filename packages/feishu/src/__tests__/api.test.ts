@@ -256,4 +256,33 @@ describe('Feishu API client', () => {
       fileName: 'summary.txt',
     })).resolves.toBe('file-key-1');
   });
+
+  it('downloads image resources with the image resource type', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0,
+        tenant_access_token: 'tenant-token',
+        expire: 120,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response('image-bytes', {
+        status: 200,
+        headers: {
+          'content-type': 'image/png',
+        },
+      }));
+
+    const client = createFeishuClient(testConfig(), { fetchImpl: fetchImpl as typeof fetch });
+    const response = await client.downloadMessageResource('message-1', 'image-key-1', 'image');
+
+    expect(response.ok).toBe(true);
+    expect(fetchImpl).toHaveBeenLastCalledWith(
+      'https://open.feishu.cn/open-apis/im/v1/messages/message-1/resources/image-key-1?type=image',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer tenant-token',
+        }),
+      }),
+    );
+  });
 });
