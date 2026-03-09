@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  extractFeishuAttachmentInfos,
+  extractFeishuMessageText,
   normalizeFeishuEvent,
   resolveConversationId,
   resolveConversationIdFromAction,
+  shouldProcessFeishuMessage,
 } from '../index.js';
 
 describe('resolveConversationId', () => {
@@ -86,5 +89,60 @@ describe('resolveConversationIdFromAction', () => {
         },
       },
     }))).toBe('conversation-from-card');
+  });
+});
+
+describe('Feishu rich message parsing', () => {
+  it('extracts readable prompt text from post messages', () => {
+    expect(extractFeishuMessageText({
+      chat_id: 'chat-1',
+      chat_type: 'group',
+      message_id: 'message-post-1',
+      message_type: 'post',
+      content: JSON.stringify({
+        zh_cn: {
+          title: '看图任务',
+          content: [[
+            { tag: 'at', user_id: 'bot-open-id', user_name: 'relay-bot' },
+            { tag: 'text', text: ' 帮我总结这张图 ' },
+            { tag: 'img', image_key: 'image-key-1' },
+          ]],
+        },
+      }),
+    })).toBe('看图任务 帮我总结这张图');
+  });
+
+  it('treats post mentions as actionable group messages and extracts inline images', () => {
+    const message = {
+      chat_id: 'chat-1',
+      chat_type: 'group',
+      message_id: 'message-post-2',
+      message_type: 'post',
+      content: JSON.stringify({
+        zh_cn: {
+          title: '',
+          content: [[
+            { tag: 'at', user_id: 'bot-open-id', user_name: 'relay-bot' },
+            { tag: 'text', text: ' 看一下 ' },
+            { tag: 'img', image_key: 'image-key-1' },
+            { tag: 'img', image_key: 'image-key-2' },
+          ]],
+        },
+      }),
+    } as const;
+
+    expect(shouldProcessFeishuMessage(message)).toBe(true);
+    expect(extractFeishuAttachmentInfos(message)).toEqual([
+      {
+        fileKey: 'image-key-1',
+        fileName: 'image',
+        resourceType: 'image',
+      },
+      {
+        fileKey: 'image-key-2',
+        fileName: 'image',
+        resourceType: 'image',
+      },
+    ]);
   });
 });

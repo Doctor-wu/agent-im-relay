@@ -648,6 +648,101 @@ describe('Feishu long-connection events', () => {
     }));
   });
 
+  it('queues image attachments from message events instead of treating them as missing prompts', async () => {
+    const replyMessage = vi.fn(async () => undefined);
+    const downloadMessageResource = vi.fn(async () => new Response(Buffer.from('png-bits'), {
+      headers: {
+        'content-type': 'image/png',
+      },
+    }));
+    const router = createFeishuEventRouter(baseConfig, {
+      client: {
+        replyMessage,
+        sendMessage: vi.fn(async () => undefined),
+        sendCard: vi.fn(async () => undefined),
+        uploadFileContent: vi.fn(async () => 'file-key'),
+        sendFileMessage: vi.fn(async () => undefined),
+        downloadMessageResource,
+      } as never,
+    });
+
+    await router.handleMessageEvent({
+      message: {
+        message_id: 'message-image-1',
+        chat_id: 'chat-1',
+        chat_type: 'p2p',
+        message_type: 'image',
+        content: JSON.stringify({
+          image_key: 'image-key-1',
+        }),
+      },
+    });
+
+    expect(downloadMessageResource).toHaveBeenCalledWith('message-image-1', 'image-key-1', 'image');
+    expect(runtimeMocks.queuePendingFeishuAttachments).toHaveBeenCalledWith(
+      'chat-1',
+      [expect.objectContaining({
+        fileKey: 'image-key-1',
+        contentType: 'image/png',
+      })],
+    );
+    expect(replyMessage).not.toHaveBeenCalledWith(expect.objectContaining({
+      content: JSON.stringify({ text: 'Please include a prompt after mentioning the bot.' }),
+    }));
+  });
+
+  it('extracts prompt text and inline images from post messages before starting a run', async () => {
+    runtimeMocks.runFeishuConversation.mockResolvedValue({ kind: 'started' });
+    const downloadMessageResource = vi.fn(async () => new Response(Buffer.from('png-bits'), {
+      headers: {
+        'content-type': 'image/png',
+      },
+    }));
+    const router = createFeishuEventRouter(baseConfig, {
+      client: {
+        replyMessage: vi.fn(async () => undefined),
+        sendMessage: vi.fn(async () => undefined),
+        sendCard: vi.fn(async () => undefined),
+        uploadFileContent: vi.fn(async () => 'file-key'),
+        sendFileMessage: vi.fn(async () => undefined),
+        downloadMessageResource,
+      } as never,
+    });
+
+    await router.handleMessageEvent({
+      message: {
+        message_id: 'message-post-1',
+        chat_id: 'chat-1',
+        chat_type: 'group',
+        message_type: 'post',
+        mentions: [{ id: { open_id: 'bot-open-id' }, name: 'relay-bot' }],
+        content: JSON.stringify({
+          zh_cn: {
+            title: '',
+            content: [[
+              { tag: 'at', user_id: 'bot-open-id', user_name: 'relay-bot' },
+              { tag: 'text', text: ' 帮我看下这张图 ' },
+              { tag: 'img', image_key: 'image-key-2' },
+            ]],
+          },
+        }),
+      },
+    });
+
+    expect(downloadMessageResource).toHaveBeenCalledWith('message-post-1', 'image-key-2', 'image');
+    expect(runtimeMocks.runFeishuConversation).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 'chat-1',
+      prompt: '帮我看下这张图',
+      attachments: [
+        expect.objectContaining({
+          fileKey: 'image-key-2',
+          contentType: 'image/png',
+        }),
+      ],
+      mode: 'code',
+    }));
+  });
+
   it('falls back to chat send when replyMessage returns HTTP 400', async () => {
     const replyMessage = vi.fn(async () => {
       throw new Error('Feishu reply message failed with HTTP 400.');

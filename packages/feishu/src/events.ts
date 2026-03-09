@@ -11,12 +11,13 @@ import {
   buildFeishuBackendConfirmationCardPayload,
 } from './cards.js';
 import {
-  extractFeishuFileInfo,
+  extractFeishuAttachmentInfos,
   extractFeishuMessageText,
   normalizeFeishuEvent,
   resolveConversationId,
   resolveConversationIdFromAction,
   shouldProcessFeishuMessage,
+  type FeishuAttachmentInfo,
   type FeishuActionPayload,
   type FeishuMessagePayload,
   type FeishuRawEvent,
@@ -384,7 +385,7 @@ function createTransport(
 async function buildManagedAttachment(
   client: FeishuClient,
   messageId: string,
-  fileInfo: { fileKey: string; fileName: string },
+  fileInfo: FeishuAttachmentInfo,
 ): Promise<{
   fileKey: string;
   name: string;
@@ -392,7 +393,7 @@ async function buildManagedAttachment(
   contentType?: string;
   size?: number;
 }> {
-  const response = await client.downloadMessageResource(messageId, fileInfo.fileKey);
+  const response = await client.downloadMessageResource(messageId, fileInfo.fileKey, fileInfo.resourceType);
   if (!response.ok) {
     throw new Error(`Failed to download Feishu attachment: ${fileInfo.fileName}`);
   }
@@ -406,6 +407,28 @@ async function buildManagedAttachment(
     contentType,
     size: buffer.byteLength,
   };
+}
+
+async function buildManagedAttachments(
+  client: FeishuClient,
+  messageId: string,
+  attachments: FeishuAttachmentInfo[],
+) {
+  return Promise.all(attachments.map(async attachment =>
+    buildManagedAttachment(client, messageId, attachment)));
+}
+
+function buildAttachmentReceiptText(attachments: FeishuAttachmentInfo[]): string {
+  const onlyImages = attachments.every(attachment => attachment.resourceType === 'image');
+  if (attachments.length === 1) {
+    return onlyImages
+      ? 'Image received. Send a prompt to use it.'
+      : 'File received. Send a prompt to use it.';
+  }
+
+  return onlyImages
+    ? 'Images received. Send a prompt to use them.'
+    : 'Attachments received. Send a prompt to use them.';
 }
 
 export function normalizeFeishuMessageReceiveEvent(payload: FeishuMessageReceiveEvent): FeishuRawEvent {
@@ -508,17 +531,6 @@ export function createFeishuEventRouter(
         replyToMessageId: message.message_id,
       };
 
-      const fileInfo = extractFeishuFileInfo(message);
-      if (fileInfo) {
-        queuePendingFeishuAttachments(
-          conversationId,
-          [await buildManagedAttachment(client, message.message_id, fileInfo)],
-        );
-        await transport.sendText(target, 'File received. Send a prompt to use it.');
-        succeeded = true;
-        return;
-      }
-
       const sessionKind = resolveFeishuChatSessionKind({
         chatId: message.chat_id,
         chatType: message.chat_type,
@@ -534,7 +546,21 @@ export function createFeishuEventRouter(
         return;
       }
 
+      const attachmentInfos = extractFeishuAttachmentInfos(message);
       const messageText = extractFeishuMessageText(message);
+      if (attachmentInfos.length > 0 && !messageText) {
+        queuePendingFeishuAttachments(
+          conversationId,
+          await buildManagedAttachments(client, message.message_id, attachmentInfos),
+        );
+        await transport.sendText(target, buildAttachmentReceiptText(attachmentInfos));
+        succeeded = true;
+        return;
+      }
+
+      const inlineAttachments = attachmentInfos.length > 0
+        ? await buildManagedAttachments(client, message.message_id, attachmentInfos)
+        : [];
 
       if (isFeishuDoneCommand(messageText)) {
         if (message.chat_type === 'p2p') {
@@ -604,7 +630,10 @@ export function createFeishuEventRouter(
             transport,
             defaultCwd: config.claudeCwd,
             sourceMessageId: message.message_id,
-            attachments: drainPendingFeishuAttachments(message.chat_id),
+            attachments: [
+              ...drainPendingFeishuAttachments(message.chat_id),
+              ...inlineAttachments,
+            ],
             persistState: persistFeishuState,
           });
         } catch (error) {
@@ -624,6 +653,10 @@ export function createFeishuEventRouter(
         transport,
         defaultCwd: config.claudeCwd,
         sourceMessageId: message.message_id,
+        attachments: [
+          ...drainPendingFeishuAttachments(message.chat_id),
+          ...inlineAttachments,
+        ],
         persistState: persistFeishuState,
       });
       succeeded = true;

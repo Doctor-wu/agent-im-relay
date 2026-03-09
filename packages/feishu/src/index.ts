@@ -58,6 +58,7 @@ export {
   buildFeishuSessionControlCardPayload,
 } from './cards.js';
 export {
+  extractFeishuAttachmentInfos,
   extractFeishuFileInfo,
   extractFeishuMessageText,
   normalizeFeishuEvent,
@@ -65,7 +66,7 @@ export {
   resolveConversationIdFromAction,
   shouldProcessFeishuMessage,
 } from './conversation.js';
-export type { FeishuRawEvent, NormalizedFeishuEvent } from './conversation.js';
+export type { FeishuAttachmentInfo, FeishuRawEvent, NormalizedFeishuEvent } from './conversation.js';
 export {
   buildFeishuLongConnectionEventHandlers,
   createFeishuEventRouter,

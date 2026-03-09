@@ -4,6 +4,7 @@ import type { FeishuConfig } from './config.js';
 export type FeishuReceiveIdType = 'chat_id' | 'open_id' | 'union_id' | 'email' | 'user_id';
 export type FeishuMessageType = 'text' | 'interactive' | 'file' | 'share_chat';
 export type FeishuUserIdType = 'open_id' | 'union_id' | 'user_id';
+export type FeishuMessageResourceType = 'file' | 'image';
 
 type FetchLike = typeof fetch;
 
@@ -82,7 +83,11 @@ export function createFeishuClient(
     receiveId: string;
     chatId: string;
   }): Promise<string | undefined>;
-  downloadMessageResource(messageId: string, fileKey: string): Promise<Response>;
+  downloadMessageResource(
+    messageId: string,
+    fileKey: string,
+    resourceType?: FeishuMessageResourceType,
+  ): Promise<Response>;
 } {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   const now = options.now ?? Date.now;
@@ -355,9 +360,13 @@ export function createFeishuClient(
     });
   }
 
-  async function downloadMessageResource(messageId: string, fileKey: string): Promise<Response> {
+  async function downloadMessageResource(
+    messageId: string,
+    fileKey: string,
+    resourceType: FeishuMessageResourceType = 'file',
+  ): Promise<Response> {
     const url = buildUrl(config.feishuBaseUrl, `/open-apis/im/v1/messages/${messageId}/resources/${fileKey}`);
-    url.searchParams.set('type', 'file');
+    url.searchParams.set('type', resourceType);
     return authorizedFetch(url.toString(), {
       method: 'GET',
     });
