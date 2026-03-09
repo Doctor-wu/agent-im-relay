@@ -1,7 +1,12 @@
 import { stageOutgoingArtifacts } from '@agent-im-relay/core';
+import { buildDiscordReplyPayload, type DiscordReplyContext } from './reply-context.js';
 
 type ArtifactUploadChannel = {
-  send(payload: string | { content: string; files: string[] }): Promise<unknown>;
+  send(payload: string | {
+    content: string;
+    files?: string[];
+    allowedMentions?: { users: string[] };
+  }): Promise<unknown>;
 };
 
 type PublishConversationArtifactsOptions = {
@@ -12,6 +17,7 @@ type PublishConversationArtifactsOptions = {
   warnings?: string[];
   channel: ArtifactUploadChannel;
   sourceMessageId?: string;
+  replyContext?: DiscordReplyContext;
 };
 
 export async function publishConversationArtifacts({
@@ -22,6 +28,7 @@ export async function publishConversationArtifacts({
   warnings: providedWarnings,
   channel,
   sourceMessageId,
+  replyContext,
 }: PublishConversationArtifactsOptions): Promise<void> {
   const staged = (stagedFiles && providedWarnings)
     ? { files: stagedFiles, warnings: providedWarnings }
@@ -36,10 +43,11 @@ export async function publishConversationArtifacts({
 
   if (staged.files.length > 0) {
     try {
-      await channel.send({
-        content: `📎 Returned ${staged.files.length} file${staged.files.length > 1 ? 's' : ''}.`,
-        files: staged.files,
-      });
+      await channel.send(buildDiscordReplyPayload(
+        `📎 Returned ${staged.files.length} file${staged.files.length > 1 ? 's' : ''}.`,
+        replyContext,
+        { files: staged.files },
+      ));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       warnings.push(`⚠️ Failed to upload returned files: ${message}`);
@@ -47,6 +55,6 @@ export async function publishConversationArtifacts({
   }
 
   if (warnings.length > 0) {
-    await channel.send(warnings.join('\n'));
+    await channel.send(buildDiscordReplyPayload(warnings.join('\n'), replyContext));
   }
 }

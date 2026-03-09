@@ -61,6 +61,39 @@ describe('publishConversationArtifacts', () => {
     }));
   });
 
+  it('mentions the triggering bot on artifact uploads', async () => {
+    const tempRoot = await createTempDir();
+    const cwd = path.join(tempRoot, 'workspace');
+    const artifactsBaseDir = path.join(tempRoot, 'artifacts');
+    const generatedFile = path.join(cwd, 'reports', 'summary.md');
+    vi.stubEnv('ARTIFACTS_BASE_DIR', artifactsBaseDir);
+
+    await mkdir(path.dirname(generatedFile), { recursive: true });
+    await writeFile(generatedFile, '# Summary\n', 'utf-8');
+
+    const { publishConversationArtifacts } = await import('../artifacts.js');
+    const send = vi.fn().mockResolvedValue({});
+
+    await publishConversationArtifacts({
+      conversationId: 'thread-bot-upload',
+      cwd,
+      resultText: [
+        'Done.',
+        '```artifacts',
+        '{ "files": [{ "path": "reports/summary.md" }] }',
+        '```',
+      ].join('\n'),
+      channel: { send },
+      replyContext: { mentionUserId: 'other-bot' },
+    });
+
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({
+      content: '<@other-bot> 📎 Returned 1 file.',
+      allowedMentions: { users: ['other-bot'] },
+      files: [path.join(artifactsBaseDir, 'thread-bot-upload', 'outgoing', 'summary.md')],
+    }));
+  });
+
   it('ignores invalid artifact paths and reports a warning', async () => {
     const tempRoot = await createTempDir();
     const cwd = path.join(tempRoot, 'workspace');
@@ -86,6 +119,36 @@ describe('publishConversationArtifacts', () => {
 
     expect(send).toHaveBeenCalledWith(expect.stringContaining('Skipped artifact `../secret.txt`'));
     expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('mentions warning follow-ups for bot-triggered runs', async () => {
+    const tempRoot = await createTempDir();
+    const cwd = path.join(tempRoot, 'workspace');
+    const artifactsBaseDir = path.join(tempRoot, 'artifacts');
+    vi.stubEnv('ARTIFACTS_BASE_DIR', artifactsBaseDir);
+
+    await mkdir(cwd, { recursive: true });
+
+    const { publishConversationArtifacts } = await import('../artifacts.js');
+    const send = vi.fn().mockResolvedValue({});
+
+    await publishConversationArtifacts({
+      conversationId: 'thread-bot-warning',
+      cwd,
+      resultText: [
+        'Done.',
+        '```artifacts',
+        '{ "files": [{ "path": "../secret.txt" }] }',
+        '```',
+      ].join('\n'),
+      channel: { send },
+      replyContext: { mentionUserId: 'other-bot' },
+    });
+
+    expect(send).toHaveBeenCalledWith({
+      content: '<@other-bot> ⚠️ Skipped artifact `../secret.txt`: path must stay within the allowed root.',
+      allowedMentions: { users: ['other-bot'] },
+    });
   });
 
   it('reports upload failures without dropping the saved artifact copy', async () => {

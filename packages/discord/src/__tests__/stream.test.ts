@@ -401,4 +401,87 @@ describe('streamAgentToDiscord', () => {
     expect(send).toHaveBeenCalledWith('Here is your summary.');
     expect(edit).not.toHaveBeenCalledWith(expect.stringContaining('```artifacts'));
   });
+
+  it('mentions the triggering bot on the first visible send without duplicating it on later edits', async () => {
+    const dateNow = vi.spyOn(Date, 'now');
+    let tick = 0;
+    dateNow.mockImplementation(() => {
+      tick += 1_000;
+      return tick;
+    });
+
+    const edit = vi.fn().mockResolvedValue(undefined);
+    const message = { edit } as any;
+    const send = vi.fn().mockResolvedValue(message);
+
+    async function* events() {
+      yield { type: 'text' as const, delta: 'First chunk' };
+      yield { type: 'text' as const, delta: ' and second chunk' };
+      yield { type: 'done' as const };
+    }
+
+    await streamAgentToDiscord(
+      {
+        channel: { send },
+        replyContext: { mentionUserId: 'other-bot' },
+      },
+      events(),
+    );
+
+    expect(send).toHaveBeenNthCalledWith(1, {
+      content: '<@other-bot> First chunk',
+      allowedMentions: { users: ['other-bot'] },
+    });
+    expect(edit).toHaveBeenCalledWith(expect.objectContaining({
+      content: 'First chunk and second chunk',
+    }));
+    expect(edit).not.toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining('<@other-bot>'),
+    }));
+  });
+
+  it('keeps environment visible but reserves the mention for the first content message', async () => {
+    const dateNow = vi.spyOn(Date, 'now');
+    let tick = 0;
+    dateNow.mockImplementation(() => {
+      tick += 1_000;
+      return tick;
+    });
+
+    const environmentEdit = vi.fn().mockResolvedValue(undefined);
+    const contentEdit = vi.fn().mockResolvedValue(undefined);
+    const send = vi.fn()
+      .mockResolvedValueOnce({ edit: environmentEdit } as any)
+      .mockResolvedValueOnce({ edit: contentEdit } as any);
+
+    async function* events() {
+      yield {
+        type: 'environment' as const,
+        environment: {
+          backend: 'codex' as const,
+          mode: 'code' as const,
+          model: { requested: 'gpt-5-codex' },
+          cwd: { value: '/tmp/project', source: 'auto-detected' as const },
+          git: { isRepo: true, branch: 'feature/demo', repoRoot: '/tmp/project' },
+        },
+      };
+      yield { type: 'text' as const, delta: 'Final answer' };
+      yield { type: 'done' as const, result: 'Final answer' };
+    }
+
+    await streamAgentToDiscord(
+      {
+        channel: { send },
+        showEnvironment: true,
+        replyContext: { mentionUserId: 'other-bot' },
+      },
+      events(),
+    );
+
+    expect(send).toHaveBeenNthCalledWith(1, expect.stringContaining('## Environment'));
+    expect(send).toHaveBeenNthCalledWith(2, {
+      content: '<@other-bot> Final answer',
+      allowedMentions: { users: ['other-bot'] },
+    });
+  });
 });

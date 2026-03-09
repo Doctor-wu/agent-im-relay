@@ -12,6 +12,7 @@ import { config } from './config.js';
 import { publishConversationArtifacts } from './artifacts.js';
 import { prepareAttachmentPrompt, type DiscordAttachmentLike } from './files.js';
 import { streamAgentToDiscord, type StreamTargetChannel } from './stream.js';
+import type { DiscordReplyContext } from './reply-context.js';
 
 type ReactionPhase = 'received' | 'thinking' | 'tools' | 'done' | 'error';
 
@@ -27,8 +28,13 @@ type RunMentionConversationOptions = {
   createSessionId?: () => string;
   persist?: () => Promise<void>;
   setReaction?: SetReaction;
+  replyContext?: DiscordReplyContext;
   streamToDiscord?: (
-    options: { channel: StreamTargetChannel; initialMessage?: Message<boolean> },
+    options: {
+      channel: StreamTargetChannel;
+      initialMessage?: Message<boolean>;
+      replyContext?: DiscordReplyContext;
+    },
     events: AsyncIterable<import('@agent-im-relay/core').AgentStreamEvent>,
   ) => Promise<void>;
 };
@@ -63,15 +69,21 @@ export async function runMentionConversation(
     persist: options.persist ?? persistDiscordState,
     attachments: options.attachments ?? [],
     render: ({ target, showEnvironment }, events) =>
-      (options.streamToDiscord ?? streamAgentToDiscord)({ channel: target, showEnvironment }, events),
-    publishArtifacts: async ({ conversationId, cwd, files, warnings, sourceMessageId, target }) => publishConversationArtifacts({
-      conversationId,
-      cwd,
-      stagedFiles: files,
-      warnings,
-      channel: target,
-      sourceMessageId,
-    }),
+      (options.streamToDiscord ?? streamAgentToDiscord)({
+        channel: target,
+        showEnvironment,
+        replyContext: options.replyContext,
+      }, events),
+    publishArtifacts: async ({ conversationId, cwd, files, warnings, sourceMessageId, target }) =>
+      publishConversationArtifacts({
+        conversationId,
+        cwd,
+        stagedFiles: files,
+        warnings,
+        channel: target,
+        sourceMessageId,
+        replyContext: options.replyContext,
+      }),
     onPhaseChange: async (phase, previousPhase, trigger) => {
       if (!trigger || !options.setReaction) {
         return;

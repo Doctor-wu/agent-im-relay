@@ -23,9 +23,11 @@ import {
 } from '@agent-im-relay/core';
 import { config } from './config.js';
 import { createDiscordAdapter } from './adapter.js';
+import { buildDiscordReplyPayload, createDiscordReplyContext, type DiscordReplyContext } from './reply-context.js';
 import type { StreamTargetChannel } from './stream.js';
 import { hasOpenStickyThreadSession, runMentionConversation } from './conversation.js';
 import { collectMessageAttachments } from './files.js';
+import { resolveInboundDiscordMessage } from './message-routing.js';
 import { ensureMentionThread } from './thread.js';
 import { askCommand, handleAskCommand } from './commands/ask.js';
 import { codeCommand, handleCodeCommand } from './commands/code.js';
@@ -96,11 +98,6 @@ function toErrorMessage(error: unknown): string {
   return String(error);
 }
 
-function extractMentionPrompt(content: string, botId: string): string {
-  const mentionRegex = new RegExp(`<@!?${botId}>`, 'g');
-  return content.replace(mentionRegex, '').replace(/\s+/g, ' ').trim();
-}
-
 // --- Reaction status indicator ---
 const REACTIONS = { received: '👀', thinking: '🧠', tools: '🔧', done: '✅', error: '❌' } as const;
 type ReactionPhase = keyof typeof REACTIONS;
@@ -120,12 +117,109 @@ async function runThreadConversation(
   thread: AnyThreadChannel,
   prompt: string,
   triggerMsg?: Message,
+  replyContext?: DiscordReplyContext,
 ): Promise<boolean> {
   return runMentionConversation(thread as AnyThreadChannel & StreamTargetChannel, prompt, triggerMsg, {
     attachments: collectMessageAttachments(triggerMsg),
     persist: () => persistState('discord'),
+    replyContext,
     setReaction,
   });
+}
+
+type HandleDiscordMessageCreateDependencies = {
+  botUser?: { id: string };
+  hasOpenStickyThreadSession?: (conversationId: string) => boolean;
+  runThreadConversation?: (
+    thread: AnyThreadChannel,
+    prompt: string,
+    triggerMsg?: Message,
+    replyContext?: DiscordReplyContext,
+  ) => Promise<boolean>;
+  ensureMentionThread?: typeof ensureMentionThread;
+  promptThreadSetup?: typeof promptThreadSetup;
+  applySetupResult?: typeof applySetupResult;
+};
+
+export async function handleDiscordMessageCreate(
+  message: Message,
+  dependencies: HandleDiscordMessageCreateDependencies = {},
+): Promise<void> {
+  const botUser = dependencies.botUser ?? client.user;
+  if (!botUser) return;
+
+  const isActiveThread = message.channel.isThread()
+    && (dependencies.hasOpenStickyThreadSession ?? hasOpenStickyThreadSession)(message.channel.id);
+  const routedMessage = resolveInboundDiscordMessage({
+    relayBotId: botUser.id,
+    authorId: message.author.id,
+    authorBot: message.author.bot,
+    content: message.content,
+    inGuild: message.inGuild(),
+    inActiveThread: isActiveThread,
+  });
+  if (!routedMessage.accepted) return;
+
+  const replyContext = createDiscordReplyContext({
+    relayBotId: botUser.id,
+    authorId: message.author.id,
+    authorBot: message.author.bot,
+  });
+
+  // Dedup guard
+  if (processedMessages.has(message.id)) return;
+  processedMessages.add(message.id);
+  setTimeout(() => processedMessages.delete(message.id), 60_000);
+
+  const prompt = routedMessage.prompt;
+
+  if (!prompt) {
+    await message.channel.send(
+      buildDiscordReplyPayload('Please include a prompt after mentioning me.', replyContext),
+    ).catch(() => {});
+    return;
+  }
+
+  // React immediately to acknowledge
+  await message.react(REACTIONS.received).catch(() => {});
+
+  try {
+    if (message.channel.isThread()) {
+      await (dependencies.runThreadConversation ?? runThreadConversation)(
+        message.channel,
+        prompt,
+        message,
+        replyContext,
+      );
+      return;
+    }
+
+    if (pendingConversationCreation.has(message.id)) return;
+    pendingConversationCreation.add(message.id);
+
+    try {
+      const thread = await (dependencies.ensureMentionThread ?? ensureMentionThread)(message as Message<true>, prompt);
+      await thread.send(`**${message.author.displayName}:** ${prompt}`);
+
+      // Show backend setup only if backend not yet chosen
+      if (!conversationBackend.has(thread.id)) {
+        const result = await (dependencies.promptThreadSetup ?? promptThreadSetup)(thread, prompt);
+        await (dependencies.applySetupResult ?? applySetupResult)(thread.id, result);
+      }
+
+      await (dependencies.runThreadConversation ?? runThreadConversation)(
+        thread,
+        prompt,
+        message,
+        replyContext,
+      );
+    } finally {
+      pendingConversationCreation.delete(message.id);
+    }
+  } catch (error) {
+    const errorText = toErrorMessage(error);
+    await message.channel.send(buildDiscordReplyPayload(`❌ ${errorText}`, replyContext)).catch(() => {});
+  }
 }
 
 // --- Event handlers ---
@@ -187,64 +281,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 client.on(Events.MessageCreate, async (message) => {
-  if (message.author.bot || !message.inGuild()) return;
-
-  const botUser = client.user;
-  if (!botUser) return;
-
-  const isExplicitMention = new RegExp(`<@!?${botUser.id}>`).test(message.content);
-  const isActiveThread = message.channel.isThread() && hasOpenStickyThreadSession(message.channel.id);
-
-  if (!isExplicitMention && !isActiveThread) return;
-
-  // Dedup guard
-  if (processedMessages.has(message.id)) return;
-  processedMessages.add(message.id);
-  setTimeout(() => processedMessages.delete(message.id), 60_000);
-
-  const prompt = isExplicitMention
-    ? extractMentionPrompt(message.content, botUser.id)
-    : message.content.trim();
-
-  if (!prompt) {
-    await message.reply('Please include a prompt after mentioning me.');
-    return;
-  }
-
-  // React immediately to acknowledge
-  await message.react(REACTIONS.received).catch(() => {});
-
-  try {
-    if (message.channel.isThread()) {
-      await runThreadConversation(message.channel, prompt, message);
-      return;
-    }
-
-    if (pendingConversationCreation.has(message.id)) return;
-    pendingConversationCreation.add(message.id);
-
-    try {
-      const thread = await ensureMentionThread(message, prompt);
-      await thread.send(`**${message.author.displayName}:** ${prompt}`);
-
-      // Show backend setup only if backend not yet chosen
-      if (!conversationBackend.has(thread.id)) {
-        const result = await promptThreadSetup(thread, prompt);
-        await applySetupResult(thread.id, result);
-      }
-
-      await runThreadConversation(thread, prompt, message);
-    } finally {
-      pendingConversationCreation.delete(message.id);
-    }
-  } catch (error) {
-    const errorText = toErrorMessage(error);
-    if (message.channel.isThread()) {
-      await message.channel.send(`❌ ${errorText}`).catch(() => {});
-    } else {
-      await message.reply(`❌ ${errorText}`).catch(() => {});
-    }
-  }
+  await handleDiscordMessageCreate(message);
 });
 
 function registerProcessHandlers(): void {

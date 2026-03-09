@@ -1,15 +1,17 @@
 import type { Message } from 'discord.js';
 import { stripArtifactManifest, type AgentEnvironment, type AgentStreamEvent } from '@agent-im-relay/core';
 import { config } from './config.js';
+import { buildDiscordReplyPayload, type DiscordReplyContext } from './reply-context.js';
 
 export type StreamTargetChannel = {
-  send(content: string | { content: string; embeds?: any[] }): Promise<Message<boolean>>;
+  send(content: string | { content: string; embeds?: any[]; allowedMentions?: { users: string[] } }): Promise<Message<boolean>>;
 };
 
 type StreamToDiscordOptions = {
   channel: StreamTargetChannel;
   initialMessage?: Message<boolean>;
   showEnvironment?: boolean;
+  replyContext?: DiscordReplyContext;
 };
 
 type EmbedFieldData = {
@@ -410,8 +412,10 @@ export async function streamAgentToDiscord(
   const showEnvironment = options.showEnvironment ?? false;
   const messages: Message<boolean>[] = [];
   let environmentMessage: Message<boolean> | undefined;
+  let mentionSent = false;
   if (options.initialMessage) {
     messages.push(options.initialMessage);
+    mentionSent = true;
   }
 
   let buffer = '';
@@ -420,10 +424,21 @@ export async function streamAgentToDiscord(
   let renderedEmbedsSignature = '[]';
   let toolCount = 0;
   let isThinking = false;
+  let hasSubstantiveOutput = false;
   const maxLength = Math.max(200, config.discordMessageCharLimit);
 
   const flush = async (): Promise<void> => {
-    const body = stripArtifactManifest(buffer).trim() || '⏳ Thinking...';
+    const strippedBody = stripArtifactManifest(buffer).trim();
+    if (
+      options.replyContext
+      && !mentionSent
+      && messages.length === 0
+      && !hasSubstantiveOutput
+    ) {
+      return;
+    }
+
+    const body = strippedBody || '⏳ Thinking...';
     const converted = convertMarkdownForDiscord(body);
     const embeds = converted.embeds as any[];
     const embedsSignature = JSON.stringify(converted.embeds);
@@ -433,11 +448,18 @@ export async function streamAgentToDiscord(
     if (messages.length === 0) {
       const firstChunk = chunks[0] ?? ZERO_WIDTH_SPACE;
       const first = await options.channel.send(
-        embeds.length > 0
-          ? { content: firstChunk, embeds }
-          : firstChunk,
+        !mentionSent
+          ? buildDiscordReplyPayload(
+              firstChunk,
+              options.replyContext,
+              embeds.length > 0 ? { embeds } : undefined,
+            )
+          : embeds.length > 0
+            ? { content: firstChunk, embeds }
+            : firstChunk,
       );
       messages.push(first);
+      mentionSent = mentionSent || Boolean(options.replyContext);
     }
 
     for (let index = 0; index < chunks.length; index += 1) {
@@ -486,9 +508,11 @@ export async function streamAgentToDiscord(
         buffer = '';
       }
       buffer += event.delta;
+      hasSubstantiveOutput = hasSubstantiveOutput || stripArtifactManifest(buffer).trim().length > 0;
     } else if (event.type === 'tool') {
       toolCount++;
       buffer += '\n' + formatToolLine(event.summary) + '\n';
+      hasSubstantiveOutput = true;
     } else if (event.type === 'status') {
       // Show thinking/status as subtle indicator, don't spam
       if (!isThinking && !buffer.trim()) {
@@ -501,9 +525,13 @@ export async function streamAgentToDiscord(
       } else {
         buffer += `\n\n❌ **Error:** ${event.error}\n`;
       }
+      hasSubstantiveOutput = true;
     } else if (event.type === 'done') {
       if (!buffer.trim() && event.result) {
         buffer = event.result;
+      }
+      if (event.result && stripArtifactManifest(event.result).trim().length > 0) {
+        hasSubstantiveOutput = true;
       }
       // Append tool count summary if tools were used
       if (toolCount > 0) {

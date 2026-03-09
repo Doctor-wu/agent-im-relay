@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { runPlatformConversation, persistState, streamAgentToDiscord } = vi.hoisted(() => ({
+const { runPlatformConversation, persistState, streamAgentToDiscord, publishConversationArtifacts } = vi.hoisted(() => ({
   runPlatformConversation: vi.fn(async (options) => {
     await options.render(
       { target: options.target, showEnvironment: !options.sourceMessageId },
@@ -13,6 +13,7 @@ const { runPlatformConversation, persistState, streamAgentToDiscord } = vi.hoist
   }),
   persistState: vi.fn(),
   streamAgentToDiscord: vi.fn(async () => {}),
+  publishConversationArtifacts: vi.fn(async () => {}),
 }));
 
 vi.mock('@agent-im-relay/core', async () => {
@@ -26,6 +27,10 @@ vi.mock('@agent-im-relay/core', async () => {
 
 vi.mock('../stream.js', () => ({
   streamAgentToDiscord,
+}));
+
+vi.mock('../artifacts.js', () => ({
+  publishConversationArtifacts,
 }));
 
 import {
@@ -51,11 +56,12 @@ describe('runMentionConversation', () => {
     persistState.mockReset();
     runPlatformConversation.mockClear();
     streamAgentToDiscord.mockReset();
+    publishConversationArtifacts.mockReset();
     runPlatformConversation.mockImplementation(async (options) => {
       await options.render(
         {
           target: options.target,
-          showEnvironment: !threadSessionBindings.has(options.conversationId),
+          showEnvironment: !options.sourceMessageId && !threadSessionBindings.has(options.conversationId),
         },
         (async function* () {
           yield { type: 'done', result: 'done', sessionId: 'resolved-session' };
@@ -162,5 +168,40 @@ describe('runMentionConversation', () => {
     closeThreadSession({ conversationId: 'thread-sticky' });
 
     expect(hasOpenStickyThreadSession('thread-sticky')).toBe(false);
+  });
+
+  it('passes reply context into stream rendering and artifact publishing', async () => {
+    const thread = { id: 'thread-bot-trigger' } as any;
+    const triggerMsg = { id: 'msg-bot-trigger' } as any;
+    const replyContext = { mentionUserId: 'other-bot' };
+
+    const started = await runMentionConversation(thread, 'hello', triggerMsg, { replyContext });
+
+    expect(started).toBe(true);
+    expect(streamAgentToDiscord).toHaveBeenCalledWith(
+      {
+        channel: thread,
+        showEnvironment: false,
+        replyContext,
+      },
+      expect.any(Object),
+    );
+
+    const runnerOptions = runPlatformConversation.mock.calls[0]?.[0];
+    await runnerOptions.publishArtifacts({
+      conversationId: thread.id,
+      cwd: '/tmp/workspace',
+      files: ['summary.md'],
+      warnings: ['warn'],
+      sourceMessageId: 'msg-bot-trigger',
+      target: thread,
+    });
+
+    expect(publishConversationArtifacts).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: thread.id,
+      channel: thread,
+      sourceMessageId: 'msg-bot-trigger',
+      replyContext,
+    }));
   });
 });
