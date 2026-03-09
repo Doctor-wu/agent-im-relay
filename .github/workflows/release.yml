@@ -146,9 +146,7 @@ jobs:
           fi
       - name: Publish package
         if: steps.package-name.outputs.publish_ready == 'true'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: pnpm --filter ./apps/agent-inbox publish --access public --no-git-checks
+        run: pnpm --filter ./apps/agent-inbox publish --access public --provenance --no-git-checks
 
   build-sea:
     name: Build SEA (${{ matrix.os }}-${{ matrix.arch }})
