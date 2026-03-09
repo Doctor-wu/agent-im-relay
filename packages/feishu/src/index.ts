@@ -20,6 +20,14 @@ export type { FeishuConfig } from './config.js';
 export { resolveFeishuSessionChatStateFile } from './config.js';
 export { createFeishuClient } from './api.js';
 export {
+  buildFeishuSessionReferenceText,
+  launchFeishuSessionFromPrivateChat,
+} from './launcher.js';
+export type {
+  FeishuLaunchResult,
+  FeishuLauncherClient,
+} from './launcher.js';
+export {
   beginFeishuDispatch,
   consumeMirroredFeishuMessageId,
   markFeishuDispatchMessageEmitted,
