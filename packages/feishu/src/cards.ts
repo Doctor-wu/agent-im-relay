@@ -232,6 +232,26 @@ export function buildFeishuSessionControlPanelPayload(
   );
 }
 
+export function buildFeishuInterruptCardPayload(
+  context: FeishuCardContext,
+): Record<string, unknown> {
+  return {
+    schema: '2.0',
+    header: {
+      title: plainText('Session Run'),
+    },
+    body: {
+      elements: [
+        {
+          tag: 'markdown',
+          content: 'Stop the current run before sending a correction or a new direction.',
+        },
+        button('Interrupt', context, 'interrupt', {}, 'primary'),
+      ],
+    },
+  };
+}
+
 export function buildFeishuSessionAnchorCardPayload(
   card: SessionAnchorCard,
   context: FeishuCardContext,

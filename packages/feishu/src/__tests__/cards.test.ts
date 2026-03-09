@@ -4,6 +4,7 @@ import {
   buildFeishuSessionAnchorCardPayload,
   buildFeishuBackendConfirmationCardPayload,
   buildFeishuBackendSelectionCardPayload,
+  buildFeishuInterruptCardPayload,
   buildFeishuSessionControlPanelPayload,
   buildFeishuSessionControlCardPayload,
   buildSessionAnchorCard,
@@ -109,6 +110,22 @@ describe('Feishu cards', () => {
         context,
       ),
     );
+  });
+
+  it('builds a dedicated interrupt card for message-scoped controls', () => {
+    const interrupt = buildFeishuInterruptCardPayload(context);
+
+    expect(interrupt.header).toEqual({
+      title: {
+        tag: 'plain_text',
+        content: 'Session Run',
+      },
+    });
+    expect(collectButtonTexts(interrupt)).toEqual(['Interrupt']);
+    expect(interrupt.body.elements).toContainEqual({
+      tag: 'markdown',
+      content: 'Stop the current run before sending a correction or a new direction.',
+    });
   });
 
   it('exposes explanatory copy for non-session control requests', () => {
