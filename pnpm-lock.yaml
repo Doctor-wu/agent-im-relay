@@ -10,6 +10,13 @@ importers:
 
   apps/agent-inbox:
     dependencies:
+      '@clack/prompts':
+        specifier: ^1.1.0
+        version: 1.1.0
+      picocolors:
+        specifier: ^1.1.1
+        version: 1.1.1
+    devDependencies:
       '@agent-im-relay/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -19,13 +26,6 @@ importers:
       '@agent-im-relay/feishu':
         specifier: workspace:*
         version: link:../../packages/feishu
-      '@clack/prompts':
-        specifier: ^1.1.0
-        version: 1.1.0
-      picocolors:
-        specifier: ^1.1.1
-        version: 1.1.1
-    devDependencies:
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.13
