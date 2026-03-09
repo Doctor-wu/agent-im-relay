@@ -30,7 +30,7 @@ export type {
   BackendSelectionCard,
   FeishuCardContext,
   SessionAnchorCard,
-  } from './cards.js';
+} from './cards.js';
 export {
   buildFeishuBackendConfirmationCardPayload,
   buildFeishuBackendSelectionCardPayload,
@@ -80,8 +80,8 @@ export type { FeishuFileLike } from './files.js';
 export {
   buildFeishuSessionChatRecord,
   findFeishuSessionChatBySourceMessage,
-  initializeFeishuSessionChats,
   getFeishuSessionChat,
+  initializeFeishuSessionChats,
   persistFeishuSessionChats,
   rememberFeishuSessionChat,
   resetFeishuSessionChatsForTests,

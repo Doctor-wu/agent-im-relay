@@ -1,6 +1,6 @@
-# agent-im-relay Architecture
+# Agent Inbox Architecture
 
-`agent-im-relay` is organized as a pnpm monorepo with a platform-specific delivery layer and a platform-agnostic core runtime.
+`Agent Inbox` is organized as a pnpm monorepo with a platform-specific delivery layer and a platform-agnostic core runtime.
 
 ## Architecture Summary
 
@@ -40,8 +40,8 @@ flowchart TB
     end
 
     subgraph storage["Persisted storage"]
-      sessions["data/sessions.json"]
-      files["data/artifacts/<conversationId>/"]
+      sessions["~/.agent-inbox/state/sessions.json"]
+      files["~/.agent-inbox/artifacts/<conversationId>/"]
     end
 
     future["Future adapters<br/>Slack / Telegram / Feishu"]
@@ -68,7 +68,7 @@ flowchart TB
 
 1. A Discord command or thread reply enters the Discord package and is mapped to a thread-scoped conversation.
 2. `runMentionConversation()` restores session context and prepares the run configuration.
-3. `prepareAttachmentPrompt()` downloads incoming files into `data/artifacts/<conversationId>/incoming/` and prepends local-path context to the prompt.
+3. `prepareAttachmentPrompt()` downloads incoming files into `~/.agent-inbox/artifacts/<conversationId>/incoming/` and prepends local-path context to the prompt.
 4. `runConversationSession()` in core builds the final prompt, selects the backend, and opens the event stream.
 5. The active backend emits environment, status, tool, text, done, and error events through a shared stream contract.
 6. `streamAgentToDiscord()` converts the stream into Discord message edits, environment summaries, and reaction status updates.

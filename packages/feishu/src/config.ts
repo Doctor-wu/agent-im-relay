@@ -1,6 +1,5 @@
 import { config as dotenvConfig } from 'dotenv';
-import { dirname, join } from 'node:path';
-import { resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { applyCoreConfigEnvironment, readCoreConfig, type CoreConfig } from '@agent-im-relay/core';
 
 dotenvConfig({ path: resolve(import.meta.dirname, '../../../.env') });

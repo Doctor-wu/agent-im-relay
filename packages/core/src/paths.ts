@@ -21,8 +21,13 @@ function canWriteDirectory(path: string): boolean {
 }
 
 function resolveDefaultRelayBaseDir(): string {
+  const homeDir = homedir();
+  if (homeDir && canWriteDirectory(homeDir)) {
+    return homeDir;
+  }
+
   const initCwd = process.env['INIT_CWD']?.trim();
-  const candidates = [initCwd, process.cwd(), homedir(), tmpdir()];
+  const candidates = [initCwd, process.cwd(), tmpdir()];
 
   for (const candidate of candidates) {
     if (candidate && canWriteDirectory(candidate)) {
