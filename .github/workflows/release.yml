@@ -27,6 +27,90 @@ jobs:
         run: |
           mkdir -p artifacts
           pnpm --filter ./apps/agent-inbox pack --pack-destination artifacts
+      - name: Smoke test npm tarball install
+        run: |
+          set -euo pipefail
+          install_dir=$(mktemp -d)
+          npm_cache_dir=$(mktemp -d)
+          home_dir=$(mktemp -d)
+          tarball=$(echo "$PWD"/artifacts/*.tgz)
+
+          cd "$install_dir"
+          npm init -y >/dev/null 2>&1
+          NPM_CONFIG_CACHE="$npm_cache_dir" npm install "$tarball"
+
+          INSTALL_DIR="$install_dir" HOME_DIR="$home_dir" python3 <<'PY'
+          import os
+          import pty
+          import select
+          import subprocess
+          import sys
+          import time
+
+          env = dict(os.environ)
+          env["HOME"] = env["HOME_DIR"]
+
+          master_fd, slave_fd = pty.openpty()
+          process = None
+          chunks = []
+          markers = ("No platforms configured yet", "Which platform to configure", "Agent Inbox")
+
+          try:
+              process = subprocess.Popen(
+                  ["./node_modules/.bin/agent-inbox"],
+                  cwd=env["INSTALL_DIR"],
+                  env=env,
+                  stdin=slave_fd,
+                  stdout=slave_fd,
+                  stderr=slave_fd,
+              )
+              os.close(slave_fd)
+
+              deadline = time.time() + 5
+
+              while time.time() < deadline:
+                  ready, _, _ = select.select([master_fd], [], [], 0.2)
+                  if master_fd not in ready:
+                      continue
+
+                  data = os.read(master_fd, 8192)
+                  if not data:
+                      break
+
+                  chunks.append(data)
+                  output = b"".join(chunks).decode("utf-8", errors="replace")
+                  if any(marker in output for marker in markers):
+                      break
+          finally:
+              try:
+                  os.close(slave_fd)
+              except OSError:
+                  pass
+              try:
+                  if process is not None:
+                      process.terminate()
+                      process.wait(timeout=1)
+              except Exception:
+                  try:
+                      if process is not None:
+                          process.kill()
+                          process.wait(timeout=1)
+                  except Exception:
+                      pass
+              try:
+                  os.close(master_fd)
+              except OSError:
+                  pass
+
+          output = b"".join(chunks).decode("utf-8", errors="replace")
+          print(output)
+
+          if not any(
+              token in output
+              for token in ("No platforms configured yet", "Which platform to configure", "Agent Inbox")
+          ):
+              sys.exit(1)
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: agent-inbox-npm-package

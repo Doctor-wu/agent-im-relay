@@ -24,13 +24,13 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@agent-im-relay/core": "workspace:*",
-    "@agent-im-relay/discord": "workspace:*",
-    "@agent-im-relay/feishu": "workspace:*",
     "@clack/prompts": "^1.1.0",
     "picocolors": "^1.1.1"
   },
   "devDependencies": {
+    "@agent-im-relay/core": "workspace:*",
+    "@agent-im-relay/discord": "workspace:*",
+    "@agent-im-relay/feishu": "workspace:*",
     "@types/node": "^22.10.0",
     "postject": "1.0.0-alpha.6",
     "tsdown": "^0.21.0",
