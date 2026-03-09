@@ -11,7 +11,8 @@ Agent Inbox is an inbox-first IM launcher for local Claude and Codex workflows. 
 
 ## What Changed
 
-- User-facing entry is `@agent-inbox/app`
+- User-facing entry is the `apps/agent-inbox` CLI package
+- Published npm package name is `@doctorwu/agent-inbox`
 - Runtime config and data default to `~/.agent-inbox/`
 - Config file is `~/.agent-inbox/config.jsonl`
 - Only configured IM integrations appear in the launcher
@@ -45,7 +46,7 @@ Example:
 
 ```text
 apps/
-  agent-inbox/  @agent-inbox/app      — User-facing launcher, setup flow, config loading
+  agent-inbox/  @doctorwu/agent-inbox  — User-facing launcher, setup flow, config loading
 
 packages/
   core/      @agent-im-relay/core     — Shared runtime, state, orchestration
@@ -71,6 +72,19 @@ Typical startup flow:
 2. Configure `FEISHU_APP_ID` and `FEISHU_APP_SECRET`, plus `FEISHU_ENCRYPT_KEY` / `FEISHU_VERIFICATION_TOKEN` if your app uses them.
 3. Start `pnpm dev:feishu` on the machine that has the local agent CLI tools and workspace.
 4. Send the bot a private message to create a `Session · {promptPreview}` chat, then continue inside that session chat with the per-message interrupt card.
+
+## Install
+
+The primary distribution path is npm:
+
+```bash
+npm install -g @doctorwu/agent-inbox
+
+# Or run without a global install
+npx @doctorwu/agent-inbox
+```
+
+On first run, `agent-inbox` creates `~/.agent-inbox/` as needed and enters the interactive setup flow automatically when no IM is configured yet. Users do not need to create `config.jsonl` by hand before the first `npx` run.
 
 ## Development
 
@@ -103,7 +117,7 @@ See `.env.example` for the reduced development surface.
 
 The main distribution target is `apps/agent-inbox`. Its build now produces:
 
-- `apps/agent-inbox/dist/index.mjs` — bundled launcher entry
-- `apps/agent-inbox/dist/agent-inbox` — macOS executable generated from the bundled launcher
+- `apps/agent-inbox/dist/index.mjs` — bundled launcher entry and npm `bin` target
+- `apps/agent-inbox/dist/agent-inbox` — optional SEA executable generated from the bundled launcher
 
-The launcher bundle no longer depends on the workspace layout at runtime, and the executable can be used as the distribution artifact for the current platform.
+The launcher bundle no longer depends on the workspace layout at runtime. npm publish is the primary user distribution path; SEA remains an optional CI artifact and should not block npm release flow.

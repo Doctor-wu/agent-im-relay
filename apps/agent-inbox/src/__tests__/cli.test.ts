@@ -93,6 +93,37 @@ describe('cli', () => {
     );
   });
 
+  it('enters setup on first run when no IM is configured yet', async () => {
+    const im = {
+      id: 'discord' as const,
+      config: { token: 'discord-token', clientId: 'discord-client' },
+    };
+
+    mocks.loadAppConfig.mockResolvedValue({
+      records: [],
+      runtime: {},
+      errors: [],
+      availableIms: [],
+    });
+    mocks.getUnconfiguredPlatforms.mockReturnValue(['discord']);
+    mocks.runSetup.mockResolvedValue({
+      records: [],
+      runtime: {},
+      errors: [],
+      availableIms: [im],
+    });
+    mocks.clackSelect.mockResolvedValue('discord');
+
+    await runCli();
+
+    expect(mocks.runSetup).toHaveBeenCalled();
+    expect(mocks.startSelectedIm).toHaveBeenCalledWith(
+      im,
+      {},
+      expect.objectContaining({ pidsDir: expect.any(String) }),
+    );
+  });
+
   it('rejects starting a platform that is already running', async () => {
     const im = {
       id: 'discord' as const,

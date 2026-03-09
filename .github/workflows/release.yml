@@ -1,4 +1,4 @@
-name: Build & Release
+name: Build, Publish & Optional SEA
 
 on:
   push:
@@ -7,10 +7,11 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
-  build-bundle:
-    name: Build JS Bundle
+  build-package:
+    name: Build npm package
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,16 +21,54 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm -r build
-      - name: Package bundle
-        run: tar -czf agent-inbox-bundle.tar.gz -C apps/agent-inbox/dist .
+      - run: pnpm --filter ./apps/agent-inbox build
+      - run: pnpm --filter ./apps/agent-inbox test -- --run src/__tests__/packaging.test.ts src/__tests__/cli.test.ts src/__tests__/setup.test.ts
+      - name: Pack npm tarball
+        run: |
+          mkdir -p artifacts
+          pnpm --filter ./apps/agent-inbox pack --pack-destination artifacts
       - uses: actions/upload-artifact@v4
         with:
-          name: agent-inbox-bundle
-          path: agent-inbox-bundle.tar.gz
+          name: agent-inbox-npm-package
+          path: artifacts/*.tgz
+
+  publish-npm:
+    name: Publish npm package
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - id: package-name
+        name: Check publish package name
+        run: |
+          package_name=$(node -p "JSON.parse(require('node:fs').readFileSync('apps/agent-inbox/package.json', 'utf8')).name")
+          echo "package_name=$package_name" >> "$GITHUB_OUTPUT"
+          if [[ "$package_name" == "@doctorwu/agent-inbox" ]]; then
+            echo "publish_ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish_ready=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping npm publish until package name is set to @doctorwu/agent-inbox."
+          fi
+      - name: Publish package
+        if: steps.package-name.outputs.publish_ready == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: pnpm --filter ./apps/agent-inbox publish --access public --no-git-checks
 
   build-sea:
     name: Build SEA (${{ matrix.os }}-${{ matrix.arch }})
+    continue-on-error: true
     strategy:
       matrix:
         include:
@@ -54,30 +93,11 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm -r build
-      - name: Build SEA executable
-        working-directory: apps/agent-inbox
-        run: node scripts/build-executable.mjs
+      - run: pnpm --filter ./apps/agent-inbox build
+      - run: pnpm --filter ./apps/agent-inbox build:sea
       - name: Rename executable
         run: mv apps/agent-inbox/dist/agent-inbox apps/agent-inbox/dist/agent-inbox-${{ matrix.os }}-${{ matrix.arch }}
       - uses: actions/upload-artifact@v4
         with:
           name: agent-inbox-${{ matrix.os }}-${{ matrix.arch }}
           path: apps/agent-inbox/dist/agent-inbox-${{ matrix.os }}-${{ matrix.arch }}
-
-  release:
-    name: Create GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-bundle, build-sea]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
-      - name: List artifacts
-        run: ls -la artifacts/
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/*
-          generate_release_notes: true

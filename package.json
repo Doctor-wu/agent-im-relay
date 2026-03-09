@@ -1,5 +1,5 @@
 {
-  "name": "agent-inbox",
+  "name": "agent-im-relay-workspace",
   "version": "1.0.1",
   "private": true,
   "description": "Inbox-first IM launcher for local AI agents",
@@ -7,7 +7,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "test": "pnpm -r test",
-    "start": "pnpm --filter @agent-inbox/app start",
+    "start": "pnpm --filter ./apps/agent-inbox start",
     "dev:discord": "pnpm --filter @agent-im-relay/discord dev",
     "dev:feishu": "pnpm --filter @agent-im-relay/feishu dev"
   },

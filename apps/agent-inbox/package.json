@@ -1,5 +1,5 @@
 {
-  "name": "agent-inbox",
+  "name": "@doctorwu/agent-inbox",
   "version": "1.0.1",
   "type": "module",
   "main": "dist/index.mjs",
@@ -7,10 +7,18 @@
   "bin": {
     "agent-inbox": "dist/index.mjs"
   },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "pnpm --filter @agent-im-relay/core build && pnpm --filter @agent-im-relay/discord build && pnpm --filter @agent-im-relay/feishu build && tsdown",
     "build:sea": "node ./scripts/build-executable.mjs",
     "build:all": "pnpm run build && pnpm run build:sea",
+    "prepack": "pnpm run build",
     "start": "node dist/index.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -27,5 +35,8 @@
     "postject": "1.0.0-alpha.6",
     "tsdown": "^0.21.0",
     "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
