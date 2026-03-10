@@ -2,6 +2,13 @@
 
 This guide walks through the Discord-specific setup for Agent Inbox.
 
+Before you start, install at least one supported backend CLI on the machine where Agent Inbox will run:
+
+- `claude` for Claude Code
+- `codex` for OpenAI Codex
+
+Agent Inbox executes the selected backend locally. By default it looks for `claude` and `codex` in your `PATH`.
+
 Agent Inbox expects three Discord values:
 
 - `token`: your bot token
@@ -61,7 +68,6 @@ Recommended bot permissions for Agent Inbox's current Discord workflow:
 - Read Message History
 - Attach Files
 - Add Reactions
-- Use Application Commands
 
 These permissions are based on the current implementation:
 
@@ -118,8 +124,9 @@ agent-inbox
 Then verify the Discord side:
 
 1. Open the server where you invited the bot.
-2. Run `/code` or `/ask`, or mention the bot in a text channel.
-3. Confirm the bot creates or uses a thread and streams its response there.
+2. Run `/code` to create a working thread, or run `/ask` for a quick reply in the current channel.
+3. Mention the bot in a guild text channel if you want the bot to open a thread-backed session from a message.
+4. Confirm the bot streams its response in the expected place.
 
 ## Troubleshooting
 

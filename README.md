@@ -30,14 +30,23 @@ npm install -g @doctorwu/agent-inbox
 npx @doctorwu/agent-inbox
 ```
 
-### 2. Configure
+### 2. Install a backend CLI
+
+Install at least one supported backend on the same machine that runs Agent Inbox:
+
+- `claude` for Claude Code
+- `codex` for OpenAI Codex
+
+Agent Inbox shells out to the selected backend binary locally. By default it looks for `claude` and `codex` in your `PATH`.
+
+### 3. Configure
 
 Run `agent-inbox` once and follow the interactive setup wizard.
 
 - Discord users: follow [docs/discord-setup.md](docs/discord-setup.md) to create the bot, invite it to a server, and collect `token`, `clientId`, and optional `guildIds`
 - Feishu users: enter your app credentials in the same setup flow
 
-### 3. Run
+### 4. Run
 
 ```bash
 agent-inbox
@@ -45,7 +54,7 @@ agent-inbox
 
 After the relay starts, message your configured bot to begin:
 
-- Discord: use `/code`, `/ask`, or mention the bot in a guild channel to open a thread-backed session
+- Discord: use `/code` or mention the bot in a guild channel to open a thread-backed session; use `/ask` for a quick answer in the current channel
 - Feishu: message the app and continue the session in the created chat flow
 
 ## Supported Platforms
@@ -59,8 +68,8 @@ After the relay starts, message your configured bot to begin:
 
 | Backend | Status | Notes |
 | --- | --- | --- |
-| Claude Code | Supported | Full code-task workflow with streaming output and tool usage |
-| OpenAI Codex | Supported | Code-task workflow with streaming output through the same relay model |
+| Claude Code | Supported | Full code-task workflow with streaming output and tool usage; requires a local `claude` CLI |
+| OpenAI Codex | Supported | Code-task workflow with streaming output through the same relay model; requires a local `codex` CLI |
 
 ## Configuration Details
 
