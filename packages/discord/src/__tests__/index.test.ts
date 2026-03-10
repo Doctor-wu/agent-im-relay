@@ -97,12 +97,9 @@ vi.mock('../commands/agent-control.js', () => ({
 }));
 
 vi.mock('../commands/skill.js', () => ({
+  handleSkillAutocomplete: vi.fn(),
   handleSkillCommand: vi.fn(),
-  handleSkillModalSubmit: vi.fn(),
-  handleSkillSelectMenu: vi.fn(),
   skillCommand: { toJSON: () => ({}) },
-  SKILL_MODAL_CUSTOM_ID_PREFIX: 'skill-modal:',
-  SKILL_SELECT_CUSTOM_ID: 'skill-select',
 }));
 
 vi.mock('../commands/thread-setup.js', () => ({
@@ -111,6 +108,11 @@ vi.mock('../commands/thread-setup.js', () => ({
 }));
 
 import { handleDiscordMessageCreate } from '../index.js';
+import { handleSkillAutocomplete } from '../commands/skill.js';
+
+const interactionCreateHandler = clientMock.on.mock.calls.find(
+  ([event]) => event === 'interactionCreate',
+)?.[1];
 
 let messageCounter = 0;
 
@@ -182,5 +184,17 @@ describe('handleDiscordMessageCreate', () => {
       allowedMentions: { users: ['other-bot'] },
     });
     expect(message.reply).not.toHaveBeenCalled();
+  });
+
+  it('routes skill autocomplete interactions to the skill handler', async () => {
+    const interaction = {
+      isChatInputCommand: () => false,
+      isAutocomplete: () => true,
+      commandName: 'skill',
+    } as any;
+
+    await interactionCreateHandler?.(interaction);
+
+    expect(handleSkillAutocomplete).toHaveBeenCalledWith(interaction);
   });
 });

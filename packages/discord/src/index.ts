@@ -4,7 +4,7 @@ import {
   GatewayIntentBits,
   REST,
   Routes,
-  SlashCommandBuilder,
+  type AutocompleteInteraction,
   type AnyThreadChannel,
   type ChatInputCommandInteraction,
   type Message,
@@ -35,16 +35,14 @@ import { doneCommand, handleDoneCommand } from './commands/done.js';
 import { interruptCommand, handleInterruptCommand } from './commands/interrupt.js';
 import { agentControlCommandHandlers, agentControlCommands } from './commands/agent-control.js';
 import {
+  handleSkillAutocomplete,
   handleSkillCommand,
-  handleSkillModalSubmit,
-  handleSkillSelectMenu,
   skillCommand,
-  SKILL_MODAL_CUSTOM_ID_PREFIX,
-  SKILL_SELECT_CUSTOM_ID,
 } from './commands/skill.js';
 import { promptThreadSetup, applySetupResult } from './commands/thread-setup.js';
 
 type CommandHandler = (interaction: ChatInputCommandInteraction) => Promise<void>;
+type AutocompleteHandler = (interaction: AutocompleteInteraction) => Promise<void>;
 
 // --- Command registry ---
 const commandHandlers = new Map<string, CommandHandler>([
@@ -54,6 +52,10 @@ const commandHandlers = new Map<string, CommandHandler>([
   ['skill', handleSkillCommand],
   ['done', handleDoneCommand],
   ...agentControlCommandHandlers.entries(),
+]);
+
+const autocompleteHandlers = new Map<string, AutocompleteHandler>([
+  ['skill', handleSkillAutocomplete],
 ]);
 
 const commandDefinitions = [
@@ -260,13 +262,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
-    if (interaction.isStringSelectMenu() && interaction.customId === SKILL_SELECT_CUSTOM_ID) {
-      await handleSkillSelectMenu(interaction);
-      return;
-    }
+    if (interaction.isAutocomplete()) {
+      const handler = autocompleteHandlers.get(interaction.commandName);
+      if (!handler) return;
 
-    if (interaction.isModalSubmit() && interaction.customId.startsWith(SKILL_MODAL_CUSTOM_ID_PREFIX)) {
-      await handleSkillModalSubmit(interaction, runThreadConversation);
+      await handler(interaction);
     }
   } catch (error) {
     const errorText = toErrorMessage(error);
