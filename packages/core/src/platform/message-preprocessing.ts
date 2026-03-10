@@ -12,32 +12,164 @@ export type PreprocessedConversationMessage = {
   directives: MessageControlDirective[];
 };
 
-const BACKEND_TAG_PATTERN = /<set-backend>\s*(claude|codex)\s*<\/set-backend>/gi;
+type DirectiveOccurrence = {
+  start: number;
+  end: number;
+  directive: MessageControlDirective;
+};
 
-function normalizePromptAfterDirectiveRemoval(input: string): string {
-  return input
-    .replace(/\r\n/g, '\n')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n[ \t]+/g, '\n')
-    .replace(/[ \t]{2,}/g, ' ')
-    .trim();
+type ParsedDirectiveCandidate =
+  | {
+    kind: 'valid';
+    occurrence: DirectiveOccurrence;
+    nextSearchIndex: number;
+  }
+  | {
+    kind: 'skip';
+    nextSearchIndex: number;
+  };
+
+const OPEN_TAG = '<set-backend>';
+const CLOSE_TAG = '</set-backend>';
+const VALID_BACKENDS = new Set<BackendName>(['claude', 'codex']);
+
+function parseDirectiveCandidate(content: string, openIndex: number): ParsedDirectiveCandidate {
+  let cursor = openIndex + OPEN_TAG.length;
+  let closeIndex = -1;
+  let depth = 1;
+
+  while (depth > 0) {
+    const nextOpen = content.indexOf(OPEN_TAG, cursor);
+    const nextClose = content.indexOf(CLOSE_TAG, cursor);
+
+    if (nextClose === -1) {
+      return {
+        kind: 'skip',
+        nextSearchIndex: openIndex + OPEN_TAG.length,
+      };
+    }
+
+    if (nextOpen !== -1 && nextOpen < nextClose) {
+      depth += 1;
+      cursor = nextOpen + OPEN_TAG.length;
+      continue;
+    }
+
+    depth -= 1;
+    closeIndex = nextClose;
+    cursor = nextClose + CLOSE_TAG.length;
+  }
+
+  const innerContent = content.slice(openIndex + OPEN_TAG.length, closeIndex);
+  if (innerContent.includes(OPEN_TAG) || innerContent.includes(CLOSE_TAG)) {
+    return {
+      kind: 'skip',
+      nextSearchIndex: cursor,
+    };
+  }
+
+  const backend = innerContent.trim().toLowerCase() as BackendName;
+  if (!VALID_BACKENDS.has(backend)) {
+    return {
+      kind: 'skip',
+      nextSearchIndex: cursor,
+    };
+  }
+
+  return {
+    kind: 'valid',
+    occurrence: {
+      start: openIndex,
+      end: cursor,
+      directive: {
+        type: 'backend',
+        value: backend,
+      },
+    },
+    nextSearchIndex: cursor,
+  };
+}
+
+function findDirectiveOccurrences(content: string): DirectiveOccurrence[] {
+  const occurrences: DirectiveOccurrence[] = [];
+  let searchIndex = 0;
+
+  while (searchIndex < content.length) {
+    const openIndex = content.indexOf(OPEN_TAG, searchIndex);
+    if (openIndex === -1) {
+      break;
+    }
+
+    const candidate = parseDirectiveCandidate(content, openIndex);
+    if (candidate.kind === 'valid') {
+      occurrences.push(candidate.occurrence);
+    }
+    searchIndex = candidate.nextSearchIndex;
+  }
+
+  return occurrences;
+}
+
+function isNewline(character: string | undefined): boolean {
+  return character === '\n' || character === '\r';
+}
+
+function mergePromptSegments(left: string, right: string): string {
+  const normalizedLeft = left.replace(/[ \t]+$/g, '');
+  const normalizedRight = isNewline(right[0])
+    ? right
+    : right.replace(/^[ \t]+/g, '');
+
+  if (normalizedLeft.length === 0) {
+    return normalizedRight.replace(/^(?:\r?\n)+/g, '');
+  }
+
+  if (normalizedRight.length === 0) {
+    return normalizedLeft.replace(/(?:\r?\n)+$/g, '');
+  }
+
+  const leftLast = normalizedLeft[normalizedLeft.length - 1];
+  const rightFirst = normalizedRight[0];
+
+  if (isNewline(leftLast) && isNewline(rightFirst)) {
+    return `${normalizedLeft.replace(/(?:\r?\n)+$/g, '\n')}${normalizedRight.replace(/^(?:\r?\n)+/g, '')}`;
+  }
+
+  if (!/\s/.test(leftLast) && !/\s/.test(rightFirst)) {
+    return `${normalizedLeft} ${normalizedRight}`;
+  }
+
+  return `${normalizedLeft}${normalizedRight}`;
+}
+
+function removeDirectiveOccurrences(content: string, occurrences: DirectiveOccurrence[]): string {
+  if (occurrences.length === 0) {
+    return content;
+  }
+
+  let prompt = content.slice(0, occurrences[0]!.start);
+  for (let index = 0; index < occurrences.length; index += 1) {
+    const occurrence = occurrences[index]!;
+    const nextOccurrence = occurrences[index + 1];
+    const nextSegment = content.slice(occurrence.end, nextOccurrence?.start ?? content.length);
+    prompt = mergePromptSegments(prompt, nextSegment);
+  }
+
+  return prompt;
 }
 
 export function preprocessConversationMessage(content: string): PreprocessedConversationMessage {
-  const directives: MessageControlDirective[] = [];
-  const prompt = normalizePromptAfterDirectiveRemoval(
-    content.replace(BACKEND_TAG_PATTERN, (_match, backend: string) => {
-      directives.push({
-        type: 'backend',
-        value: backend.toLowerCase() as BackendName,
-      });
-      return ' ';
-    }),
-  );
+  const occurrences = findDirectiveOccurrences(content);
+  if (occurrences.length === 0) {
+    return {
+      prompt: content,
+      directives: [],
+    };
+  }
 
   return {
-    prompt,
-    directives,
+    prompt: removeDirectiveOccurrences(content, occurrences),
+    directives: [occurrences[occurrences.length - 1]!.directive],
   };
 }
 
@@ -45,26 +177,30 @@ export function applyMessageControlDirectives(options: {
   conversationId: string;
   directives: MessageControlDirective[];
 }): SessionControlResult[] {
-  const results: SessionControlResult[] = [];
+  const lastBackendDirective = [...options.directives]
+    .reverse()
+    .find((directive) => directive.type === 'backend');
 
-  for (const directive of options.directives) {
-    const result = applySessionControlCommand({
-      conversationId: options.conversationId,
-      type: 'backend',
-      value: directive.value,
-    });
-    results.push(result);
-
-    // Control tags are explicit instructions, so text-driven backend switches
-    // should complete immediately instead of waiting for a platform UI confirm step.
-    if (result.kind === 'backend' && result.requiresConfirmation) {
-      results.push(applySessionControlCommand({
-        conversationId: options.conversationId,
-        type: 'confirm-backend',
-        value: result.requestedBackend ?? directive.value,
-      }));
-    }
+  if (!lastBackendDirective) {
+    return [];
   }
 
-  return results;
+  const result = applySessionControlCommand({
+    conversationId: options.conversationId,
+    type: 'backend',
+    value: lastBackendDirective.value,
+  });
+
+  if (result.kind === 'backend' && result.requiresConfirmation) {
+    return [
+      result,
+      applySessionControlCommand({
+        conversationId: options.conversationId,
+        type: 'confirm-backend',
+        value: result.requestedBackend ?? lastBackendDirective.value,
+      }),
+    ];
+  }
+
+  return [result];
 }
