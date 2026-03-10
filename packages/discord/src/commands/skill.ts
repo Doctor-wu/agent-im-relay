@@ -211,6 +211,11 @@ function requireThreadChannel(interaction: ChatInputCommandInteraction): AnyThre
   return channel?.isThread() ? channel : null;
 }
 
+function findSkillByName(skills: SkillInfo[], input: string): SkillInfo | null {
+  const normalizedInput = normalizeSearchValue(input);
+  return skills.find(skill => normalizeSearchValue(skill.name) === normalizedInput) ?? null;
+}
+
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
@@ -264,8 +269,15 @@ export async function handleSkillCommand(interaction: ChatInputCommandInteractio
   await interaction.deferReply({ ephemeral: true });
 
   try {
-    const fullPrompt = buildSkillPrompt(skillName, prompt);
-    await interaction.editReply(`Starting \`/${skillName}\` in this thread…`);
+    const skills = await listSkills();
+    const matchingSkill = findSkillByName(skills, skillName);
+    if (!matchingSkill) {
+      await interaction.editReply(`Unknown skill \`${skillName}\`. Please choose a skill from autocomplete.`);
+      return;
+    }
+
+    const fullPrompt = buildSkillPrompt(matchingSkill.name, prompt);
+    await interaction.editReply(`Starting \`/${matchingSkill.name}\` in this thread…`);
 
     const started = await runMentionConversation(channel, fullPrompt);
     if (!started) {
