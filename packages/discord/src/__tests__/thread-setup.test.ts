@@ -260,8 +260,7 @@ describe('promptThreadSetup', () => {
     void resultPromise;
   });
 
-  it('waits for an explicit model selection when the backend exposes models', async () => {
-    vi.useFakeTimers();
+  it('cancels setup when model selection times out', async () => {
     coreMocks.getAvailableBackendCapabilities.mockResolvedValueOnce([
       {
         name: 'claude',
@@ -272,7 +271,7 @@ describe('promptThreadSetup', () => {
     ]);
 
     let onBackendCollect: ((interaction: any) => Promise<void>) | undefined;
-    let onModelCollect: ((interaction: any) => Promise<void>) | undefined;
+    let onModelEnd: ((interactions: any, reason: string) => Promise<void>) | undefined;
     const edit = vi.fn().mockResolvedValue(undefined);
     let collectorIndex = 0;
     const createMessageComponentCollector = vi.fn(() => {
@@ -280,14 +279,13 @@ describe('promptThreadSetup', () => {
       collectorIndex += 1;
       return {
         on: vi.fn((event: string, handler: (interaction: any) => Promise<void>) => {
-          if (event !== 'collect') {
+          if (currentIndex === 0 && event === 'collect') {
+            onBackendCollect = handler;
             return;
           }
 
-          if (currentIndex === 0) {
-            onBackendCollect = handler;
-          } else {
-            onModelCollect = handler;
+          if (currentIndex === 1 && event === 'end') {
+            onModelEnd = handler as (interactions: any, reason: string) => Promise<void>;
           }
         }),
         stop: vi.fn(),
@@ -313,15 +311,6 @@ describe('promptThreadSetup', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    await vi.advanceTimersByTimeAsync(60_000);
-
-    let settled = false;
-    void resultPromise.then(() => {
-      settled = true;
-    });
-    await Promise.resolve();
-
-    expect(settled).toBe(false);
     expect(edit).toHaveBeenNthCalledWith(1, {
       content: '**选择 Model**\nBackend: **claude**',
       components: [
@@ -330,16 +319,17 @@ describe('promptThreadSetup', () => {
         }),
       ],
     });
+    expect(createMessageComponentCollector).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      time: 60_000,
+    }));
 
-    await onModelCollect?.({
-      customId: MODEL_SELECT_ID,
-      values: ['sonnet'],
-      deferUpdate: vi.fn().mockResolvedValue(undefined),
+    await onModelEnd?.([], 'time');
+
+    await expect(resultPromise).resolves.toBeNull();
+    expect(edit).toHaveBeenLastCalledWith({
+      content: '⏰ Model 选择超时，请重新开始 setup。',
+      components: [],
     });
-
-    await expect(resultPromise).resolves.toEqual({ backend: 'claude', model: 'sonnet', cwd: null });
-
-    vi.useRealTimers();
   });
 
   it('persists the selected model together with the backend', async () => {

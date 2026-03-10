@@ -63,6 +63,7 @@ describe('runConversationWithRenderer', () => {
     resetBackendRegistryForTests();
     registerTestBackend('claude', ['sonnet', 'opus']);
     registerTestBackend('opencode', ['openai/gpt-5']);
+    registerTestBackend('opaque', []);
     runConversationSession.mockReset();
     runConversationSession.mockImplementation(async function* () {
       yield {
@@ -101,6 +102,29 @@ describe('runConversationWithRenderer', () => {
       model: undefined,
     }));
     expect(conversationModels.has('conv-stale-model')).toBe(false);
+  });
+
+  it('preserves a configured model when the backend does not expose a model list', async () => {
+    conversationBackend.set('conv-opaque-model', 'opaque');
+    conversationModels.set('conv-opaque-model', 'manual-model');
+
+    const render = vi.fn(async (_options, events) => {
+      await drainEvents(events);
+    });
+
+    await runConversationWithRenderer({
+      conversationId: 'conv-opaque-model',
+      target: { id: 'channel-opaque-model' },
+      prompt: 'hello',
+      defaultCwd: '/tmp/workspace',
+      render,
+    });
+
+    expect(runConversationSession).toHaveBeenCalledWith('conv-opaque-model', expect.objectContaining({
+      backend: 'opaque',
+      model: 'manual-model',
+    }));
+    expect(conversationModels.get('conv-opaque-model')).toBe('manual-model');
   });
 
   it('creates a pending sticky binding for the first message in a thread', async () => {

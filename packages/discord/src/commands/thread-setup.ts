@@ -157,17 +157,30 @@ export async function promptThreadSetup(
         componentType: ComponentType.StringSelect,
         max: 1,
         filter: candidate => candidate.customId === MODEL_SELECT_ID,
+        time: SETUP_TIMEOUT_MS,
       });
 
       modelCollector.on('collect', async (modelInteraction) => {
         await modelInteraction.deferUpdate();
         const selectedModel = modelInteraction.values[0] ?? null;
-        modelCollector.stop();
+        modelCollector.stop('selected');
         await msg.edit({
           content: `✅ Backend: **${selectedBackend}**\n✅ Model: **${selectedModel}**`,
           components: [],
         });
         finish({ backend: selectedBackend, model: selectedModel, cwd: null });
+      });
+
+      modelCollector.on('end', async (_interactions, reason) => {
+        if (reason !== 'time' || settled) {
+          return;
+        }
+
+        await msg.edit({
+          content: '⏰ Model 选择超时，请重新开始 setup。',
+          components: [],
+        });
+        finish(null);
       });
     });
   });
