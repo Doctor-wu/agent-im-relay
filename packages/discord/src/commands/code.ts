@@ -8,7 +8,7 @@ export const codeCommand = new SlashCommandBuilder()
   .setDescription('Start a coding task in a dedicated thread')
   .setDMPermission(false)
   .addStringOption((option) =>
-    option.setName('prompt').setDescription('What should Claude build or fix?').setRequired(true),
+    option.setName('prompt').setDescription('What should Agent build or fix?').setRequired(true),
   )
   .addAttachmentOption((option) =>
     option.setName('file').setDescription('Optional attachment to share with the agent'),
@@ -44,7 +44,7 @@ export async function handleCodeCommand(interaction: ChatInputCommandInteraction
     await thread.send(`## /code\n${prompt}`);
     const started = await runMentionConversation(thread, prompt, undefined, { attachments });
     if (!started) {
-      await interaction.editReply(`Claude is already busy in ${threadMention}`);
+      await interaction.editReply(`Agent is already busy in ${threadMention}`);
     }
   } catch (error) {
     const errorText = toErrorMessage(error);

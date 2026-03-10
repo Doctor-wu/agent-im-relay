@@ -77,6 +77,6 @@ describe('handleCodeCommand', () => {
     expect(runMentionConversation).toHaveBeenCalledWith(thread, 'Retry later', undefined, {
       attachments: [],
     });
-    expect(interaction.editReply).toHaveBeenNthCalledWith(2, 'Claude is already busy in <#thread-2>');
+    expect(interaction.editReply).toHaveBeenNthCalledWith(2, 'Agent is already busy in <#thread-2>');
   });
 });

@@ -138,11 +138,11 @@ jobs:
         run: |
           package_name=$(node -p "JSON.parse(require('node:fs').readFileSync('apps/agent-inbox/package.json', 'utf8')).name")
           echo "package_name=$package_name" >> "$GITHUB_OUTPUT"
-          if [[ "$package_name" == "@doctorwu/agent-inbox" ]]; then
+          if [[ "$package_name" == "agent-inbox" ]]; then
             echo "publish_ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "publish_ready=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping npm publish until package name is set to @doctorwu/agent-inbox."
+            echo "Skipping npm publish until package name is set to agent-inbox."
           fi
       - name: Publish package
         if: steps.package-name.outputs.publish_ready == 'true'

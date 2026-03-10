@@ -5,7 +5,7 @@ import { streamAgentToDiscord, type StreamTargetChannel } from '../stream.js';
 
 export const askCommand = new SlashCommandBuilder()
   .setName('ask')
-  .setDescription('Ask Claude a quick question without file tools')
+  .setDescription('Ask Agent a quick question without file tools')
   .addStringOption((option) => option.setName('question').setDescription('Your question').setRequired(true))
   .addAttachmentOption((option) =>
     option.setName('file').setDescription('Optional attachment to share with the agent'),

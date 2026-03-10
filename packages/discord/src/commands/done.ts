@@ -3,7 +3,7 @@ import * as core from '@agent-im-relay/core';
 
 export const doneCommand = new SlashCommandBuilder()
   .setName('done')
-  .setDescription('End the current Claude session in this thread')
+  .setDescription('End the current agent session in this thread')
   .setDMPermission(false);
 
 export async function handleDoneCommand(interaction: ChatInputCommandInteraction): Promise<void> {

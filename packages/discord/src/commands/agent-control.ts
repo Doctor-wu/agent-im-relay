@@ -23,13 +23,13 @@ const compactPrompt = 'Summarize our conversation and current task state briefly
 
 export const modelCommand = new SlashCommandBuilder()
   .setName('model')
-  .setDescription('Set Claude model for this thread')
+  .setDescription('Set agent model for this thread')
   .setDMPermission(false)
-  .addStringOption((option) => option.setName('model').setDescription('Claude model name').setRequired(true));
+  .addStringOption((option) => option.setName('model').setDescription('Agent model name').setRequired(true));
 
 export const effortCommand = new SlashCommandBuilder()
   .setName('effort')
-  .setDescription('Set Claude effort for this thread')
+  .setDescription('Set agent effort for this thread')
   .setDMPermission(false)
   .addStringOption((option) =>
     option
@@ -45,7 +45,7 @@ export const effortCommand = new SlashCommandBuilder()
 
 export const sessionsCommand = new SlashCommandBuilder()
   .setName('sessions')
-  .setDescription('List active Claude sessions')
+  .setDescription('List active agent sessions')
   .setDMPermission(false);
 
 export const cwdCommand = new SlashCommandBuilder()
@@ -73,10 +73,10 @@ export const cwdCommand = new SlashCommandBuilder()
 
 export const compactCommand = new SlashCommandBuilder()
   .setName('compact')
-  .setDescription('Ask Claude to summarize this thread context briefly')
+  .setDescription('Ask agent to summarize this thread context briefly')
   .setDMPermission(false);
 
-export const claudeControlCommands = [
+export const agentControlCommands = [
   modelCommand,
   effortCommand,
   sessionsCommand,
@@ -84,7 +84,7 @@ export const claudeControlCommands = [
   compactCommand,
 ];
 
-export const claudeControlCommandHandlers = new Map<string, CommandHandler>([
+export const agentControlCommandHandlers = new Map<string, CommandHandler>([
   ['model', handleModelCommand],
   ['effort', handleEffortCommand],
   ['sessions', handleSessionsCommand],
@@ -242,7 +242,7 @@ async function handleCompactCommand(interaction: ChatInputCommandInteraction): P
   if (!channel) return;
 
   if (activeConversations.has(channel.id)) {
-    await interaction.reply({ content: 'A Claude run is already active in this thread.', ephemeral: true });
+    await interaction.reply({ content: 'An agent run is already active in this thread.', ephemeral: true });
     return;
   }
 
@@ -270,7 +270,7 @@ async function handleCompactCommand(interaction: ChatInputCommandInteraction): P
     });
 
     if (!started) {
-      await interaction.editReply('A Claude run is already active in this thread.');
+      await interaction.editReply('An agent run is already active in this thread.');
     }
   } catch (error) {
     const errorText = toErrorMessage(error);

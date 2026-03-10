@@ -50,7 +50,7 @@ export async function promptThreadSetup(
 
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
-      void msg.edit({ content: '⏰ 超时，使用默认配置：Claude', components: [] });
+      void msg.edit({ content: '⏰ 超时，使用默认配置。', components: [] });
       resolve({ backend: 'claude', cwd: null });
     }, SETUP_TIMEOUT_MS);
 

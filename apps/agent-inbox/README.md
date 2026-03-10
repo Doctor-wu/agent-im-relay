@@ -1,14 +1,14 @@
 # Agent Inbox CLI
 
-`@doctorwu/agent-inbox` is the user-facing CLI launcher for local Claude and Codex workflows.
+`agent-inbox` is the user-facing CLI launcher for local Claude and Codex workflows.
 
 ## Install
 
 ```bash
-npm install -g @doctorwu/agent-inbox
+npm install -g agent-inbox
 
 # Or run without a global install
-npx @doctorwu/agent-inbox
+npx agent-inbox
 ```
 
 ## First Run

@@ -43,7 +43,7 @@ export async function ensureCodeThread(
   const thread = await seedMessage.startThread({
     autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
     name: sanitizeThreadName(prompt),
-    reason: `Claude code task started by ${interaction.user.tag}`,
+    reason: `Agent code task started by ${interaction.user.tag}`,
   });
 
   return thread;
@@ -63,11 +63,11 @@ export async function ensureMentionThread(message: Message<true>, prompt: string
   // Always create a new seed message for the thread to avoid
   // "A thread has already been created for this message" errors.
   // This also means each @ mention gets its own thread = its own session.
-  const seedMessage = await channel.send('🧵 Starting Claude session...');
+  const seedMessage = await channel.send('🧵 Starting Agent session...');
 
   return seedMessage.startThread({
     autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
     name: sanitizeThreadName(prompt),
-    reason: `Claude mention started by ${message.author.tag}`,
+    reason: `Agent mention started by ${message.author.tag}`,
   });
 }

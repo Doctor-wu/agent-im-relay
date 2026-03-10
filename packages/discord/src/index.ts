@@ -33,7 +33,7 @@ import { askCommand, handleAskCommand } from './commands/ask.js';
 import { codeCommand, handleCodeCommand } from './commands/code.js';
 import { doneCommand, handleDoneCommand } from './commands/done.js';
 import { interruptCommand, handleInterruptCommand } from './commands/interrupt.js';
-import { claudeControlCommandHandlers, claudeControlCommands } from './commands/claude-control.js';
+import { agentControlCommandHandlers, agentControlCommands } from './commands/agent-control.js';
 import {
   handleSkillCommand,
   handleSkillModalSubmit,
@@ -53,7 +53,7 @@ const commandHandlers = new Map<string, CommandHandler>([
   ['interrupt', handleInterruptCommand],
   ['skill', handleSkillCommand],
   ['done', handleDoneCommand],
-  ...claudeControlCommandHandlers.entries(),
+  ...agentControlCommandHandlers.entries(),
 ]);
 
 const commandDefinitions = [
@@ -62,7 +62,7 @@ const commandDefinitions = [
   interruptCommand,
   skillCommand,
   doneCommand,
-  ...claudeControlCommands,
+  ...agentControlCommands,
 ];
 
 // --- Client ---
@@ -236,9 +236,9 @@ client.once(Events.ClientReady, async (readyClient) => {
 
   try {
     const skills = await listSkills();
-    console.log(`Loaded ${skills.length} Claude skill(s).`);
+    console.log(`Loaded ${skills.length} agent skill(s).`);
   } catch (error) {
-    console.warn(`Failed to load Claude skills: ${toErrorMessage(error)}`);
+    console.warn(`Failed to load agent skills: ${toErrorMessage(error)}`);
   }
 });
 

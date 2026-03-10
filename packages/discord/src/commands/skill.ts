@@ -25,7 +25,7 @@ export type SkillConversationRunner = (thread: AnyThreadChannel, prompt: string)
 
 export const skillCommand = new SlashCommandBuilder()
   .setName('skill')
-  .setDescription('Run Claude with an installed skill in this thread')
+  .setDescription('Run agent with an installed skill in this thread')
   .setDMPermission(false);
 
 function truncate(value: string, maxLength: number): string {
@@ -65,7 +65,7 @@ export async function handleSkillCommand(interaction: ChatInputCommandInteractio
 
   const skills = await listSkills();
   if (skills.length === 0) {
-    await interaction.reply({ content: 'No Claude skills were found in `~/.claude/skills`.', ephemeral: true });
+    await interaction.reply({ content: 'No agent skills were found in `~/.claude/skills`.', ephemeral: true });
     return;
   }
 
@@ -114,7 +114,7 @@ export async function handleSkillSelectMenu(interaction: StringSelectMenuInterac
           .setLabel('prompt')
           .setStyle(TextInputStyle.Paragraph)
           .setRequired(true)
-          .setPlaceholder('What should Claude do with this skill?'),
+          .setPlaceholder('What should Agent do with this skill?'),
       ),
     );
 
@@ -147,6 +147,6 @@ export async function handleSkillModalSubmit(
 
   const started = await runConversation(channel, fullPrompt);
   if (!started) {
-    await interaction.editReply('Claude is already busy in this thread.');
+    await interaction.editReply('Agent is already busy in this thread.');
   }
 }

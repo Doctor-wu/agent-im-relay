@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as core from '@agent-im-relay/core';
 import * as streamModule from '../stream.js';
-import { claudeControlCommandHandlers, claudeControlCommands } from '../commands/claude-control.js';
+import { agentControlCommandHandlers, agentControlCommands } from '../commands/agent-control.js';
 
 beforeEach(() => {
   core.activeConversations.clear();
@@ -11,20 +11,20 @@ beforeEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('claudeControlCommands', () => {
+describe('agentControlCommands', () => {
   it('registers cwd and omits removed legacy session commands', () => {
-    const commandNames = claudeControlCommands.map((command) => command.toJSON().name);
+    const commandNames = agentControlCommands.map((command) => command.toJSON().name);
 
     expect(commandNames).toContain('cwd');
     expect(commandNames).not.toContain('resume');
     expect(commandNames).not.toContain('clear');
-    expect(claudeControlCommandHandlers.has('cwd')).toBe(true);
-    expect(claudeControlCommandHandlers.has('resume')).toBe(false);
-    expect(claudeControlCommandHandlers.has('clear')).toBe(false);
+    expect(agentControlCommandHandlers.has('cwd')).toBe(true);
+    expect(agentControlCommandHandlers.has('resume')).toBe(false);
+    expect(agentControlCommandHandlers.has('clear')).toBe(false);
   });
 
   it('sets, shows, and clears cwd overrides for the current thread', async () => {
-    const handler = claudeControlCommandHandlers.get('cwd');
+    const handler = agentControlCommandHandlers.get('cwd');
     expect(handler).toBeDefined();
 
     const replies: string[] = [];
@@ -52,7 +52,7 @@ describe('claudeControlCommands', () => {
   });
 
   it('routes /compact through the shared platform runner instead of a direct session path', async () => {
-    const handler = claudeControlCommandHandlers.get('compact');
+    const handler = agentControlCommandHandlers.get('compact');
     expect(handler).toBeDefined();
 
     core.conversationBackend.set('thread-compact', 'claude');

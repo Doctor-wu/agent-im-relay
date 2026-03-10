@@ -91,9 +91,9 @@ vi.mock('../commands/interrupt.js', () => ({
   handleInterruptCommand: vi.fn(),
 }));
 
-vi.mock('../commands/claude-control.js', () => ({
-  claudeControlCommandHandlers: new Map(),
-  claudeControlCommands: [],
+vi.mock('../commands/agent-control.js', () => ({
+  agentControlCommandHandlers: new Map(),
+  agentControlCommands: [],
 }));
 
 vi.mock('../commands/skill.js', () => ({

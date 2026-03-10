@@ -12,7 +12,7 @@ Agent Inbox is an inbox-first IM launcher for local Claude and Codex workflows. 
 ## What Changed
 
 - User-facing entry is the `apps/agent-inbox` CLI package
-- Published npm package name is `@doctorwu/agent-inbox`
+- Published npm package name is `agent-inbox`
 - Runtime config and data default to `~/.agent-inbox/`
 - Config file is `~/.agent-inbox/config.jsonl`
 - Only configured IM integrations appear in the launcher
@@ -46,7 +46,7 @@ Example:
 
 ```text
 apps/
-  agent-inbox/  @doctorwu/agent-inbox  — User-facing launcher, setup flow, config loading
+  agent-inbox/  agent-inbox  — User-facing launcher, setup flow, config loading
 
 packages/
   core/      @agent-im-relay/core     — Shared runtime, state, orchestration
@@ -78,10 +78,10 @@ Typical startup flow:
 The primary distribution path is npm:
 
 ```bash
-npm install -g @doctorwu/agent-inbox
+npm install -g agent-inbox
 
 # Or run without a global install
-npx @doctorwu/agent-inbox
+npx agent-inbox
 ```
 
 On first run, `agent-inbox` creates `~/.agent-inbox/` as needed and enters the interactive setup flow automatically when no IM is configured yet. Users do not need to create `config.jsonl` by hand before the first `npx` run.

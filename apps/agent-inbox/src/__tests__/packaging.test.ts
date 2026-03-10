@@ -33,7 +33,7 @@ describe('npm packaging contract', () => {
     }>(join(appDir, 'package.json'));
 
     expect(rootPackage.name).not.toBe(appPackage.name);
-    expect(appPackage.name).toBe('@doctorwu/agent-inbox');
+    expect(appPackage.name).toBe('agent-inbox');
     expect(rootPackage.scripts?.['start']).toBe('pnpm --filter ./apps/agent-inbox start');
     expect(appPackage.bin).toEqual({ 'agent-inbox': 'dist/index.mjs' });
     expect(appPackage.engines?.['node']).toBe('>=20');

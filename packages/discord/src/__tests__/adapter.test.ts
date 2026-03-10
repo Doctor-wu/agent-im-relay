@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as core from '@agent-im-relay/core';
 import { createDiscordAdapter } from '../adapter.js';
-import { claudeControlCommandHandlers } from '../commands/claude-control.js';
+import { agentControlCommandHandlers } from '../commands/agent-control.js';
 import { handleDoneCommand } from '../commands/done.js';
 import { handleInterruptCommand } from '../commands/interrupt.js';
 
@@ -249,7 +249,7 @@ describe('handleDoneCommand', () => {
   });
 
   it('skips persistence when the controller reports a model noop', async () => {
-    const handler = claudeControlCommandHandlers.get('model');
+    const handler = agentControlCommandHandlers.get('model');
     expect(handler).toBeDefined();
 
     core.conversationModels.set('thread-123', 'claude-3-7');
