@@ -70,6 +70,11 @@ export async function promptThreadSetup(
   prompt: string,
 ): Promise<SetupResult> {
   const availableBackends = await getAvailableBackendNames();
+  const fallbackBackend = availableBackends[0];
+  if (!fallbackBackend) {
+    throw new Error('No available backends detected.');
+  }
+
   const msg = await thread.send({
     content: `**选择 AI Backend**\n> ${prompt.slice(0, 200)}`,
     components: [buildBackendMenu(availableBackends)],
@@ -78,7 +83,7 @@ export async function promptThreadSetup(
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
       void msg.edit({ content: '⏰ 超时，使用默认配置。', components: [] });
-      resolve({ backend: 'claude', cwd: null });
+      resolve({ backend: fallbackBackend, cwd: null });
     }, SETUP_TIMEOUT_MS);
 
     const collector = msg.createMessageComponentCollector({

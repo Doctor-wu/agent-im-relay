@@ -69,4 +69,36 @@ describe('promptThreadSetup', () => {
     });
     expect(stop).toHaveBeenCalled();
   });
+
+  it('falls back to the first available backend on timeout', async () => {
+    vi.useFakeTimers();
+    coreMocks.getAvailableBackendNames.mockResolvedValueOnce(['opencode', 'claude']);
+
+    const edit = vi.fn().mockResolvedValue(undefined);
+    const createMessageComponentCollector = vi.fn(() => ({
+      on: vi.fn(),
+      stop: vi.fn(),
+    }));
+
+    const thread = {
+      send: vi.fn(async () => ({
+        edit,
+        createMessageComponentCollector,
+      })),
+    } as any;
+
+    const resultPromise = promptThreadSetup(thread, 'Fallback please');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    await expect(resultPromise).resolves.toEqual({ backend: 'opencode', cwd: null });
+    expect(edit).toHaveBeenCalledWith({
+      content: '⏰ 超时，使用默认配置。',
+      components: [],
+    });
+
+    vi.useRealTimers();
+  });
 });

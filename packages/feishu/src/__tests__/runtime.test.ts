@@ -197,6 +197,39 @@ describe('Feishu runtime', () => {
     }));
   });
 
+  it('returns an error when backend selection is required but no backends are available', async () => {
+    coreMocks.evaluateConversationRunRequest.mockReturnValueOnce({
+      kind: 'setup-required',
+      conversationId: 'conv-empty',
+      reason: 'backend-selection',
+    });
+    coreMocks.getAvailableBackendNames.mockResolvedValueOnce([]);
+
+    const transport = {
+      sendText: vi.fn(async () => undefined),
+      sendCard: vi.fn(async () => undefined),
+      updateCard: vi.fn(async () => undefined),
+      uploadFile: vi.fn(async () => undefined),
+    };
+
+    await expect(runFeishuConversation({
+      conversationId: 'conv-empty',
+      target: {
+        chatId: 'chat-1',
+      },
+      prompt: 'ship it',
+      mode: 'code',
+      transport,
+      defaultCwd: process.cwd(),
+    })).resolves.toEqual({ kind: 'error' });
+
+    expect(transport.sendText).toHaveBeenCalledWith({
+      chatId: 'chat-1',
+    }, 'No available backends detected.');
+    expect(transport.sendCard).not.toHaveBeenCalled();
+    expect(coreMocks.runPlatformConversation).not.toHaveBeenCalled();
+  });
+
   it('builds the session control panel from currently available backends', async () => {
     const transport = {
       sendText: vi.fn(async () => undefined),

@@ -58,6 +58,10 @@ export type FeishuRunGateResult =
     card: BackendSelectionCard;
   }
   | {
+    kind: 'unavailable';
+    message: string;
+  }
+  | {
     kind: 'ready';
     backend: BackendName | undefined;
   };
@@ -91,6 +95,13 @@ export async function beginFeishuConversationRun(
   });
   if (evaluation.kind === 'setup-required') {
     const availableBackends = await getAvailableBackendNames();
+    if (availableBackends.length === 0) {
+      return {
+        kind: 'unavailable',
+        message: 'No available backends detected.',
+      };
+    }
+
     return {
       kind: 'blocked',
       reason: 'backend-selection',
@@ -305,7 +316,7 @@ export async function runFeishuConversation(options: {
   attachmentFetchImpl?: typeof fetch;
   persistState?: () => Promise<void>;
   lifecycle?: FeishuConversationLifecycle;
-}): Promise<{ kind: 'blocked' | 'started' | 'busy' }> {
+}): Promise<{ kind: 'blocked' | 'started' | 'busy' | 'error' }> {
   const gate = await beginFeishuConversationRun({
     conversationId: options.conversationId,
     prompt: options.prompt,
@@ -315,6 +326,12 @@ export async function runFeishuConversation(options: {
     ...takePendingFeishuAttachments(options.conversationId),
     ...(options.attachments ?? []),
   ];
+
+  if (gate.kind === 'unavailable') {
+    pendingRuns.delete(options.conversationId);
+    await options.transport.sendText(options.target, gate.message);
+    return { kind: 'error' };
+  }
 
   if (gate.kind === 'blocked') {
     storePendingFeishuRun({
@@ -379,7 +396,7 @@ export async function resumePendingFeishuRun(options: {
   fallback?: Omit<PendingFeishuRun, 'conversationId'>;
   persistState?: () => Promise<void>;
   lifecycle?: FeishuConversationLifecycle;
-}): Promise<{ kind: 'none' | 'blocked' | 'started' | 'busy' }> {
+}): Promise<{ kind: 'none' | 'blocked' | 'started' | 'busy' | 'error' }> {
   const pending = takePendingFeishuRun(options.conversationId);
   const run = pending ?? (options.fallback
     ? {

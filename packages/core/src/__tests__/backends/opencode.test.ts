@@ -71,9 +71,27 @@ describe('opencode backend', () => {
       'run',
       '--format',
       'json',
+      '--agent',
+      'general',
       '--session',
       'ses_123',
       'continue',
+    ]);
+  });
+
+  it('uses a less-privileged agent in ask mode', () => {
+    const args = createOpencodeArgs({
+      mode: 'ask',
+      prompt: 'why?',
+    });
+
+    expect(args).toEqual([
+      'run',
+      '--format',
+      'json',
+      '--agent',
+      'general',
+      'why?',
     ]);
   });
 
@@ -121,6 +139,22 @@ describe('opencode backend', () => {
       resumeSessionId: 'ses_123',
     })).toEqual([
       { type: 'session', sessionId: 'ses_123', status: 'resumed' },
+    ]);
+  });
+
+  it('emits a structured invalidation event for authoritative resume failures', () => {
+    expect(extractOpencodeEvents({
+      type: 'error',
+      error: 'Resume session not found',
+    }, {
+      resumeSessionId: 'ses_123',
+    })).toEqual([
+      {
+        type: 'session-invalidated',
+        sessionId: 'ses_123',
+        reason: 'Resume session not found',
+      },
+      { type: 'error', error: 'Resume session not found' },
     ]);
   });
 

@@ -36,8 +36,23 @@ function extractOpencodeSessionId(payload: unknown): string | undefined {
   return asString(payload.sessionID);
 }
 
+function isAuthoritativeOpencodeResumeFailure(error: string): boolean {
+  return [
+    /resume session not found/i,
+    /invalid session/i,
+    /session .*invalid/i,
+    /unknown session/i,
+    /cannot resume/i,
+    /not resumable/i,
+  ].some(pattern => pattern.test(error));
+}
+
 export function createOpencodeArgs(options: AgentSessionOptions): string[] {
   const args = ['run', '--format', 'json'];
+
+  if (options.mode === 'ask') {
+    args.push('--agent', 'general');
+  }
 
   if (options.model) {
     args.push('--model', options.model);
@@ -96,7 +111,16 @@ export function extractOpencodeEvents(
 
   if (type === 'error') {
     const error = asString(payload.error) ?? asString(payload.message) ?? 'OpenCode CLI request failed';
-    return [{ type: 'error', error }];
+    return options.resumeSessionId && isAuthoritativeOpencodeResumeFailure(error)
+      ? [
+          {
+            type: 'session-invalidated',
+            sessionId: options.resumeSessionId,
+            reason: error,
+          },
+          { type: 'error', error },
+        ]
+      : [{ type: 'error', error }];
   }
 
   return [];
