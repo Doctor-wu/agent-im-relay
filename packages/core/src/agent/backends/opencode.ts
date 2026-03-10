@@ -177,6 +177,7 @@ async function* streamOpencode(options: AgentSessionOptions): AsyncGenerator<Age
   let abortReason: 'timeout' | 'aborted' | null = null;
   let sessionId = options.resumeSessionId;
   let fullOutput = '';
+  let sawErrorEvent = false;
 
   const timeout = setTimeout(() => {
     abortReason = 'timeout';
@@ -224,11 +225,15 @@ async function* streamOpencode(options: AgentSessionOptions): AsyncGenerator<Age
         if (event.type === 'text') {
           fullOutput += event.delta;
         }
+        if (event.type === 'error') {
+          sawErrorEvent = true;
+        }
         yield event;
       }
     }
 
     const { code, signal } = await closePromise;
+    const details = stderrLines.join('\n').trim();
 
     if (abortReason === 'timeout') {
       yield { type: 'error', error: 'Agent request timed out' };
@@ -241,11 +246,21 @@ async function* streamOpencode(options: AgentSessionOptions): AsyncGenerator<Age
     }
 
     if (code !== 0) {
-      const details = stderrLines.join('\n').trim();
       const fallback = signal
         ? `OpenCode CLI exited with signal ${signal}`
         : `OpenCode CLI exited with code ${String(code)}`;
-      yield { type: 'error', error: details || fallback };
+      if (!sawErrorEvent) {
+        yield { type: 'error', error: details || fallback };
+      }
+      return;
+    }
+
+    if (details && !sawErrorEvent && !fullOutput.trim()) {
+      yield { type: 'error', error: details };
+      return;
+    }
+
+    if (sawErrorEvent) {
       return;
     }
 
@@ -261,7 +276,8 @@ async function* streamOpencode(options: AgentSessionOptions): AsyncGenerator<Age
       return;
     }
 
-    yield { type: 'error', error: toErrorMessage(error) };
+    const details = stderrLines.join('\n').trim();
+    yield { type: 'error', error: details || toErrorMessage(error) };
   } finally {
     clearTimeout(timeout);
     stderrReader?.close();

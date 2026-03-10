@@ -223,4 +223,48 @@ describe('opencode backend', () => {
       }),
     ]);
   });
+
+  it('emits an error event on non-zero exit', async () => {
+    vi.mocked(spawn).mockReturnValue(
+      makeProcess('', 'ProviderModelNotFoundError: openai/gpt-does-not-exist', 1) as any,
+    );
+
+    const { opencodeBackend } = await import('../../agent/backends/opencode.js');
+    const events = await collect(opencodeBackend.stream({
+      mode: 'code',
+      prompt: 'ship it',
+    }));
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: 'environment',
+      }),
+      {
+        type: 'error',
+        error: 'ProviderModelNotFoundError: openai/gpt-does-not-exist',
+      },
+    ]);
+  });
+
+  it('emits an error event when the process only writes to stderr', async () => {
+    vi.mocked(spawn).mockReturnValue(
+      makeProcess('', 'ProviderModelNotFoundError: openai/gpt-does-not-exist', 0) as any,
+    );
+
+    const { opencodeBackend } = await import('../../agent/backends/opencode.js');
+    const events = await collect(opencodeBackend.stream({
+      mode: 'code',
+      prompt: 'ship it',
+    }));
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: 'environment',
+      }),
+      {
+        type: 'error',
+        error: 'ProviderModelNotFoundError: openai/gpt-does-not-exist',
+      },
+    ]);
+  });
 });
