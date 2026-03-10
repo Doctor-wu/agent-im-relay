@@ -11,6 +11,7 @@ import {
 } from 'discord.js';
 import { fileURLToPath } from 'node:url';
 import {
+  applyMessageControlDirectives,
   conversationBackend,
   activeConversations,
   processedMessages,
@@ -20,6 +21,7 @@ import {
   listSkills,
   Orchestrator,
   type IncomingMessage,
+  preprocessConversationMessage,
 } from '@agent-im-relay/core';
 import { config } from './config.js';
 import { createDiscordAdapter } from './adapter.js';
@@ -129,6 +131,16 @@ async function runThreadConversation(
   });
 }
 
+async function persistDiscordMessageControls(
+  conversationId: string,
+  directives: ReturnType<typeof preprocessConversationMessage>['directives'],
+): Promise<void> {
+  const results = applyMessageControlDirectives({ conversationId, directives });
+  if (results.some(result => result.persist)) {
+    await persistState('discord');
+  }
+}
+
 type HandleDiscordMessageCreateDependencies = {
   botUser?: { id: string };
   hasOpenStickyThreadSession?: (conversationId: string) => boolean;
@@ -173,20 +185,24 @@ export async function handleDiscordMessageCreate(
   processedMessages.add(message.id);
   setTimeout(() => processedMessages.delete(message.id), 60_000);
 
-  const prompt = routedMessage.prompt;
-
-  if (!prompt) {
-    await message.channel.send(
-      buildDiscordReplyPayload('Please include a prompt after mentioning me.', replyContext),
-    ).catch(() => {});
-    return;
-  }
+  const preprocessed = preprocessConversationMessage(routedMessage.prompt);
+  const prompt = preprocessed.prompt;
 
   // React immediately to acknowledge
   await message.react(REACTIONS.received).catch(() => {});
 
   try {
     if (message.channel.isThread()) {
+      await persistDiscordMessageControls(message.channel.id, preprocessed.directives);
+      if (!prompt) {
+        if (preprocessed.directives.length === 0) {
+          await message.channel.send(
+            buildDiscordReplyPayload('Please include a prompt after mentioning me.', replyContext),
+          ).catch(() => {});
+        }
+        return;
+      }
+
       await (dependencies.runThreadConversation ?? runThreadConversation)(
         message.channel,
         prompt,
@@ -196,12 +212,20 @@ export async function handleDiscordMessageCreate(
       return;
     }
 
+    if (!prompt) {
+      await message.channel.send(
+        buildDiscordReplyPayload('Please include a prompt after mentioning me.', replyContext),
+      ).catch(() => {});
+      return;
+    }
+
     if (pendingConversationCreation.has(message.id)) return;
     pendingConversationCreation.add(message.id);
 
     try {
       const thread = await (dependencies.ensureMentionThread ?? ensureMentionThread)(message as Message<true>, prompt);
       await thread.send(`**${message.author.displayName}:** ${prompt}`);
+      await persistDiscordMessageControls(thread.id, preprocessed.directives);
 
       // Show backend setup only if backend not yet chosen
       if (!conversationBackend.has(thread.id)) {

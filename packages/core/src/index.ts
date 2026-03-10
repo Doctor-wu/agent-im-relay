@@ -36,7 +36,9 @@ export { runConversationWithRenderer } from './runtime/conversation-runner.js';
 export type { ConversationRunPhase } from './runtime/conversation-runner.js';
 export {
   applyConversationControlAction,
+  applyMessageControlDirectives,
   evaluateConversationRunRequest,
+  preprocessConversationMessage,
   runPlatformConversation,
 } from './platform/conversation.js';
 export type {
@@ -44,6 +46,10 @@ export type {
   ConversationControlResult,
   ConversationRunEvaluation,
 } from './platform/conversation.js';
+export type {
+  MessageControlDirective,
+  PreprocessedConversationMessage,
+} from './platform/message-preprocessing.js';
 export { applySessionControlCommand } from './session-control/controller.js';
 export type { SessionControlCommand, SessionControlResult } from './session-control/types.js';
 export {

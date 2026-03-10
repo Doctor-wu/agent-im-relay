@@ -44,6 +44,11 @@ vi.mock('@agent-im-relay/core', () => ({
     claudeCwd: '/tmp/project',
     artifactMaxSizeBytes: 1024,
   },
+  preprocessConversationMessage: vi.fn((content: string) => ({
+    prompt: content.trim(),
+    directives: [],
+  })),
+  applyMessageControlDirectives: vi.fn(() => []),
   conversationBackend: new Map(),
   activeConversations: new Set(),
   processedMessages: new Set(),
@@ -109,6 +114,11 @@ vi.mock('../commands/thread-setup.js', () => ({
 
 import { handleDiscordMessageCreate } from '../index.js';
 import { handleSkillAutocomplete } from '../commands/skill.js';
+import {
+  applyMessageControlDirectives,
+  persistState,
+  preprocessConversationMessage,
+} from '@agent-im-relay/core';
 
 const interactionCreateHandler = clientMock.on.mock.calls.find(
   ([event]) => event === 'interactionCreate',
@@ -143,6 +153,14 @@ describe('handleDiscordMessageCreate', () => {
     clientMock.once.mockClear();
     clientMock.on.mockClear();
     clientMock.rest.on.mockClear();
+    vi.mocked(preprocessConversationMessage).mockReset();
+    vi.mocked(preprocessConversationMessage).mockImplementation((content: string) => ({
+      prompt: content.trim(),
+      directives: [],
+    }));
+    vi.mocked(applyMessageControlDirectives).mockReset();
+    vi.mocked(applyMessageControlDirectives).mockReturnValue([]);
+    vi.mocked(persistState).mockClear();
   });
 
   it('uses mention-aware channel sends when a bot mention has no prompt body', async () => {
@@ -196,5 +214,100 @@ describe('handleDiscordMessageCreate', () => {
     await interactionCreateHandler?.(interaction);
 
     expect(handleSkillAutocomplete).toHaveBeenCalledWith(interaction);
+  });
+
+  it('applies control tags before starting a new thread run', async () => {
+    const message = createBaseMessage();
+    message.content = '<@relay-bot> <set-backend>codex</set-backend>\nship it';
+    const thread = {
+      id: 'thread-setup-1',
+      send: vi.fn(async () => undefined),
+    } as any;
+    const ensureMentionThread = vi.fn(async () => thread);
+    const runThreadConversation = vi.fn(async () => true);
+
+    vi.mocked(preprocessConversationMessage).mockReturnValue({
+      prompt: 'ship it',
+      directives: [{ type: 'backend', value: 'codex' }],
+    });
+    vi.mocked(applyMessageControlDirectives).mockReturnValue([
+      {
+        kind: 'backend',
+        conversationId: 'thread-setup-1',
+        stateChanged: true,
+        persist: true,
+        clearContinuation: false,
+        requiresConfirmation: false,
+        summaryKey: 'backend.updated',
+        backend: 'codex',
+      },
+    ]);
+
+    await handleDiscordMessageCreate(message, {
+      botUser: { id: 'relay-bot' },
+      hasOpenStickyThreadSession: () => false,
+      runThreadConversation,
+      ensureMentionThread,
+      promptThreadSetup: vi.fn(),
+      applySetupResult: vi.fn(),
+    });
+
+    expect(preprocessConversationMessage).toHaveBeenCalledWith('<set-backend>codex</set-backend> ship it');
+    expect(ensureMentionThread).toHaveBeenCalledWith(message, 'ship it');
+    expect(applyMessageControlDirectives).toHaveBeenCalledWith({
+      conversationId: 'thread-setup-1',
+      directives: [{ type: 'backend', value: 'codex' }],
+    });
+    expect(persistState).toHaveBeenCalledWith('discord');
+    expect(runThreadConversation).toHaveBeenCalledWith(thread, 'ship it', message, {
+      mentionUserId: 'other-bot',
+    });
+  });
+
+  it('persists pure control-tag messages in threads without starting a run', async () => {
+    const message = createBaseMessage();
+    const runThreadConversation = vi.fn(async () => true);
+    message.channel = {
+      id: 'thread-control-1',
+      isThread: () => true,
+      send: vi.fn(async () => undefined),
+    };
+    message.content = '<@relay-bot> <set-backend>codex</set-backend>';
+
+    vi.mocked(preprocessConversationMessage).mockReturnValue({
+      prompt: '',
+      directives: [{ type: 'backend', value: 'codex' }],
+    });
+    vi.mocked(applyMessageControlDirectives).mockReturnValue([
+      {
+        kind: 'backend',
+        conversationId: 'thread-control-1',
+        stateChanged: true,
+        persist: true,
+        clearContinuation: false,
+        requiresConfirmation: false,
+        summaryKey: 'backend.updated',
+        backend: 'codex',
+      },
+    ]);
+
+    await handleDiscordMessageCreate(message, {
+      botUser: { id: 'relay-bot' },
+      hasOpenStickyThreadSession: () => true,
+      runThreadConversation,
+      ensureMentionThread: vi.fn(),
+      promptThreadSetup: vi.fn(),
+      applySetupResult: vi.fn(),
+    });
+
+    expect(applyMessageControlDirectives).toHaveBeenCalledWith({
+      conversationId: 'thread-control-1',
+      directives: [{ type: 'backend', value: 'codex' }],
+    });
+    expect(persistState).toHaveBeenCalledWith('discord');
+    expect(runThreadConversation).not.toHaveBeenCalled();
+    expect(message.channel.send).not.toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining('Please include a prompt'),
+    }));
   });
 });

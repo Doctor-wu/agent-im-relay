@@ -1,7 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import {
+  applyMessageControlDirectives,
   initState,
   persistState,
+  preprocessConversationMessage,
   processedEventIds,
   processedMessages,
 } from '@agent-im-relay/core';
@@ -508,6 +510,16 @@ export function createFeishuEventRouter(
     }
   }
 
+  async function persistFeishuMessageControls(
+    conversationId: string,
+    directives: ReturnType<typeof preprocessConversationMessage>['directives'],
+  ): Promise<void> {
+    const results = applyMessageControlDirectives({ conversationId, directives });
+    if (results.some(result => result.persist)) {
+      await persistFeishuState();
+    }
+  }
+
   async function handleMessageEvent(payload: FeishuMessageReceiveEvent): Promise<void> {
     const dedup = ingressDeduplicator.claimMessage(payload);
     if (dedup.duplicate) {
@@ -567,7 +579,9 @@ export function createFeishuEventRouter(
         ? await buildManagedAttachments(client, message.message_id, attachmentInfos)
         : [];
 
-      if (isFeishuDoneCommand(messageText)) {
+      const preprocessed = preprocessConversationMessage(messageText);
+
+      if (isFeishuDoneCommand(preprocessed.prompt)) {
         if (message.chat_type === 'p2p') {
           await transport.sendText(target, 'Use /done inside the session chat you want to close.');
           succeeded = true;
@@ -587,9 +601,15 @@ export function createFeishuEventRouter(
         return;
       }
 
-      const request = resolveFeishuMessageRequest(messageText);
+      const request = resolveFeishuMessageRequest(preprocessed.prompt);
       if (!request.prompt) {
-        await transport.sendText(target, 'Please include a prompt after mentioning the bot.');
+        if (preprocessed.directives.length > 0) {
+          if (message.chat_type !== 'p2p') {
+            await persistFeishuMessageControls(conversationId, preprocessed.directives);
+          }
+        } else {
+          await transport.sendText(target, 'Please include a prompt after mentioning the bot.');
+        }
         succeeded = true;
         return;
       }
@@ -624,6 +644,7 @@ export function createFeishuEventRouter(
           if (launch.mirroredMessageId) {
             rememberMirroredFeishuMessageId(launch.mirroredMessageId);
           }
+          await persistFeishuMessageControls(launch.sessionChatId, preprocessed.directives);
 
           await runFeishuSessionFlow({
             conversationId: launch.sessionChatId,
@@ -651,6 +672,7 @@ export function createFeishuEventRouter(
       }
 
       try {
+        await persistFeishuMessageControls(conversationId, preprocessed.directives);
         await runFeishuSessionFlow({
           conversationId,
           target,

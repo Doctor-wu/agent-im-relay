@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { processedEventIds, processedMessages } from '@agent-im-relay/core';
+import { conversationBackend, processedEventIds, processedMessages } from '@agent-im-relay/core';
 
 const coreMocks = vi.hoisted(() => ({
   initState: vi.fn(async () => undefined),
@@ -91,6 +91,7 @@ afterEach(async () => {
   runtimeMocks.queuePendingFeishuAttachments.mockReset();
   runtimeMocks.resumePendingFeishuRun.mockReset();
   runtimeMocks.runFeishuConversation.mockReset();
+  conversationBackend.clear();
   processedEventIds.clear();
   processedMessages.clear();
   resetFeishuSessionChatsForTests();
@@ -187,6 +188,69 @@ describe('Feishu long-connection events', () => {
       conversationId: 'chat-1',
       prompt: 'hello bot',
       mode: 'code',
+    }));
+  });
+
+  it('applies backend control tags before dispatching a Feishu run', async () => {
+    runtimeMocks.runFeishuConversation.mockResolvedValue({ kind: 'started' });
+    const router = createFeishuEventRouter(baseConfig, {
+      client: {
+        replyMessage: vi.fn(async () => undefined),
+        sendMessage: vi.fn(async () => undefined),
+        sendCard: vi.fn(async () => undefined),
+        uploadFileContent: vi.fn(async () => 'file-key'),
+        sendFileMessage: vi.fn(async () => undefined),
+        downloadMessageResource: vi.fn(async () => new Response()),
+      } as never,
+    });
+
+    await router.handleMessageEvent({
+      message: {
+        message_id: 'message-control-run-1',
+        chat_id: 'chat-control-run-1',
+        chat_type: 'group',
+        message_type: 'text',
+        mentions: [{ id: { open_id: 'bot-open-id' }, name: 'relay-bot' }],
+        content: JSON.stringify({ text: '@_user_1 <set-backend>codex</set-backend>\nship it' }),
+      },
+    });
+
+    expect(conversationBackend.get('chat-control-run-1')).toBe('codex');
+    expect(runtimeMocks.runFeishuConversation).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 'chat-control-run-1',
+      prompt: 'ship it',
+      mode: 'code',
+    }));
+  });
+
+  it('applies standalone backend control tags without prompting for missing text', async () => {
+    const replyMessage = vi.fn(async () => undefined);
+    const router = createFeishuEventRouter(baseConfig, {
+      client: {
+        replyMessage,
+        sendMessage: vi.fn(async () => undefined),
+        sendCard: vi.fn(async () => undefined),
+        uploadFileContent: vi.fn(async () => 'file-key'),
+        sendFileMessage: vi.fn(async () => undefined),
+        downloadMessageResource: vi.fn(async () => new Response()),
+      } as never,
+    });
+
+    await router.handleMessageEvent({
+      message: {
+        message_id: 'message-control-only-1',
+        chat_id: 'chat-control-only-1',
+        chat_type: 'group',
+        message_type: 'text',
+        mentions: [{ id: { open_id: 'bot-open-id' }, name: 'relay-bot' }],
+        content: JSON.stringify({ text: '@_user_1 <set-backend>codex</set-backend>' }),
+      },
+    });
+
+    expect(conversationBackend.get('chat-control-only-1')).toBe('codex');
+    expect(runtimeMocks.runFeishuConversation).not.toHaveBeenCalled();
+    expect(replyMessage).not.toHaveBeenCalledWith(expect.objectContaining({
+      content: JSON.stringify({ text: 'Please include a prompt after mentioning the bot.' }),
     }));
   });
 
