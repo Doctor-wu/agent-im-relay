@@ -12,12 +12,10 @@ import {
   getAvailableBackendCapabilities,
   persistState,
   type AgentBackendCapability,
-  type BackendModel,
   type BackendName,
 } from '@agent-im-relay/core';
 
 export const BACKEND_SELECT_ID = 'thread_setup:backend';
-export const MODEL_SELECT_ID = 'thread_setup:model';
 
 export type SetupResult = {
   backend: BackendName;
@@ -68,17 +66,6 @@ function buildBackendMenu(backends: AgentBackendCapability[]): ActionRowBuilder<
   );
 }
 
-function buildModelMenu(models: BackendModel[]): ActionRowBuilder<StringSelectMenuBuilder> {
-  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId(MODEL_SELECT_ID)
-      .setPlaceholder('选择 Model')
-      .addOptions(models.slice(0, 25).map(model => new StringSelectMenuOptionBuilder()
-        .setLabel(model.label)
-        .setValue(model.id))),
-  );
-}
-
 const SETUP_TIMEOUT_MS = 60_000;
 
 export async function promptThreadSetup(
@@ -114,12 +101,6 @@ export async function promptThreadSetup(
     };
 
     const backendTimer = setTimeout(() => {
-      if (fallbackBackend.models.length > 0) {
-        void msg.edit({ content: '⏰ 超时，请重新选择 Backend 和 Model。', components: [] });
-        finish(null);
-        return;
-      }
-
       void msg.edit({ content: '⏰ 超时，使用默认配置。', components: [] });
       finish(fallbackResult);
     }, SETUP_TIMEOUT_MS);
@@ -136,52 +117,12 @@ export async function promptThreadSetup(
       const selectedBackend = interaction.values[0] as BackendName;
       collector.stop();
       clearTimeout(backendTimer);
-      const capability = availableBackends.find(backend => backend.name === selectedBackend);
-      const models = capability?.models ?? [];
-
-      if (models.length === 0) {
-        await msg.edit({
-          content: `✅ Backend: **${selectedBackend}**`,
-          components: [],
-        });
-        finish({ backend: selectedBackend, model: null, cwd: null });
-        return;
-      }
 
       await msg.edit({
-        content: `**选择 Model**\nBackend: **${selectedBackend}**`,
-        components: [buildModelMenu(models)],
+        content: `✅ Backend: **${selectedBackend}**`,
+        components: [],
       });
-
-      const modelCollector = msg.createMessageComponentCollector({
-        componentType: ComponentType.StringSelect,
-        max: 1,
-        filter: candidate => candidate.customId === MODEL_SELECT_ID,
-        time: SETUP_TIMEOUT_MS,
-      });
-
-      modelCollector.on('collect', async (modelInteraction) => {
-        await modelInteraction.deferUpdate();
-        const selectedModel = modelInteraction.values[0] ?? null;
-        modelCollector.stop('selected');
-        await msg.edit({
-          content: `✅ Backend: **${selectedBackend}**\n✅ Model: **${selectedModel}**`,
-          components: [],
-        });
-        finish({ backend: selectedBackend, model: selectedModel, cwd: null });
-      });
-
-      modelCollector.on('end', async (_interactions, reason) => {
-        if (reason !== 'time' || settled) {
-          return;
-        }
-
-        await msg.edit({
-          content: '⏰ Model 选择超时，请重新开始 setup。',
-          components: [],
-        });
-        finish(null);
-      });
+      finish({ backend: selectedBackend, model: null, cwd: null });
     });
   });
 }
