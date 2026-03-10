@@ -1,4 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  registerBackend,
+  resetBackendRegistryForTests,
+  type AgentBackend,
+} from '../../agent/backend.js';
 
 const { runConversationSession } = vi.hoisted(() => ({
   runConversationSession: vi.fn(),
@@ -34,6 +39,17 @@ async function drainEvents(events: AsyncIterable<unknown>): Promise<void> {
   }
 }
 
+function registerTestBackend(name: string, models: string[]): void {
+  registerBackend({
+    name,
+    isAvailable: () => true,
+    getSupportedModels: () => models.map(model => ({ id: model, label: model })),
+    async *stream() {
+      yield { type: 'done', result: `${name}:ok` } as const;
+    },
+  } satisfies AgentBackend);
+}
+
 describe('runConversationWithRenderer', () => {
   beforeEach(() => {
     activeConversations.clear();
@@ -44,6 +60,9 @@ describe('runConversationWithRenderer', () => {
     conversationSessions.clear();
     threadSessionBindings.clear();
     threadContinuationSnapshots.clear();
+    resetBackendRegistryForTests();
+    registerTestBackend('claude', ['sonnet', 'opus']);
+    registerTestBackend('opencode', ['openai/gpt-5']);
     runConversationSession.mockReset();
     runConversationSession.mockImplementation(async function* () {
       yield {
@@ -59,6 +78,29 @@ describe('runConversationWithRenderer', () => {
       yield { type: 'status', status: 'cwd:/tmp/auto' };
       yield { type: 'done', result: 'done' };
     });
+  });
+
+  it('clears stale configured models before starting a run', async () => {
+    conversationBackend.set('conv-stale-model', 'opencode');
+    conversationModels.set('conv-stale-model', 'sonnet');
+
+    const render = vi.fn(async (_options, events) => {
+      await drainEvents(events);
+    });
+
+    await runConversationWithRenderer({
+      conversationId: 'conv-stale-model',
+      target: { id: 'channel-stale-model' },
+      prompt: 'hello',
+      defaultCwd: '/tmp/workspace',
+      render,
+    });
+
+    expect(runConversationSession).toHaveBeenCalledWith('conv-stale-model', expect.objectContaining({
+      backend: 'opencode',
+      model: undefined,
+    }));
+    expect(conversationModels.has('conv-stale-model')).toBe(false);
   });
 
   it('creates a pending sticky binding for the first message in a thread', async () => {

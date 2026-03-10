@@ -221,7 +221,7 @@ describe('promptThreadSetup', () => {
     void resultPromise;
   });
 
-  it('does not force a fallback model on timeout when the backend exposes models', async () => {
+  it('waits for an explicit model selection when the backend exposes models', async () => {
     vi.useFakeTimers();
     coreMocks.getAvailableBackendCapabilities.mockResolvedValueOnce([
       {
@@ -232,11 +232,28 @@ describe('promptThreadSetup', () => {
       },
     ]);
 
+    let onBackendCollect: ((interaction: any) => Promise<void>) | undefined;
+    let onModelCollect: ((interaction: any) => Promise<void>) | undefined;
     const edit = vi.fn().mockResolvedValue(undefined);
-    const createMessageComponentCollector = vi.fn(() => ({
-      on: vi.fn(),
-      stop: vi.fn(),
-    }));
+    let collectorIndex = 0;
+    const createMessageComponentCollector = vi.fn(() => {
+      const currentIndex = collectorIndex;
+      collectorIndex += 1;
+      return {
+        on: vi.fn((event: string, handler: (interaction: any) => Promise<void>) => {
+          if (event !== 'collect') {
+            return;
+          }
+
+          if (currentIndex === 0) {
+            onBackendCollect = handler;
+          } else {
+            onModelCollect = handler;
+          }
+        }),
+        stop: vi.fn(),
+      };
+    });
 
     const thread = {
       send: vi.fn(async () => ({
@@ -249,9 +266,39 @@ describe('promptThreadSetup', () => {
     await Promise.resolve();
     await Promise.resolve();
 
+    await onBackendCollect?.({
+      customId: BACKEND_SELECT_ID,
+      values: ['claude'],
+      deferUpdate: vi.fn().mockResolvedValue(undefined),
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
     await vi.advanceTimersByTimeAsync(60_000);
 
-    await expect(resultPromise).resolves.toEqual({ backend: 'claude', model: null, cwd: null });
+    let settled = false;
+    void resultPromise.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+
+    expect(settled).toBe(false);
+    expect(edit).toHaveBeenNthCalledWith(1, {
+      content: '**选择 Model**\nBackend: **claude**',
+      components: [
+        expect.objectContaining({
+          toJSON: expect.any(Function),
+        }),
+      ],
+    });
+
+    await onModelCollect?.({
+      customId: MODEL_SELECT_ID,
+      values: ['sonnet'],
+      deferUpdate: vi.fn().mockResolvedValue(undefined),
+    });
+
+    await expect(resultPromise).resolves.toEqual({ backend: 'claude', model: 'sonnet', cwd: null });
 
     vi.useRealTimers();
   });

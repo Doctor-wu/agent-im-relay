@@ -98,7 +98,7 @@ export async function promptThreadSetup(
 
   return new Promise((resolve) => {
     let settled = false;
-    let fallbackResult: SetupResult = {
+    const fallbackResult: SetupResult = {
       backend: fallbackBackend.name,
       model: null,
       cwd: null,
@@ -109,11 +109,11 @@ export async function promptThreadSetup(
       }
 
       settled = true;
-      clearTimeout(timer);
+      clearTimeout(backendTimer);
       resolve(result);
     };
 
-    const timer = setTimeout(() => {
+    const backendTimer = setTimeout(() => {
       void msg.edit({ content: '⏰ 超时，使用默认配置。', components: [] });
       finish(fallbackResult);
     }, SETUP_TIMEOUT_MS);
@@ -129,13 +129,9 @@ export async function promptThreadSetup(
       await interaction.deferUpdate();
       const selectedBackend = interaction.values[0] as BackendName;
       collector.stop();
+      clearTimeout(backendTimer);
       const capability = availableBackends.find(backend => backend.name === selectedBackend);
       const models = capability?.models ?? [];
-      fallbackResult = {
-        backend: selectedBackend,
-        model: null,
-        cwd: null,
-      };
 
       if (models.length === 0) {
         await msg.edit({
@@ -155,7 +151,6 @@ export async function promptThreadSetup(
         componentType: ComponentType.StringSelect,
         max: 1,
         filter: candidate => candidate.customId === MODEL_SELECT_ID,
-        time: SETUP_TIMEOUT_MS,
       });
 
       modelCollector.on('collect', async (modelInteraction) => {
