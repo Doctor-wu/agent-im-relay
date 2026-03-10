@@ -138,7 +138,7 @@ jobs:
         run: |
           package_name=$(node -p "JSON.parse(require('node:fs').readFileSync('apps/agent-inbox/package.json', 'utf8')).name")
           echo "package_name=$package_name" >> "$GITHUB_OUTPUT"
-          if [[ "$package_name" == "agent-inbox" ]]; then
+          if [[ "$package_name" == "@doctorwu/agent-inbox" ]]; then
             echo "publish_ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "publish_ready=false" >> "$GITHUB_OUTPUT"
