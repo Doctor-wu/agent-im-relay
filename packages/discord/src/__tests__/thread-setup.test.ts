@@ -131,7 +131,7 @@ describe('promptThreadSetup', () => {
     expect(collectors).toHaveLength(2);
   });
 
-  it('falls back to the first available backend on timeout', async () => {
+  it('falls back to the first available backend on timeout when it has no models', async () => {
     vi.useFakeTimers();
     coreMocks.getAvailableBackendCapabilities.mockResolvedValueOnce([
       {
@@ -168,6 +168,45 @@ describe('promptThreadSetup', () => {
     await expect(resultPromise).resolves.toEqual({ backend: 'opencode', model: null, cwd: null });
     expect(edit).toHaveBeenCalledWith({
       content: '⏰ 超时，使用默认配置。',
+      components: [],
+    });
+
+    vi.useRealTimers();
+  });
+
+  it('does not start setup with a null model when timeout hits a backend that requires model selection', async () => {
+    vi.useFakeTimers();
+    coreMocks.getAvailableBackendCapabilities.mockResolvedValueOnce([
+      {
+        name: 'claude',
+        models: [
+          { id: 'sonnet', label: 'Sonnet' },
+        ],
+      },
+    ]);
+
+    const edit = vi.fn().mockResolvedValue(undefined);
+    const createMessageComponentCollector = vi.fn(() => ({
+      on: vi.fn(),
+      stop: vi.fn(),
+    }));
+
+    const thread = {
+      send: vi.fn(async () => ({
+        edit,
+        createMessageComponentCollector,
+      })),
+    } as any;
+
+    const resultPromise = promptThreadSetup(thread, 'Timeout please');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    await expect(resultPromise).resolves.toBeNull();
+    expect(edit).toHaveBeenCalledWith({
+      content: '⏰ 超时，请重新选择 Backend 和 Model。',
       components: [],
     });
 

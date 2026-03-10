@@ -84,7 +84,7 @@ const SETUP_TIMEOUT_MS = 60_000;
 export async function promptThreadSetup(
   thread: AnyThreadChannel,
   prompt: string,
-): Promise<SetupResult> {
+): Promise<SetupResult | null> {
   const availableBackends = await getAvailableBackendCapabilities();
   const fallbackBackend = availableBackends[0];
   if (!fallbackBackend) {
@@ -103,7 +103,7 @@ export async function promptThreadSetup(
       model: null,
       cwd: null,
     };
-    const finish = (result: SetupResult) => {
+    const finish = (result: SetupResult | null) => {
       if (settled) {
         return;
       }
@@ -114,6 +114,12 @@ export async function promptThreadSetup(
     };
 
     const backendTimer = setTimeout(() => {
+      if (fallbackBackend.models.length > 0) {
+        void msg.edit({ content: '⏰ 超时，请重新选择 Backend 和 Model。', components: [] });
+        finish(null);
+        return;
+      }
+
       void msg.edit({ content: '⏰ 超时，使用默认配置。', components: [] });
       finish(fallbackResult);
     }, SETUP_TIMEOUT_MS);

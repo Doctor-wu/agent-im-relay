@@ -236,6 +236,9 @@ export async function handleDiscordMessageCreate(
       // Show backend setup only if backend not yet chosen
       if (!conversationBackend.has(thread.id)) {
         const result = await (dependencies.promptThreadSetup ?? promptThreadSetup)(thread, prompt);
+        if (!result) {
+          return;
+        }
         await (dependencies.applySetupResult ?? applySetupResult)(thread.id, result);
       }
 

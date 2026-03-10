@@ -26,6 +26,7 @@ import {
   type BackendConfirmationCard,
   type BackendSelectionCard,
   FeishuCardContext,
+  type ModelSelectionCard,
 } from './cards.js';
 import { parseAskCommand } from './commands/ask.js';
 import { getFeishuSessionChat } from './session-chat.js';
@@ -71,11 +72,34 @@ async function getBackendModels(backend: BackendName): Promise<BackendModel[]> {
   return capabilities.find(capability => capability.name === backend)?.models ?? [];
 }
 
+async function getRequiredModelSelectionCard(
+  conversationId: string,
+  backend: BackendName | undefined,
+): Promise<ModelSelectionCard | null> {
+  if (!backend) {
+    return null;
+  }
+
+  const models = await getBackendModels(backend);
+  const selectedModel = conversationModels.get(conversationId);
+  const requiresModelSelection = models.length > 0
+    && (!selectedModel || !models.some(model => model.id === selectedModel));
+
+  return requiresModelSelection
+    ? buildModelSelectionCard(conversationId, backend, models)
+    : null;
+}
+
 export type FeishuRunGateResult =
   | {
     kind: 'blocked';
     reason: 'backend-selection';
     card: BackendSelectionCard;
+  }
+  | {
+    kind: 'blocked';
+    reason: 'model-selection';
+    card: ModelSelectionCard;
   }
   | {
     kind: 'unavailable';
@@ -126,6 +150,18 @@ export async function beginFeishuConversationRun(
       kind: 'blocked',
       reason: 'backend-selection',
       card: createBackendSelectionCard(options.conversationId, options.prompt, availableBackends),
+    };
+  }
+
+  const modelSelectionCard = await getRequiredModelSelectionCard(
+    options.conversationId,
+    evaluation.backend,
+  );
+  if (modelSelectionCard) {
+    return {
+      kind: 'blocked',
+      reason: 'model-selection',
+      card: modelSelectionCard,
     };
   }
 
@@ -364,15 +400,15 @@ export async function runFeishuConversation(options: {
       attachments: mergedAttachments,
       attachmentFetchImpl: options.attachmentFetchImpl,
     });
+    const context = buildFeishuCardContext(options.conversationId, options.target, {
+      prompt: options.prompt,
+      mode: options.mode,
+    });
     await options.transport.sendCard(
       options.target,
-      buildFeishuBackendSelectionCardPayload(
-        gate.card,
-        buildFeishuCardContext(options.conversationId, options.target, {
-          prompt: options.prompt,
-          mode: options.mode,
-        }),
-      ),
+      gate.reason === 'backend-selection'
+        ? buildFeishuBackendSelectionCardPayload(gate.card, context)
+        : buildFeishuModelSelectionCardPayload(gate.card, context),
     );
     return { kind: 'blocked' };
   }
@@ -431,26 +467,20 @@ export async function resumePendingFeishuRun(options: {
   }
 
   const backend = conversationBackend.get(options.conversationId);
-  if (backend) {
-    const models = await getBackendModels(backend);
-    const selectedModel = conversationModels.get(options.conversationId);
-    const requiresModelSelection = models.length > 0
-      && (!selectedModel || !models.some(model => model.id === selectedModel));
-
-    if (requiresModelSelection) {
-      storePendingFeishuRun(run);
-      await options.transport.sendCard(
-        run.target,
-        buildFeishuModelSelectionCardPayload(
-          buildModelSelectionCard(options.conversationId, backend, models),
-          buildFeishuCardContext(options.conversationId, run.target, {
-            prompt: run.prompt,
-            mode: run.mode,
-          }),
-        ),
-      );
-      return { kind: 'blocked' };
-    }
+  const modelSelectionCard = await getRequiredModelSelectionCard(options.conversationId, backend);
+  if (modelSelectionCard) {
+    storePendingFeishuRun(run);
+    await options.transport.sendCard(
+      run.target,
+      buildFeishuModelSelectionCardPayload(
+        modelSelectionCard,
+        buildFeishuCardContext(options.conversationId, run.target, {
+          prompt: run.prompt,
+          mode: run.mode,
+        }),
+      ),
+    );
+    return { kind: 'blocked' };
   }
 
   return runFeishuConversation({

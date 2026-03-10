@@ -248,7 +248,7 @@ describe('handleDiscordMessageCreate', () => {
       hasOpenStickyThreadSession: () => false,
       runThreadConversation,
       ensureMentionThread,
-      promptThreadSetup: vi.fn(),
+      promptThreadSetup: vi.fn(async () => ({ backend: 'codex', model: null, cwd: null })),
       applySetupResult: vi.fn(),
     });
 

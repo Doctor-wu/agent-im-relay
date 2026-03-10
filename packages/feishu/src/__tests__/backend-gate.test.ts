@@ -1,6 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const coreMocks = vi.hoisted(() => ({
+  getAvailableBackendCapabilities: vi.fn(async () => [
+    {
+      name: 'claude',
+      models: [
+        { id: 'sonnet', label: 'Sonnet' },
+      ],
+    },
+    {
+      name: 'codex',
+      models: [],
+    },
+    {
+      name: 'opencode',
+      models: [],
+    },
+  ]),
   getAvailableBackendNames: vi.fn(async () => ['claude', 'opencode']),
 }));
 
@@ -8,6 +24,7 @@ vi.mock('@agent-im-relay/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@agent-im-relay/core')>();
   return {
     ...actual,
+    getAvailableBackendCapabilities: coreMocks.getAvailableBackendCapabilities,
     getAvailableBackendNames: coreMocks.getAvailableBackendNames,
   };
 });
@@ -30,6 +47,22 @@ import {
 
 describe('Feishu backend gate', () => {
   beforeEach(() => {
+    coreMocks.getAvailableBackendCapabilities.mockResolvedValue([
+      {
+        name: 'claude',
+        models: [
+          { id: 'sonnet', label: 'Sonnet' },
+        ],
+      },
+      {
+        name: 'codex',
+        models: [],
+      },
+      {
+        name: 'opencode',
+        models: [],
+      },
+    ]);
     coreMocks.getAvailableBackendNames.mockResolvedValue(['claude', 'opencode']);
     conversationBackend.clear();
     conversationSessions.clear();
