@@ -1,4 +1,4 @@
-import type { BackendName } from '../agent/backend.js';
+import { isRegisteredBackendName, type BackendName } from '../agent/backend.js';
 import { applySessionControlCommand } from '../session-control/controller.js';
 import type { SessionControlResult } from '../session-control/types.js';
 
@@ -41,7 +41,7 @@ function normalizePromptAfterDirectiveRemoval(input: string): string {
 }
 
 function isBackendName(value: string): value is BackendName {
-  return value === 'claude' || value === 'codex';
+  return isRegisteredBackendName(value);
 }
 
 function parseDirectiveCandidate(content: string, openIndex: number): ParsedDirectiveCandidate {

@@ -8,6 +8,7 @@ import {
 import {
   conversationBackend,
   conversationCwd,
+  getAvailableBackendNames,
   persistState,
   type BackendName,
 } from '@agent-im-relay/core';
@@ -19,21 +20,46 @@ export type SetupResult = {
   cwd: string | null;
 };
 
-function buildBackendMenu(): ActionRowBuilder<StringSelectMenuBuilder> {
+function describeBackend(backend: BackendName): { label: string; description: string } {
+  if (backend === 'claude') {
+    return {
+      label: 'Claude (Claude Code)',
+      description: 'Anthropic Claude Code CLI',
+    };
+  }
+
+  if (backend === 'codex') {
+    return {
+      label: 'Codex (OpenAI Codex)',
+      description: 'OpenAI Codex CLI',
+    };
+  }
+
+  if (backend === 'opencode') {
+    return {
+      label: 'OpenCode',
+      description: 'OpenCode CLI',
+    };
+  }
+
+  return {
+    label: backend,
+    description: `${backend} CLI`,
+  };
+}
+
+function buildBackendMenu(backends: BackendName[]): ActionRowBuilder<StringSelectMenuBuilder> {
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(BACKEND_SELECT_ID)
       .setPlaceholder('选择 AI Backend')
-      .addOptions(
-        new StringSelectMenuOptionBuilder()
-          .setLabel('Claude (Claude Code)')
-          .setValue('claude')
-          .setDescription('Anthropic Claude Code CLI'),
-        new StringSelectMenuOptionBuilder()
-          .setLabel('Codex (OpenAI Codex)')
-          .setValue('codex')
-          .setDescription('OpenAI Codex CLI'),
-      ),
+      .addOptions(backends.map((backend) => {
+        const details = describeBackend(backend);
+        return new StringSelectMenuOptionBuilder()
+          .setLabel(details.label)
+          .setValue(backend)
+          .setDescription(details.description);
+      })),
   );
 }
 
@@ -43,9 +69,10 @@ export async function promptThreadSetup(
   thread: AnyThreadChannel,
   prompt: string,
 ): Promise<SetupResult> {
+  const availableBackends = await getAvailableBackendNames();
   const msg = await thread.send({
     content: `**选择 AI Backend**\n> ${prompt.slice(0, 200)}`,
-    components: [buildBackendMenu()],
+    components: [buildBackendMenu(availableBackends)],
   });
 
   return new Promise((resolve) => {

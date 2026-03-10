@@ -15,6 +15,7 @@ import {
 function createBackend(events: Array<unknown>): AgentBackend {
   return {
     name: 'claude',
+    isAvailable: () => true,
     async *stream(options) {
       for (const event of events) {
         if (options.abortSignal?.aborted) {
@@ -83,6 +84,7 @@ describe('conversation runtime', () => {
       prompt: 'Build a report exporter',
       backend: {
         name: 'claude',
+        isAvailable: () => true,
         async *stream(options) {
           receivedPrompt = options.prompt;
           yield { type: 'done', result: 'ok' } as const;
@@ -107,6 +109,7 @@ describe('conversation runtime', () => {
       prompt: 'Explain the attached document',
       backend: {
         name: 'claude',
+        isAvailable: () => true,
         async *stream(options) {
           receivedPrompt = options.prompt;
           yield { type: 'done', result: 'ok' } as const;

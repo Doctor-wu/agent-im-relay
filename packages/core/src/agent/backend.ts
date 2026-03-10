@@ -1,9 +1,11 @@
+import { spawnSync } from 'node:child_process';
 import type { AgentSessionOptions, AgentStreamEvent } from './session.js';
 
-export type BackendName = 'claude' | 'codex';
+export type BackendName = string;
 
 export interface AgentBackend {
   readonly name: BackendName;
+  isAvailable(): boolean | Promise<boolean>;
   stream(options: AgentSessionOptions): AsyncGenerator<AgentStreamEvent, void>;
 }
 
@@ -17,4 +19,37 @@ export function getBackend(name: BackendName): AgentBackend {
   const backend = registry.get(name);
   if (!backend) throw new Error(`Unknown backend: ${name}`);
   return backend;
+}
+
+export function getRegisteredBackendNames(): BackendName[] {
+  return [...registry.keys()];
+}
+
+export function isRegisteredBackendName(name: string): name is BackendName {
+  return registry.has(name);
+}
+
+export async function getAvailableBackends(): Promise<AgentBackend[]> {
+  const backends = [...registry.values()];
+  const availability = await Promise.all(backends.map(async backend => ({
+    backend,
+    available: await backend.isAvailable(),
+  })));
+
+  return availability
+    .filter(result => result.available)
+    .map(result => result.backend);
+}
+
+export async function getAvailableBackendNames(): Promise<BackendName[]> {
+  return (await getAvailableBackends()).map(backend => backend.name);
+}
+
+export function resetBackendRegistryForTests(): void {
+  registry.clear();
+}
+
+export function isBackendCommandAvailable(command: string): boolean {
+  const result = spawnSync(command, ['--help'], { stdio: 'ignore' });
+  return !result.error;
 }

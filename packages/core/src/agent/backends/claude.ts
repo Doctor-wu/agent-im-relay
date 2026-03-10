@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import { config } from '../../config.js';
-import { registerBackend, type AgentBackend } from '../backend.js';
+import { isBackendCommandAvailable, registerBackend, type AgentBackend } from '../backend.js';
 import { buildEnvironment } from '../environment.js';
 import type { AgentSessionOptions, AgentStreamEvent } from '../session.js';
 import { toolsForMode } from '../tools.js';
@@ -316,6 +316,7 @@ async function* streamClaude(options: AgentSessionOptions): AsyncGenerator<Agent
 
 export const claudeBackend: AgentBackend = {
   name: 'claude',
+  isAvailable: () => isBackendCommandAvailable(config.claudeBin),
   stream: streamClaude,
 };
 

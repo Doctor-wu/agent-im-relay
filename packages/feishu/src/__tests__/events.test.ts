@@ -5,6 +5,7 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 import { conversationBackend, processedEventIds, processedMessages } from '@agent-im-relay/core';
 
 const coreMocks = vi.hoisted(() => ({
+  getAvailableBackendNames: vi.fn(async () => ['claude', 'opencode']),
   initState: vi.fn(async () => undefined),
   persistState: vi.fn(async () => undefined),
 }));
@@ -20,6 +21,7 @@ vi.mock('@agent-im-relay/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@agent-im-relay/core')>();
   return {
     ...actual,
+    getAvailableBackendNames: coreMocks.getAvailableBackendNames,
     initState: coreMocks.initState,
     persistState: coreMocks.persistState,
   };
@@ -86,6 +88,7 @@ function extractPostParagraphTexts(content: string): string[] {
 
 afterEach(async () => {
   coreMocks.initState.mockClear();
+  coreMocks.getAvailableBackendNames.mockResolvedValue(['claude', 'opencode']);
   coreMocks.persistState.mockClear();
   runtimeMocks.handleFeishuControlAction.mockReset();
   runtimeMocks.queuePendingFeishuAttachments.mockReset();
@@ -1152,7 +1155,7 @@ describe('Feishu long-connection events', () => {
     expect(buttonTexts).toEqual([
       'Done',
       'Claude',
-      'Codex',
+      'OpenCode',
       'Claude 3.7',
       'GPT-5 Codex',
       'Low',
@@ -1203,7 +1206,7 @@ describe('Feishu long-connection events', () => {
     expect(buttonTexts).toEqual([
       'Done',
       'Claude',
-      'Codex',
+      'OpenCode',
       'Claude 3.7',
       'GPT-5 Codex',
       'Low',

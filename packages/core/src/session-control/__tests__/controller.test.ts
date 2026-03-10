@@ -19,6 +19,7 @@ import { applySessionControlCommand } from '../controller.js';
 function createBackend(events: Array<unknown>): AgentBackend {
   return {
     name: 'claude',
+    isAvailable: () => true,
     async *stream(options) {
       for (const event of events) {
         if (options.abortSignal?.aborted) {

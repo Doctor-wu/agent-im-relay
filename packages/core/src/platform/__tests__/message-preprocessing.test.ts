@@ -29,6 +29,15 @@ describe('message preprocessing', () => {
     });
   });
 
+  it('accepts dynamically registered backend tags', () => {
+    expect(preprocessConversationMessage('<set-backend>opencode</set-backend>')).toEqual({
+      prompt: '',
+      directives: [
+        { type: 'backend', value: 'opencode' },
+      ],
+    });
+  });
+
   it('preserves ordinary prompt formatting when no control tag is present', () => {
     const prompt = [
       '```yaml',

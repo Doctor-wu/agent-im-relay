@@ -29,6 +29,16 @@ export type { AgentSessionFactory, OrchestratorOptions } from './orchestrator.js
 export { buildAgentPrompt, streamAgentSession, extractEvents, createClaudeArgs } from './agent/session.js';
 export { runConversationSession, interruptConversationRun, isConversationRunning, resetConversationRuntimeForTests } from './agent/runtime.js';
 export type { AgentEnvironment, AgentStreamEvent, AgentSessionOptions } from './agent/session.js';
+export {
+  getAvailableBackendNames,
+  getAvailableBackends,
+  getBackend,
+  getRegisteredBackendNames,
+  isBackendCommandAvailable,
+  isRegisteredBackendName,
+  registerBackend,
+  resetBackendRegistryForTests,
+} from './agent/backend.js';
 export type { BackendName, AgentBackend } from './agent/backend.js';
 export { toolsForMode } from './agent/tools.js';
 export type { AgentMode } from './agent/tools.js';

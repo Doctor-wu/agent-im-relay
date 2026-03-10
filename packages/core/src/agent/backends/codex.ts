@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import { config } from '../../config.js';
-import { registerBackend, type AgentBackend } from '../backend.js';
+import { isBackendCommandAvailable, registerBackend, type AgentBackend } from '../backend.js';
 import { buildEnvironment } from '../environment.js';
 import type { AgentSessionOptions, AgentStreamEvent } from '../session.js';
 
@@ -276,6 +276,7 @@ async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentS
 
 export const codexBackend: AgentBackend = {
   name: 'codex',
+  isAvailable: () => isBackendCommandAvailable(config.codexBin),
   stream: streamCodex,
 };
 

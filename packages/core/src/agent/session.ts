@@ -1,5 +1,6 @@
 import './backends/claude.js';
 import './backends/codex.js';
+import './backends/opencode.js';
 import { getBackend, type BackendName } from './backend.js';
 import type { AgentMode } from './tools.js';
 
@@ -63,6 +64,9 @@ export async function* streamAgentSession(
   options: AgentSessionOptions & { backend?: BackendName },
 ): AsyncGenerator<AgentStreamEvent, void> {
   const backend = getBackend(options.backend ?? 'claude');
+  if (!(await backend.isAvailable())) {
+    throw new Error(`Backend not available: ${backend.name}`);
+  }
   yield* backend.stream({
     ...options,
     prompt: buildAgentPrompt(options),

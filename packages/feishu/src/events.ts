@@ -6,6 +6,7 @@ import {
   preprocessConversationMessage,
   processedEventIds,
   processedMessages,
+  type BackendName,
 } from '@agent-im-relay/core';
 import { createFeishuClient } from './api.js';
 import type { FeishuConfig } from './config.js';
@@ -747,9 +748,9 @@ export function createFeishuEventRouter(
 
       const result = await handleFeishuControlAction({
         action: actionType === 'backend'
-          ? { conversationId, type: 'backend', value: action.value as 'claude' | 'codex' }
+          ? { conversationId, type: 'backend', value: String(action.value) as BackendName }
           : actionType === 'confirm-backend'
-            ? { conversationId, type: 'confirm-backend', value: action.value as 'claude' | 'codex' }
+            ? { conversationId, type: 'confirm-backend', value: String(action.value) as BackendName }
             : actionType === 'cancel-backend'
               ? { conversationId, type: 'cancel-backend' }
               : actionType === 'model'

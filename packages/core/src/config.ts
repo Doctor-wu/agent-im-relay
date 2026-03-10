@@ -43,6 +43,7 @@ export interface CoreConfig {
   artifactMaxSizeBytes: number;
   claudeBin: string;
   codexBin: string;
+  opencodeBin: string;
 }
 
 export function readCoreConfig(env: NodeJS.ProcessEnv = process.env): CoreConfig {
@@ -58,6 +59,7 @@ export function readCoreConfig(env: NodeJS.ProcessEnv = process.env): CoreConfig
     artifactMaxSizeBytes: numberEnv(env, 'ARTIFACT_MAX_SIZE_BYTES', 8 * 1024 * 1024),
     claudeBin: optionalEnv(env, 'CLAUDE_BIN') || 'claude',
     codexBin: optionalEnv(env, 'CODEX_BIN') || 'codex',
+    opencodeBin: optionalEnv(env, 'OPENCODE_BIN') || 'opencode',
   };
 }
 
@@ -71,6 +73,7 @@ export function applyCoreConfigEnvironment(config: CoreConfig): void {
   setNumericEnv('ARTIFACT_MAX_SIZE_BYTES', config.artifactMaxSizeBytes);
   process.env['CLAUDE_BIN'] = config.claudeBin;
   process.env['CODEX_BIN'] = config.codexBin;
+  process.env['OPENCODE_BIN'] = config.opencodeBin;
 }
 
 const configProxyHandler: ProxyHandler<CoreConfig> = {
