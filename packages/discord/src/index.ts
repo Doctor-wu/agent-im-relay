@@ -212,7 +212,7 @@ export async function handleDiscordMessageCreate(
       return;
     }
 
-    if (!prompt) {
+    if (!prompt && preprocessed.directives.length === 0) {
       await message.channel.send(
         buildDiscordReplyPayload('Please include a prompt after mentioning me.', replyContext),
       ).catch(() => {});
@@ -224,8 +224,14 @@ export async function handleDiscordMessageCreate(
 
     try {
       const thread = await (dependencies.ensureMentionThread ?? ensureMentionThread)(message as Message<true>, prompt);
-      await thread.send(`**${message.author.displayName}:** ${prompt}`);
+      if (prompt) {
+        await thread.send(`**${message.author.displayName}:** ${prompt}`);
+      }
       await persistDiscordMessageControls(thread.id, preprocessed.directives);
+
+      if (!prompt) {
+        return;
+      }
 
       // Show backend setup only if backend not yet chosen
       if (!conversationBackend.has(thread.id)) {

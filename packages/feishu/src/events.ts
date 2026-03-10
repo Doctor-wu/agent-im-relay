@@ -602,18 +602,6 @@ export function createFeishuEventRouter(
       }
 
       const request = resolveFeishuMessageRequest(preprocessed.prompt);
-      if (!request.prompt) {
-        if (preprocessed.directives.length > 0) {
-          if (message.chat_type !== 'p2p') {
-            await persistFeishuMessageControls(conversationId, preprocessed.directives);
-          }
-        } else {
-          await transport.sendText(target, 'Please include a prompt after mentioning the bot.');
-        }
-        succeeded = true;
-        return;
-      }
-
       if (message.chat_type === 'p2p') {
         const duplicateSessionChat = findFeishuSessionChatBySourceMessage({
           sourceP2pChatId: message.chat_id,
@@ -627,6 +615,12 @@ export function createFeishuEventRouter(
         const creatorOpenId = resolveSenderOpenId(payload);
         if (!creatorOpenId) {
           await transport.sendText(target, 'Could not determine the Feishu user for this private chat.');
+          succeeded = true;
+          return;
+        }
+
+        if (!request.prompt && preprocessed.directives.length === 0) {
+          await transport.sendText(target, 'Please include a prompt after mentioning the bot.');
           succeeded = true;
           return;
         }
@@ -645,6 +639,11 @@ export function createFeishuEventRouter(
             rememberMirroredFeishuMessageId(launch.mirroredMessageId);
           }
           await persistFeishuMessageControls(launch.sessionChatId, preprocessed.directives);
+
+          if (!request.prompt) {
+            succeeded = true;
+            return;
+          }
 
           await runFeishuSessionFlow({
             conversationId: launch.sessionChatId,
@@ -666,6 +665,16 @@ export function createFeishuEventRouter(
           await transport.sendText(target, describeError(error));
           succeeded = true;
           return;
+        }
+        succeeded = true;
+        return;
+      }
+
+      if (!request.prompt) {
+        if (preprocessed.directives.length > 0) {
+          await persistFeishuMessageControls(conversationId, preprocessed.directives);
+        } else {
+          await transport.sendText(target, 'Please include a prompt after mentioning the bot.');
         }
         succeeded = true;
         return;

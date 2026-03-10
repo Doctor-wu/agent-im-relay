@@ -53,6 +53,24 @@ describe('message preprocessing', () => {
     });
   });
 
+  it('preserves leading indentation on the remaining first line after removing a backend tag', () => {
+    expect(preprocessConversationMessage('<set-backend>codex</set-backend>  const x = 1;')).toEqual({
+      prompt: '  const x = 1;',
+      directives: [
+        { type: 'backend', value: 'codex' },
+      ],
+    });
+  });
+
+  it('preserves newlines when removing inline backend tags before an indented line', () => {
+    expect(preprocessConversationMessage('prefix <set-backend>codex</set-backend>\n  first line')).toEqual({
+      prompt: 'prefix\n  first line',
+      directives: [
+        { type: 'backend', value: 'codex' },
+      ],
+    });
+  });
+
   it('removes the control tag without collapsing indentation in multiline prompts', () => {
     expect(preprocessConversationMessage([
       '<set-backend>codex</set-backend>',

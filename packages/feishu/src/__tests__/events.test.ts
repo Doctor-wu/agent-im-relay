@@ -431,6 +431,63 @@ describe('Feishu long-connection events', () => {
     }));
   });
 
+  it('creates a session group for standalone backend control tags in private chats', async () => {
+    const createSessionChat = vi.fn(async () => ({
+      chatId: 'session-chat-1',
+      name: 'Session · New session',
+    }));
+    const sendSharedChatMessage = vi.fn(async () => 'message-share-1');
+    const sendMessage = vi.fn()
+      .mockResolvedValueOnce('message-ref-1');
+    const replyMessage = vi.fn(async () => undefined);
+    const router = createFeishuEventRouter(baseConfig, {
+      client: {
+        createSessionChat,
+        sendSharedChatMessage,
+        replyMessage,
+        sendMessage,
+        sendCard: vi.fn(async () => 'message-card-1'),
+        uploadFileContent: vi.fn(async () => 'file-key'),
+        sendFileMessage: vi.fn(async () => undefined),
+        downloadMessageResource: vi.fn(async () => new Response()),
+      } as never,
+    });
+
+    await router.handleMessageEvent({
+      sender: {
+        sender_id: {
+          open_id: 'ou_user_1',
+        },
+      },
+      message: {
+        message_id: 'message-control-only-p2p-1',
+        chat_id: 'p2p-chat-1',
+        chat_type: 'p2p',
+        message_type: 'text',
+        content: JSON.stringify({ text: '<set-backend>codex</set-backend>' }),
+      },
+    });
+
+    expect(createSessionChat).toHaveBeenCalledWith(expect.objectContaining({
+      userOpenId: 'ou_user_1',
+      name: 'Session · New session',
+    }));
+    expect(sendSharedChatMessage).toHaveBeenCalledWith({
+      receiveId: 'p2p-chat-1',
+      chatId: 'session-chat-1',
+    });
+    expect(sendMessage).toHaveBeenCalledOnce();
+    expect(extractPostParagraphTexts(sendMessage.mock.calls[0]![0].content)).toEqual([
+      '【Common commands】',
+      '/interrupt - stop the current run',
+    ]);
+    expect(conversationBackend.get('session-chat-1')).toBe('codex');
+    expect(runtimeMocks.runFeishuConversation).not.toHaveBeenCalled();
+    expect(replyMessage).not.toHaveBeenCalledWith(expect.objectContaining({
+      content: JSON.stringify({ text: 'Please include a prompt after mentioning the bot.' }),
+    }));
+  });
+
   it('does not create a second session group when the same private-chat message is delivered twice', async () => {
     runtimeMocks.runFeishuConversation.mockResolvedValue({ kind: 'started' });
     const createSessionChat = vi.fn(async () => ({

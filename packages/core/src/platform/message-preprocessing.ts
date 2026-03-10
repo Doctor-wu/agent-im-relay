@@ -31,12 +31,24 @@ type ParsedDirectiveCandidate =
 
 const OPEN_TAG = '<set-backend>';
 const CLOSE_TAG = '</set-backend>';
-const VALID_BACKENDS = new Set<BackendName>(['claude', 'codex']);
+
+function normalizePromptAfterDirectiveRemoval(input: string): string {
+  return input
+    .replace(/\r\n/g, '\n')
+    .replace(/^\n+/g, '')
+    .replace(/\n+$/g, '')
+    .replace(/[ \t]+$/g, '');
+}
+
+function isBackendName(value: string): value is BackendName {
+  return value === 'claude' || value === 'codex';
+}
 
 function parseDirectiveCandidate(content: string, openIndex: number): ParsedDirectiveCandidate {
   let cursor = openIndex + OPEN_TAG.length;
   let closeIndex = -1;
   let depth = 1;
+  let sawNestedTag = false;
 
   while (depth > 0) {
     const nextOpen = content.indexOf(OPEN_TAG, cursor);
@@ -50,6 +62,7 @@ function parseDirectiveCandidate(content: string, openIndex: number): ParsedDire
     }
 
     if (nextOpen !== -1 && nextOpen < nextClose) {
+      sawNestedTag = true;
       depth += 1;
       cursor = nextOpen + OPEN_TAG.length;
       continue;
@@ -60,16 +73,8 @@ function parseDirectiveCandidate(content: string, openIndex: number): ParsedDire
     cursor = nextClose + CLOSE_TAG.length;
   }
 
-  const innerContent = content.slice(openIndex + OPEN_TAG.length, closeIndex);
-  if (innerContent.includes(OPEN_TAG) || innerContent.includes(CLOSE_TAG)) {
-    return {
-      kind: 'skip',
-      nextSearchIndex: cursor,
-    };
-  }
-
-  const backend = innerContent.trim().toLowerCase() as BackendName;
-  if (!VALID_BACKENDS.has(backend)) {
+  const innerContent = content.slice(openIndex + OPEN_TAG.length, closeIndex).trim().toLowerCase();
+  if (sawNestedTag || !isBackendName(innerContent)) {
     return {
       kind: 'skip',
       nextSearchIndex: cursor,
@@ -83,7 +88,7 @@ function parseDirectiveCandidate(content: string, openIndex: number): ParsedDire
       end: cursor,
       directive: {
         type: 'backend',
-        value: backend,
+        value: innerContent,
       },
     },
     nextSearchIndex: cursor,
@@ -114,14 +119,16 @@ function isNewline(character: string | undefined): boolean {
   return character === '\n' || character === '\r';
 }
 
+function stripLeadingDirectiveSeparator(text: string): string {
+  return text.replace(/^[ \t]*\r?\n/, '');
+}
+
 function mergePromptSegments(left: string, right: string): string {
-  const normalizedLeft = left.replace(/[ \t]+$/g, '');
-  const normalizedRight = isNewline(right[0])
-    ? right
-    : right.replace(/^[ \t]+/g, '');
+  const normalizedLeft = left.replace(/\r\n/g, '\n');
+  const normalizedRight = right.replace(/\r\n/g, '\n');
 
   if (normalizedLeft.length === 0) {
-    return normalizedRight.replace(/^(?:\r?\n)+/g, '');
+    return stripLeadingDirectiveSeparator(normalizedRight);
   }
 
   if (normalizedRight.length === 0) {
@@ -132,14 +139,22 @@ function mergePromptSegments(left: string, right: string): string {
   const rightFirst = normalizedRight[0];
 
   if (isNewline(leftLast) && isNewline(rightFirst)) {
-    return `${normalizedLeft.replace(/(?:\r?\n)+$/g, '\n')}${normalizedRight.replace(/^(?:\r?\n)+/g, '')}`;
+    return `${normalizedLeft}${normalizedRight.replace(/^\n/, '')}`;
   }
 
-  if (!/\s/.test(leftLast) && !/\s/.test(rightFirst)) {
-    return `${normalizedLeft} ${normalizedRight}`;
+  if (isNewline(rightFirst)) {
+    return `${normalizedLeft.replace(/[ \t]+$/g, '')}${normalizedRight}`;
   }
 
-  return `${normalizedLeft}${normalizedRight}`;
+  if (isNewline(leftLast)) {
+    return `${normalizedLeft}${normalizedRight}`;
+  }
+
+  if (/[ \t]$/u.test(normalizedLeft) || /^[ \t]/u.test(normalizedRight)) {
+    return `${normalizedLeft.replace(/[ \t]+$/g, '')} ${normalizedRight.replace(/^[ \t]+/g, '')}`;
+  }
+
+  return `${normalizedLeft} ${normalizedRight}`;
 }
 
 function removeDirectiveOccurrences(content: string, occurrences: DirectiveOccurrence[]): string {

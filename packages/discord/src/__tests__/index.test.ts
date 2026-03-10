@@ -310,4 +310,53 @@ describe('handleDiscordMessageCreate', () => {
       content: expect.stringContaining('Please include a prompt'),
     }));
   });
+
+  it('creates a new thread for standalone control-tag mentions and persists directives', async () => {
+    const message = createBaseMessage();
+    const thread = {
+      id: 'thread-control-setup-1',
+      send: vi.fn(async () => undefined),
+    } as any;
+    const ensureMentionThread = vi.fn(async () => thread);
+    const runThreadConversation = vi.fn(async () => true);
+    message.content = '<@relay-bot> <set-backend>codex</set-backend>';
+
+    vi.mocked(preprocessConversationMessage).mockReturnValue({
+      prompt: '',
+      directives: [{ type: 'backend', value: 'codex' }],
+    });
+    vi.mocked(applyMessageControlDirectives).mockReturnValue([
+      {
+        kind: 'backend',
+        conversationId: 'thread-control-setup-1',
+        stateChanged: true,
+        persist: true,
+        clearContinuation: false,
+        requiresConfirmation: false,
+        summaryKey: 'backend.updated',
+        backend: 'codex',
+      },
+    ]);
+
+    await handleDiscordMessageCreate(message, {
+      botUser: { id: 'relay-bot' },
+      hasOpenStickyThreadSession: () => false,
+      runThreadConversation,
+      ensureMentionThread,
+      promptThreadSetup: vi.fn(),
+      applySetupResult: vi.fn(),
+    });
+
+    expect(ensureMentionThread).toHaveBeenCalledWith(message, '');
+    expect(thread.send).not.toHaveBeenCalled();
+    expect(applyMessageControlDirectives).toHaveBeenCalledWith({
+      conversationId: 'thread-control-setup-1',
+      directives: [{ type: 'backend', value: 'codex' }],
+    });
+    expect(persistState).toHaveBeenCalledWith('discord');
+    expect(runThreadConversation).not.toHaveBeenCalled();
+    expect(message.channel.send).not.toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining('Please include a prompt'),
+    }));
+  });
 });
