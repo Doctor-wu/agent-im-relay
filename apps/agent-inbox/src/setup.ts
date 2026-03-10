@@ -5,16 +5,18 @@ import type {
   AvailableIm,
   DiscordImRecord,
   FeishuImRecord,
+  TelegramImRecord,
   LoadedAppConfig,
 } from './config.js';
 import { loadAppConfig, saveAppConfig, upsertRecord } from './config.js';
 
-const ALL_PLATFORM_IDS = ['discord', 'feishu'] as const;
+const ALL_PLATFORM_IDS = ['discord', 'feishu', 'telegram'] as const;
 type PlatformId = (typeof ALL_PLATFORM_IDS)[number];
 
 const PLATFORM_LABELS: Record<PlatformId, string> = {
   discord: 'Discord',
   feishu: 'Feishu (飞书)',
+  telegram: 'Telegram',
 };
 
 function getUnconfiguredPlatforms(availableIms: AvailableIm[]): PlatformId[] {
@@ -120,6 +122,45 @@ async function buildFeishuRecord(): Promise<FeishuImRecord> {
   };
 }
 
+async function buildTelegramRecord(): Promise<TelegramImRecord> {
+  const result = await p.group(
+    {
+      botToken: () =>
+        p.password({
+          message: 'Telegram bot token (from @BotFather)',
+          validate: v => (!v || v.length === 0 ? 'Required' : undefined),
+        }),
+      allowedUserIds: () =>
+        p.text({
+          message: 'Allowed user IDs (comma-separated, optional)',
+          placeholder: 'Leave empty to allow all users',
+        }),
+    },
+    {
+      onCancel: () => {
+        p.cancel('Setup cancelled.');
+        process.exit(0);
+      },
+    },
+  );
+
+  const rawIds = result.allowedUserIds?.trim();
+  const allowedUserIds = rawIds
+    ? rawIds.split(',').map(s => Number.parseInt(s.trim(), 10)).filter(n => Number.isFinite(n) && n > 0)
+    : undefined;
+
+  return {
+    type: 'im',
+    id: 'telegram',
+    enabled: true,
+    note: 'Telegram bot',
+    config: {
+      botToken: result.botToken,
+      allowedUserIds: allowedUserIds?.length ? allowedUserIds : undefined,
+    },
+  };
+}
+
 export async function runSetup(
   paths: RelayPaths,
   unconfiguredPlatforms: PlatformId[],
@@ -150,7 +191,9 @@ export async function runSetup(
   const nextRecord =
     platformId === 'discord'
       ? await buildDiscordRecord()
-      : await buildFeishuRecord();
+      : platformId === 'telegram'
+        ? await buildTelegramRecord()
+        : await buildFeishuRecord();
 
   const nextRecords = upsertRecord(
     current.records as AppConfigRecord[],

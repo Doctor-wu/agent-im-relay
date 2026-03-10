@@ -24,6 +24,19 @@ export type FeishuImConfig = {
   port?: number;
 };
 
+export type TelegramImConfig = {
+  botToken?: string;
+  allowedUserIds?: number[];
+};
+
+export type TelegramImRecord = {
+  type: 'im';
+  id: 'telegram';
+  enabled: boolean;
+  note?: string;
+  config: TelegramImConfig;
+};
+
 export type MetaRecord = {
   type: 'meta';
   version: number;
@@ -51,7 +64,7 @@ export type FeishuImRecord = {
   config: FeishuImConfig;
 };
 
-export type AppConfigRecord = MetaRecord | RuntimeRecord | DiscordImRecord | FeishuImRecord;
+export type AppConfigRecord = MetaRecord | RuntimeRecord | DiscordImRecord | FeishuImRecord | TelegramImRecord;
 
 export type AvailableIm =
   | {
@@ -63,6 +76,11 @@ export type AvailableIm =
     id: 'feishu';
     note?: string;
     config: Required<Pick<FeishuImConfig, 'appId' | 'appSecret'>> & Pick<FeishuImConfig, 'verificationToken' | 'encryptKey' | 'baseUrl' | 'port'>;
+  }
+  | {
+    id: 'telegram';
+    note?: string;
+    config: Required<Pick<TelegramImConfig, 'botToken'>> & Pick<TelegramImConfig, 'allowedUserIds'>;
   };
 
 export interface LoadedAppConfig {
@@ -174,6 +192,25 @@ function normalizeFeishuImRecord(value: Record<string, unknown>): FeishuImRecord
   };
 }
 
+function normalizeTelegramImRecord(value: Record<string, unknown>): TelegramImRecord {
+  const config = isRecord(value.config) ? value.config : {};
+  const rawIds = config.allowedUserIds;
+  const allowedUserIds = Array.isArray(rawIds)
+    ? rawIds.map(id => typeof id === 'number' ? id : Number.parseInt(String(id), 10)).filter(n => Number.isFinite(n) && n > 0)
+    : undefined;
+
+  return {
+    type: 'im',
+    id: 'telegram',
+    enabled: asBoolean(value.enabled, true),
+    note: asString(value.note),
+    config: {
+      botToken: asString(config.botToken),
+      allowedUserIds: allowedUserIds?.length ? allowedUserIds : undefined,
+    },
+  };
+}
+
 function parseConfigRecord(value: unknown, lineNumber: number): {
   record?: AppConfigRecord;
   error?: string;
@@ -206,6 +243,10 @@ function parseConfigRecord(value: unknown, lineNumber: number): {
 
     if (value.id === 'feishu') {
       return { record: normalizeFeishuImRecord(value) };
+    }
+
+    if (value.id === 'telegram') {
+      return { record: normalizeTelegramImRecord(value) };
     }
 
     return { error: `Line ${lineNumber}: unsupported im id "${String(value.id)}".` };
@@ -273,7 +314,7 @@ export function resolveRuntimeConfig(records: AppConfigRecord[]): RuntimeConfig 
 }
 
 export function resolveAvailableIms(records: AppConfigRecord[]): AvailableIm[] {
-  const ims = records.filter((record): record is DiscordImRecord | FeishuImRecord => record.type === 'im');
+  const ims = records.filter((record): record is DiscordImRecord | FeishuImRecord | TelegramImRecord => record.type === 'im');
 
   return ims.flatMap((record): AvailableIm[] => {
     if (!record.enabled) {
@@ -296,22 +337,41 @@ export function resolveAvailableIms(records: AppConfigRecord[]): AvailableIm[] {
       }];
     }
 
-    if (!record.config.appId || !record.config.appSecret) {
-      return [];
+    if (record.id === 'feishu') {
+      if (!record.config.appId || !record.config.appSecret) {
+        return [];
+      }
+
+      return [{
+        id: 'feishu',
+        note: record.note,
+        config: {
+          appId: record.config.appId,
+          appSecret: record.config.appSecret,
+          verificationToken: record.config.verificationToken,
+          encryptKey: record.config.encryptKey,
+          baseUrl: record.config.baseUrl,
+          port: record.config.port,
+        },
+      }];
     }
 
-    return [{
-      id: 'feishu',
-      note: record.note,
-      config: {
-        appId: record.config.appId,
-        appSecret: record.config.appSecret,
-        verificationToken: record.config.verificationToken,
-        encryptKey: record.config.encryptKey,
-        baseUrl: record.config.baseUrl,
-        port: record.config.port,
-      },
-    }];
+    if (record.id === 'telegram') {
+      if (!record.config.botToken) {
+        return [];
+      }
+
+      return [{
+        id: 'telegram',
+        note: record.note,
+        config: {
+          botToken: record.config.botToken,
+          allowedUserIds: record.config.allowedUserIds,
+        },
+      }];
+    }
+
+    return [];
   });
 }
 

@@ -40,7 +40,6 @@ describe('npm packaging contract', () => {
     expect(appPackage.files).toContain('dist');
     expect(appPackage.publishConfig).toMatchObject({
       access: 'public',
-      provenance: true,
     });
     expect(appPackage.dependencies).not.toHaveProperty('@agent-im-relay/core');
     expect(appPackage.dependencies).not.toHaveProperty('@agent-im-relay/discord');

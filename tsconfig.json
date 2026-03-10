@@ -3,6 +3,7 @@
     { "path": "packages/core" },
     { "path": "packages/discord" },
     { "path": "packages/feishu" },
+    { "path": "packages/telegram" },
     { "path": "apps/agent-inbox" }
   ],
   "files": []

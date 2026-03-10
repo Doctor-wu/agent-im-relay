@@ -4,6 +4,7 @@ import type { AvailableIm, RuntimeConfig } from './config.js';
 type RuntimeLoaders = {
   discord?: () => Promise<{ startDiscordRuntime: () => Promise<unknown> }>;
   feishu?: () => Promise<{ startFeishuRuntime: () => Promise<unknown> }>;
+  telegram?: () => Promise<{ startTelegramRuntime: () => Promise<unknown> }>;
 };
 
 function setOptionalEnv(key: string, value: string | undefined): void {
@@ -41,6 +42,8 @@ export function applyRuntimeEnvironment(
   delete process.env['FEISHU_ENCRYPT_KEY'];
   delete process.env['FEISHU_BASE_URL'];
   delete process.env['FEISHU_PORT'];
+  delete process.env['TELEGRAM_BOT_TOKEN'];
+  delete process.env['TELEGRAM_ALLOWED_USER_IDS'];
 
   if (selectedIm.id === 'discord') {
     process.env['DISCORD_TOKEN'] = selectedIm.config.token;
@@ -49,12 +52,18 @@ export function applyRuntimeEnvironment(
     return;
   }
 
-  process.env['FEISHU_APP_ID'] = selectedIm.config.appId;
-  process.env['FEISHU_APP_SECRET'] = selectedIm.config.appSecret;
-  setOptionalEnv('FEISHU_VERIFICATION_TOKEN', selectedIm.config.verificationToken);
-  setOptionalEnv('FEISHU_ENCRYPT_KEY', selectedIm.config.encryptKey);
-  setOptionalEnv('FEISHU_BASE_URL', selectedIm.config.baseUrl);
-  setNumericEnv('FEISHU_PORT', selectedIm.config.port);
+  if (selectedIm.id === 'feishu') {
+    process.env['FEISHU_APP_ID'] = selectedIm.config.appId;
+    process.env['FEISHU_APP_SECRET'] = selectedIm.config.appSecret;
+    setOptionalEnv('FEISHU_VERIFICATION_TOKEN', selectedIm.config.verificationToken);
+    setOptionalEnv('FEISHU_ENCRYPT_KEY', selectedIm.config.encryptKey);
+    setOptionalEnv('FEISHU_BASE_URL', selectedIm.config.baseUrl);
+    setNumericEnv('FEISHU_PORT', selectedIm.config.port);
+    return;
+  }
+
+  process.env['TELEGRAM_BOT_TOKEN'] = selectedIm.config.botToken;
+  setOptionalEnv('TELEGRAM_ALLOWED_USER_IDS', selectedIm.config.allowedUserIds?.join(','));
 }
 
 export async function startSelectedIm(
@@ -72,7 +81,14 @@ export async function startSelectedIm(
     return;
   }
 
-  const loadFeishu = loaders.feishu ?? (() => import('@agent-im-relay/feishu'));
-  const feishu = await loadFeishu();
-  await feishu.startFeishuRuntime();
+  if (selectedIm.id === 'feishu') {
+    const loadFeishu = loaders.feishu ?? (() => import('@agent-im-relay/feishu'));
+    const feishu = await loadFeishu();
+    await feishu.startFeishuRuntime();
+    return;
+  }
+
+  const loadTelegram = loaders.telegram ?? (() => import('@agent-im-relay/telegram'));
+  const telegram = await loadTelegram();
+  await telegram.startTelegramRuntime();
 }
