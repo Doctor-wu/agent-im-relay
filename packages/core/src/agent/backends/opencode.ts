@@ -17,6 +17,24 @@ function asString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+function extractErrorMessage(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (value instanceof Error) {
+    return value.message;
+  }
+
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  return extractErrorMessage(value.message)
+    ?? extractErrorMessage(value.error)
+    ?? safeJson(value);
+}
+
 function safeJson(value: unknown): string {
   try {
     return JSON.stringify(value);
@@ -49,10 +67,6 @@ function isAuthoritativeOpencodeResumeFailure(error: string): boolean {
 
 export function createOpencodeArgs(options: AgentSessionOptions): string[] {
   const args = ['run', '--format', 'json'];
-
-  if (options.mode === 'ask') {
-    args.push('--agent', 'general');
-  }
 
   if (options.model) {
     args.push('--model', options.model);
@@ -110,7 +124,9 @@ export function extractOpencodeEvents(
   }
 
   if (type === 'error') {
-    const error = asString(payload.error) ?? asString(payload.message) ?? 'OpenCode CLI request failed';
+    const error = extractErrorMessage(payload.error)
+      ?? extractErrorMessage(payload.message)
+      ?? 'OpenCode CLI request failed';
     return options.resumeSessionId && isAuthoritativeOpencodeResumeFailure(error)
       ? [
           {

@@ -249,7 +249,7 @@ describe('streamAgentSession', () => {
     expect(args.at(-1)).toContain('```artifacts');
   });
 
-  it('rejects unavailable registered backends before starting a session', async () => {
+  it('emits an error when a registered backend is unavailable', async () => {
     const backend: AgentBackend = {
       name: 'offline-test-backend',
       isAvailable: () => false,
@@ -264,6 +264,8 @@ describe('streamAgentSession', () => {
       mode: 'ask',
       prompt: 'test prompt',
       backend: 'offline-test-backend',
-    }))).rejects.toThrow('Backend not available: offline-test-backend');
+    }))).resolves.toEqual([
+      { type: 'error', error: 'Backend not available: offline-test-backend' },
+    ]);
   });
 });

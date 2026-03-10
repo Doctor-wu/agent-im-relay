@@ -65,7 +65,8 @@ export async function* streamAgentSession(
 ): AsyncGenerator<AgentStreamEvent, void> {
   const backend = getBackend(options.backend ?? 'claude');
   if (!(await backend.isAvailable())) {
-    throw new Error(`Backend not available: ${backend.name}`);
+    yield { type: 'error', error: `Backend not available: ${backend.name}` };
+    return;
   }
   yield* backend.stream({
     ...options,

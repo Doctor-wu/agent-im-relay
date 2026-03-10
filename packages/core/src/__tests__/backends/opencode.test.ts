@@ -71,15 +71,13 @@ describe('opencode backend', () => {
       'run',
       '--format',
       'json',
-      '--agent',
-      'general',
       '--session',
       'ses_123',
       'continue',
     ]);
   });
 
-  it('uses a less-privileged agent in ask mode', () => {
+  it('does not add an invalid subagent override in ask mode', () => {
     const args = createOpencodeArgs({
       mode: 'ask',
       prompt: 'why?',
@@ -89,8 +87,6 @@ describe('opencode backend', () => {
       'run',
       '--format',
       'json',
-      '--agent',
-      'general',
       'why?',
     ]);
   });
@@ -145,7 +141,9 @@ describe('opencode backend', () => {
   it('emits a structured invalidation event for authoritative resume failures', () => {
     expect(extractOpencodeEvents({
       type: 'error',
-      error: 'Resume session not found',
+      error: {
+        message: 'Resume session not found',
+      },
     }, {
       resumeSessionId: 'ses_123',
     })).toEqual([

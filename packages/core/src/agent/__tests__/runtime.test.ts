@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { AgentBackend } from '../backend.js';
+import { registerBackend, type AgentBackend } from '../backend.js';
 import {
   interruptConversationRun,
   isConversationRunning,
@@ -123,6 +123,32 @@ describe('conversation runtime', () => {
 
     expect(receivedPrompt).toBe('Explain the attached document');
     expect(receivedPrompt).not.toContain('```artifacts');
+  });
+
+  it('surfaces unavailable registered backends as error events', async () => {
+    registerBackend({
+      name: 'offline-test-backend',
+      isAvailable: () => false,
+      async *stream() {
+        yield { type: 'done', result: 'should not run' } as const;
+      },
+    });
+
+    const events = runConversationSession('conv-offline', {
+      mode: 'ask',
+      prompt: 'hi',
+      backend: 'offline-test-backend',
+    });
+
+    const received = [];
+    for await (const event of events) {
+      received.push(event);
+    }
+
+    expect(received).toEqual([
+      { type: 'error', error: 'Backend not available: offline-test-backend' },
+    ]);
+    expect(isConversationRunning('conv-offline')).toBe(false);
   });
 });
 
