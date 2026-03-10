@@ -93,7 +93,7 @@ export async function getAvailableBackendCapabilities(): Promise<AgentBackendCap
 
 export function isBackendModelSupported(name: BackendName, model: string): boolean {
   const models = getBackendSupportedModels(name);
-  return models.length === 0 || models.some(candidate => candidate.id === model);
+  return models.length > 0 && models.some(candidate => candidate.id === model);
 }
 
 export function resetBackendRegistryForTests(): void {

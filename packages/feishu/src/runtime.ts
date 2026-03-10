@@ -490,6 +490,22 @@ export async function handleFeishuControlAction(options: {
     await options.persist?.();
   }
 
+  if (
+    (result.summaryKey === 'backend.updated' && (result.kind === 'backend' || result.kind === 'confirm-backend'))
+    || result.summaryKey === 'model.updated'
+  ) {
+    const capabilities = await resolveFeishuCapabilities(result.conversationId);
+    await options.transport.sendCard(
+      options.target,
+      buildFeishuSessionControlPanelPayload(
+        result.conversationId,
+        buildFeishuCardContext(result.conversationId, options.target),
+        capabilities.backends,
+        capabilities.models,
+      ),
+    );
+  }
+
   const text = (() => {
     switch (result.summaryKey) {
       case 'interrupt.ok':

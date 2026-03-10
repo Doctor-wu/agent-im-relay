@@ -336,6 +336,54 @@ describe('Feishu runtime', () => {
     ]);
   });
 
+  it('refreshes the control panel model buttons after a backend change', async () => {
+    conversationBackend.set('conv-refresh', 'claude');
+    coreMocks.applySessionControlCommand.mockReturnValueOnce({
+      kind: 'backend',
+      conversationId: 'conv-refresh',
+      stateChanged: true,
+      persist: true,
+      clearContinuation: false,
+      requiresConfirmation: false,
+      summaryKey: 'backend.updated',
+      backend: 'claude',
+    });
+
+    const transport = {
+      sendText: vi.fn(async () => undefined),
+      sendCard: vi.fn(async () => undefined),
+      updateCard: vi.fn(async () => undefined),
+      uploadFile: vi.fn(async () => undefined),
+    };
+
+    await handleFeishuControlAction({
+      action: {
+        conversationId: 'conv-refresh',
+        type: 'backend',
+        value: 'claude',
+      },
+      target: {
+        chatId: 'chat-1',
+      },
+      transport,
+    });
+
+    const cardPayload = transport.sendCard.mock.calls[0]?.[1] as Record<string, any>;
+    const buttonTexts = cardPayload.body.elements
+      .filter((element: Record<string, unknown>) => element.tag === 'button')
+      .map((button: Record<string, any>) => button.text.content);
+
+    expect(buttonTexts).toEqual([
+      'Done',
+      'Claude',
+      'OpenCode',
+      'Sonnet',
+      'Low',
+      'Medium',
+      'High',
+    ]);
+  });
+
   it('does not send persistent control ui for known session chats', async () => {
     rememberFeishuSessionChat(buildFeishuSessionChatRecord({
       sourceP2pChatId: 'p2p-chat-1',
@@ -503,7 +551,7 @@ describe('Feishu runtime', () => {
     expect(persistState).not.toHaveBeenCalled();
   });
 
-  it('does not refresh persistent summaries after control changes', async () => {
+  it('does not refresh persistent summaries after non-backend control changes', async () => {
     rememberFeishuSessionChat(buildFeishuSessionChatRecord({
       sourceP2pChatId: 'p2p-chat-1',
       sourceMessageId: 'message-1',
@@ -513,16 +561,14 @@ describe('Feishu runtime', () => {
       prompt: 'follow up',
     }));
     coreMocks.applySessionControlCommand.mockReturnValue({
-      kind: 'backend',
+      kind: 'done',
       conversationId: 'session-chat-3',
       stateChanged: true,
       persist: true,
-      clearContinuation: false,
+      clearContinuation: true,
       requiresConfirmation: false,
-      summaryKey: 'backend.updated',
-      backend: 'codex',
+      summaryKey: 'done.ok',
     });
-    conversationBackend.set('session-chat-3', 'codex');
     const transport = {
       sendText: vi.fn(async () => undefined),
       sendCard: vi.fn(async () => undefined),
@@ -534,8 +580,7 @@ describe('Feishu runtime', () => {
     await handleFeishuControlAction({
       action: {
         conversationId: 'session-chat-3',
-        type: 'backend',
-        value: 'codex',
+        type: 'done',
       },
       target: {
         chatId: 'session-chat-3',

@@ -174,6 +174,88 @@ describe('promptThreadSetup', () => {
     vi.useRealTimers();
   });
 
+  it('caps Discord model choices at 25 options', async () => {
+    coreMocks.getAvailableBackendCapabilities.mockResolvedValueOnce([
+      {
+        name: 'claude',
+        models: Array.from({ length: 30 }, (_, index) => ({
+          id: `model-${index + 1}`,
+          label: `Model ${index + 1}`,
+        })),
+      },
+    ]);
+
+    let onBackendCollect: ((interaction: any) => Promise<void>) | undefined;
+    const edit = vi.fn().mockResolvedValue(undefined);
+    const createMessageComponentCollector = vi.fn(() => ({
+      on: vi.fn((event: string, handler: (interaction: any) => Promise<void>) => {
+        if (event === 'collect') {
+          onBackendCollect = handler;
+        }
+      }),
+      stop: vi.fn(),
+    }));
+
+    const thread = {
+      send: vi.fn(async () => ({
+        edit,
+        createMessageComponentCollector,
+      })),
+    } as any;
+
+    const resultPromise = promptThreadSetup(thread, 'Limit the menu');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await onBackendCollect?.({
+      customId: BACKEND_SELECT_ID,
+      values: ['claude'],
+      deferUpdate: vi.fn().mockResolvedValue(undefined),
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const modelPayload = edit.mock.calls[0]?.[0];
+    expect(modelPayload.components[0].toJSON().components[0].options).toHaveLength(25);
+
+    void resultPromise;
+  });
+
+  it('does not force a fallback model on timeout when the backend exposes models', async () => {
+    vi.useFakeTimers();
+    coreMocks.getAvailableBackendCapabilities.mockResolvedValueOnce([
+      {
+        name: 'claude',
+        models: [
+          { id: 'sonnet', label: 'Sonnet' },
+        ],
+      },
+    ]);
+
+    const edit = vi.fn().mockResolvedValue(undefined);
+    const createMessageComponentCollector = vi.fn(() => ({
+      on: vi.fn(),
+      stop: vi.fn(),
+    }));
+
+    const thread = {
+      send: vi.fn(async () => ({
+        edit,
+        createMessageComponentCollector,
+      })),
+    } as any;
+
+    const resultPromise = promptThreadSetup(thread, 'Timeout please');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    await expect(resultPromise).resolves.toEqual({ backend: 'claude', model: null, cwd: null });
+
+    vi.useRealTimers();
+  });
+
   it('persists the selected model together with the backend', async () => {
     await applySetupResult('thread-1', {
       backend: 'claude',

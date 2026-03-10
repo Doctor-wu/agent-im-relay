@@ -73,7 +73,7 @@ function buildModelMenu(models: BackendModel[]): ActionRowBuilder<StringSelectMe
     new StringSelectMenuBuilder()
       .setCustomId(MODEL_SELECT_ID)
       .setPlaceholder('选择 Model')
-      .addOptions(models.map(model => new StringSelectMenuOptionBuilder()
+      .addOptions(models.slice(0, 25).map(model => new StringSelectMenuOptionBuilder()
         .setLabel(model.label)
         .setValue(model.id))),
   );
@@ -100,7 +100,7 @@ export async function promptThreadSetup(
     let settled = false;
     let fallbackResult: SetupResult = {
       backend: fallbackBackend.name,
-      model: fallbackBackend.models[0]?.id ?? null,
+      model: null,
       cwd: null,
     };
     const finish = (result: SetupResult) => {
@@ -133,7 +133,7 @@ export async function promptThreadSetup(
       const models = capability?.models ?? [];
       fallbackResult = {
         backend: selectedBackend,
-        model: models[0]?.id ?? null,
+        model: null,
         cwd: null,
       };
 

@@ -73,6 +73,7 @@ describe('session control controller', () => {
     resetBackendRegistryForTests();
     registerTestBackend('claude', ['sonnet', 'opus']);
     registerTestBackend('codex', ['gpt-5.4']);
+    registerTestBackend('opencode', []);
   });
 
   it('returns a noop interrupt result for idle conversations', () => {
@@ -245,6 +246,45 @@ describe('session control controller', () => {
     expect(conversationModels.has('conv-confirm')).toBe(false);
     expect(conversationSessions.has('conv-confirm')).toBe(false);
     expect(pendingBackendChanges.has('conv-confirm')).toBe(false);
+  });
+
+  it('clears the previous model when switching to a backend with no supported-model list', () => {
+    conversationBackend.set('conv-empty-models', 'claude');
+    conversationModels.set('conv-empty-models', 'sonnet');
+
+    expect(applySessionControlCommand({
+      conversationId: 'conv-empty-models',
+      type: 'backend',
+      value: 'opencode',
+    })).toEqual({
+      kind: 'backend',
+      conversationId: 'conv-empty-models',
+      stateChanged: true,
+      persist: false,
+      clearContinuation: false,
+      requiresConfirmation: true,
+      summaryKey: 'backend.confirm',
+      currentBackend: 'claude',
+      requestedBackend: 'opencode',
+    });
+
+    pendingBackendChanges.set('conv-empty-models', 'opencode');
+
+    expect(applySessionControlCommand({
+      conversationId: 'conv-empty-models',
+      type: 'confirm-backend',
+      value: 'opencode',
+    })).toEqual({
+      kind: 'confirm-backend',
+      conversationId: 'conv-empty-models',
+      backend: 'opencode',
+      stateChanged: true,
+      persist: true,
+      clearContinuation: false,
+      requiresConfirmation: false,
+      summaryKey: 'backend.updated',
+    });
+    expect(conversationModels.has('conv-empty-models')).toBe(false);
   });
 
   it('cancels a pending backend switch without persisting', () => {
