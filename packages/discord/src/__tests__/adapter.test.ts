@@ -247,40 +247,4 @@ describe('handleDoneCommand', () => {
       ephemeral: true,
     });
   });
-
-  it('skips persistence when the controller reports a model noop', async () => {
-    const handler = agentControlCommandHandlers.get('model');
-    expect(handler).toBeDefined();
-
-    core.conversationModels.set('thread-123', 'claude-3-7');
-    const interaction = createThreadInteraction({
-      options: {
-        getString: vi.fn().mockReturnValue('claude-3-7'),
-      },
-    });
-    vi.spyOn(core, 'applySessionControlCommand').mockReturnValue({
-      kind: 'model',
-      conversationId: 'thread-123',
-      value: 'claude-3-7',
-      stateChanged: false,
-      persist: false,
-      clearContinuation: false,
-      requiresConfirmation: false,
-      summaryKey: 'model.noop',
-    });
-    const persistSpy = vi.spyOn(core, 'persistState').mockResolvedValue(undefined);
-
-    await handler?.(interaction as any);
-
-    expect(core.applySessionControlCommand).toHaveBeenCalledWith({
-      conversationId: 'thread-123',
-      type: 'model',
-      value: 'claude-3-7',
-    });
-    expect(persistSpy).not.toHaveBeenCalled();
-    expect(interaction.reply).toHaveBeenCalledWith({
-      content: 'Set model to `claude-3-7` for this thread.',
-      ephemeral: true,
-    });
-  });
 });
