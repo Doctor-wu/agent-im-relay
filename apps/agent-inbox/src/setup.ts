@@ -13,8 +13,12 @@ const ALL_PLATFORM_IDS = ['discord', 'feishu'] as const;
 type PlatformId = (typeof ALL_PLATFORM_IDS)[number];
 
 const PLATFORM_LABELS: Record<PlatformId, string> = {
-  discord: 'Discord',
+  discord: 'Discord (Recommended)',
   feishu: 'Feishu (飞书)',
+};
+
+const PLATFORM_HINTS: Partial<Record<PlatformId, string>> = {
+  discord: 'Best interactive workflow',
 };
 
 function getUnconfiguredPlatforms(availableIms: AvailableIm[]): PlatformId[] {
@@ -135,6 +139,7 @@ export async function runSetup(
       options: unconfiguredPlatforms.map(id => ({
         value: id,
         label: PLATFORM_LABELS[id],
+        hint: PLATFORM_HINTS[id],
       })),
     });
 
