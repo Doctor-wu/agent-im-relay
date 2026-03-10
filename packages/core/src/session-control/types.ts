@@ -6,6 +6,7 @@ export type SessionControlCommand =
   | { conversationId: string; type: 'backend'; value: BackendName }
   | { conversationId: string; type: 'confirm-backend'; value: BackendName }
   | { conversationId: string; type: 'cancel-backend' }
+  | { conversationId: string; type: 'model'; value: string }
   | { conversationId: string; type: 'effort'; value: string };
 
 type SessionControlResultBase = {
@@ -23,6 +24,8 @@ type SessionControlResultBase = {
     | 'backend.updated'
     | 'backend.cancelled'
     | 'backend.cancelled-noop'
+    | 'model.updated'
+    | 'model.noop'
     | 'effort.updated'
     | 'effort.noop';
 };
@@ -47,6 +50,10 @@ export type SessionControlResult =
   })
   | (SessionControlResultBase & {
     kind: 'cancel-backend';
+  })
+  | (SessionControlResultBase & {
+    kind: 'model';
+    value: string;
   })
   | (SessionControlResultBase & {
     kind: 'effort';

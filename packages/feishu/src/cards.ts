@@ -1,4 +1,4 @@
-import type { BackendName } from '@agent-im-relay/core';
+import type { BackendModel, BackendName } from '@agent-im-relay/core';
 import type { AgentMode } from '@agent-im-relay/core';
 
 export interface BackendSelectionCard {
@@ -15,6 +15,13 @@ export interface BackendConfirmationCard {
   requestedBackend: BackendName;
 }
 
+export interface ModelSelectionCard {
+  type: 'model-selection';
+  conversationId: string;
+  backend: BackendName;
+  models: BackendModel[];
+}
+
 export interface SessionAnchorAction {
   type: 'control-panel' | 'interrupt';
 }
@@ -24,12 +31,13 @@ export interface SessionAnchorCard {
   conversationId: string;
   actions: SessionAnchorAction[];
   backend?: string;
+  model?: string;
   effort?: string;
   status?: 'idle' | 'running';
 }
 
 export interface SessionControlAction {
-  type: 'done' | 'backend' | 'effort';
+  type: 'done' | 'backend' | 'model' | 'effort';
 }
 
 export interface SessionControlCard {
@@ -37,6 +45,7 @@ export interface SessionControlCard {
   conversationId: string;
   actions: SessionControlAction[];
   backends: BackendName[];
+  models: BackendModel[];
 }
 
 export interface FeishuCardContext {
@@ -53,6 +62,7 @@ export function buildSessionAnchorCard(
   conversationId: string,
   summary: {
     backend?: string;
+    model?: string;
     effort?: string;
     status?: 'idle' | 'running';
   } = {},
@@ -65,6 +75,7 @@ export function buildSessionAnchorCard(
       { type: 'interrupt' },
     ],
     backend: summary.backend,
+    model: summary.model,
     effort: summary.effort,
     status: summary.status,
   };
@@ -96,9 +107,23 @@ export function createBackendConfirmationCard(
   };
 }
 
+export function buildModelSelectionCard(
+  conversationId: string,
+  backend: BackendName,
+  models: BackendModel[],
+): ModelSelectionCard {
+  return {
+    type: 'model-selection',
+    conversationId,
+    backend,
+    models,
+  };
+}
+
 export function buildSessionControlCard(
   conversationId: string,
   backends: BackendName[] = ['claude', 'codex'],
+  models: BackendModel[] = [],
 ): SessionControlCard {
   return {
     type: 'session-controls',
@@ -106,9 +131,11 @@ export function buildSessionControlCard(
     actions: [
       { type: 'done' },
       { type: 'backend' },
+      { type: 'model' },
       { type: 'effort' },
     ],
     backends,
+    models,
   };
 }
 
@@ -206,6 +233,27 @@ export function buildFeishuBackendConfirmationCardPayload(
   };
 }
 
+export function buildFeishuModelSelectionCardPayload(
+  card: ModelSelectionCard,
+  context: FeishuCardContext,
+): Record<string, unknown> {
+  return {
+    schema: '2.0',
+    header: {
+      title: plainText('Choose Model'),
+    },
+    body: {
+      elements: [
+        {
+          tag: 'markdown',
+          content: `Select a model for backend \`${card.backend}\`.`,
+        },
+        ...card.models.map(model => button(model.label, context, 'model', { value: model.id })),
+      ],
+    },
+  };
+}
+
 export function buildFeishuSessionControlCardPayload(
   card: SessionControlCard,
   context: FeishuCardContext,
@@ -223,6 +271,7 @@ export function buildFeishuSessionControlCardPayload(
         },
         button('Done', context, 'done'),
         ...card.backends.map(backend => button(backendLabel(backend), context, 'backend', { value: backend })),
+        ...card.models.map(model => button(model.label, context, 'model', { value: model.id })),
         button('Low', context, 'effort', { value: 'low' }),
         button('Medium', context, 'effort', { value: 'medium' }),
         button('High', context, 'effort', { value: 'high' }),
@@ -235,9 +284,10 @@ export function buildFeishuSessionControlPanelPayload(
   conversationId: string,
   context: FeishuCardContext,
   backends: BackendName[] = ['claude', 'codex'],
+  models: BackendModel[] = [],
 ): Record<string, unknown> {
   return buildFeishuSessionControlCardPayload(
-    buildSessionControlCard(conversationId, backends),
+    buildSessionControlCard(conversationId, backends, models),
     context,
   );
 }
@@ -269,6 +319,7 @@ export function buildFeishuSessionAnchorCardPayload(
   const summary = [
     `Status: ${card.status ?? 'idle'}`,
     card.backend ? `Backend: ${card.backend}` : undefined,
+    card.model ? `Model: ${card.model}` : undefined,
     card.effort ? `Effort: ${card.effort}` : undefined,
   ].filter(Boolean).join('\n');
 

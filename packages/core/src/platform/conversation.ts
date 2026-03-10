@@ -58,6 +58,10 @@ export type ConversationControlResult =
     conversationId: string;
   }
   | {
+    kind: 'model';
+    conversationId: string;
+  }
+  | {
     kind: 'effort';
     conversationId: string;
   };
@@ -157,6 +161,13 @@ export function applyConversationControlAction(action: ConversationControlAction
   if (result.kind === 'cancel-backend') {
     return {
       kind: 'cancel-backend',
+      conversationId: result.conversationId,
+    };
+  }
+
+  if (result.kind === 'model') {
+    return {
+      kind: 'model',
       conversationId: result.conversationId,
     };
   }

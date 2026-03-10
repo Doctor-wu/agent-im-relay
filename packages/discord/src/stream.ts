@@ -382,6 +382,7 @@ export function convertMarkdownForDiscord(text: string): MarkdownConversionResul
 }
 
 export function formatEnvironmentSummary(environment: AgentEnvironment): string {
+  const model = environment.model.resolved ?? environment.model.requested ?? 'backend default';
   const cwd = environment.cwd.value ?? 'unknown';
   const cwdSuffix = environment.cwd.source === 'auto-detected'
     ? ' (auto-detected)'
@@ -395,7 +396,7 @@ export function formatEnvironmentSummary(environment: AgentEnvironment): string 
   return [
     '## Environment',
     `- Backend: ${capitalize(environment.backend)}`,
-    `- Model: default`,
+    `- Model: ${model}`,
     `- Working directory: ${cwd}${cwdSuffix}`,
     `- Git branch: ${gitBranch}`,
     `- Mode: ${environment.mode}`,

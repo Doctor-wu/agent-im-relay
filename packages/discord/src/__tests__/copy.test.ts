@@ -6,6 +6,7 @@ import { doneCommand } from '../commands/done.js';
 import {
   compactCommand,
   effortCommand,
+  modelCommand,
   sessionsCommand,
 } from '../commands/agent-control.js';
 import { skillCommand } from '../commands/skill.js';
@@ -17,6 +18,8 @@ describe('discord copy', () => {
     expect(codeCommand.toJSON().options?.[0]?.description).toBe('What should Agent build or fix?');
     expect(doneCommand.toJSON().description).toBe('End the current agent session in this thread');
     expect(skillCommand.toJSON().description).toBe('Run agent with an installed skill in this thread');
+    expect(modelCommand.toJSON().description).toBe('Set agent model for this thread');
+    expect(modelCommand.toJSON().options?.[0]?.description).toBe('Agent model name');
     expect(effortCommand.toJSON().description).toBe('Set agent effort for this thread');
     expect(sessionsCommand.toJSON().description).toBe('List active agent sessions');
     expect(compactCommand.toJSON().description).toBe('Ask agent to summarize this thread context briefly');

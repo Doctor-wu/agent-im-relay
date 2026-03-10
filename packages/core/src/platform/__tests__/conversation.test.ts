@@ -4,6 +4,7 @@ import {
   type ManagedBridgeTarget,
   conversationBackend,
   conversationEffort,
+  conversationModels,
   conversationSessions,
   openThreadSessionBinding,
   pendingBackendChanges,
@@ -21,6 +22,7 @@ describe('platform conversation setup and controls', () => {
   beforeEach(() => {
     conversationBackend.clear();
     conversationEffort.clear();
+    conversationModels.clear();
     conversationSessions.clear();
     pendingBackendChanges.clear();
     threadSessionBindings.clear();
@@ -61,7 +63,7 @@ describe('platform conversation setup and controls', () => {
     });
   });
 
-  it('applies interrupt, done, backend confirmation, confirm, cancel, and effort actions', () => {
+  it('applies interrupt, done, backend confirmation, confirm, cancel, model, and effort actions', () => {
     conversationBackend.set('conv-actions', 'claude');
     conversationSessions.set('conv-actions', 'session-1');
     openThreadSessionBinding({
@@ -127,6 +129,16 @@ describe('platform conversation setup and controls', () => {
     expect(conversationSessions.has('conv-actions')).toBe(false);
     expect(threadSessionBindings.has('conv-actions')).toBe(false);
     expect(threadContinuationSnapshots.has('conv-actions')).toBe(false);
+
+    expect(applyConversationControlAction({
+      conversationId: 'conv-actions',
+      type: 'model',
+      value: 'claude-3-7',
+    })).toEqual({
+      kind: 'model',
+      conversationId: 'conv-actions',
+    });
+    expect(conversationModels.get('conv-actions')).toBe('claude-3-7');
 
     expect(applyConversationControlAction({
       conversationId: 'conv-actions',

@@ -11,6 +11,7 @@ import {
 import {
   conversationBackend,
   conversationEffort,
+  conversationModels,
   conversationSessions,
   pendingBackendChanges,
   threadContinuationSnapshots,
@@ -64,6 +65,7 @@ describe('session control controller', () => {
     resetConversationRuntimeForTests();
     conversationBackend.clear();
     conversationEffort.clear();
+    conversationModels.clear();
     conversationSessions.clear();
     pendingBackendChanges.clear();
     threadSessionBindings.clear();
@@ -224,6 +226,7 @@ describe('session control controller', () => {
     conversationBackend.set('conv-confirm', 'claude');
     conversationSessions.set('conv-confirm', 'session-2');
     pendingBackendChanges.set('conv-confirm', 'codex');
+    conversationModels.set('conv-confirm', 'sonnet');
 
     expect(applySessionControlCommand({
       conversationId: 'conv-confirm',
@@ -240,8 +243,48 @@ describe('session control controller', () => {
       backend: 'codex',
     });
     expect(conversationBackend.get('conv-confirm')).toBe('codex');
+    expect(conversationModels.has('conv-confirm')).toBe(false);
     expect(conversationSessions.has('conv-confirm')).toBe(false);
     expect(pendingBackendChanges.has('conv-confirm')).toBe(false);
+  });
+
+  it('clears the previous model when switching to a backend with no supported-model list', () => {
+    conversationBackend.set('conv-empty-models', 'claude');
+    conversationModels.set('conv-empty-models', 'sonnet');
+
+    expect(applySessionControlCommand({
+      conversationId: 'conv-empty-models',
+      type: 'backend',
+      value: 'opencode',
+    })).toEqual({
+      kind: 'backend',
+      conversationId: 'conv-empty-models',
+      stateChanged: true,
+      persist: false,
+      clearContinuation: false,
+      requiresConfirmation: true,
+      summaryKey: 'backend.confirm',
+      currentBackend: 'claude',
+      requestedBackend: 'opencode',
+    });
+
+    pendingBackendChanges.set('conv-empty-models', 'opencode');
+
+    expect(applySessionControlCommand({
+      conversationId: 'conv-empty-models',
+      type: 'confirm-backend',
+      value: 'opencode',
+    })).toEqual({
+      kind: 'confirm-backend',
+      conversationId: 'conv-empty-models',
+      backend: 'opencode',
+      stateChanged: true,
+      persist: true,
+      clearContinuation: false,
+      requiresConfirmation: false,
+      summaryKey: 'backend.updated',
+    });
+    expect(conversationModels.has('conv-empty-models')).toBe(false);
   });
 
   it('cancels a pending backend switch without persisting', () => {
@@ -262,7 +305,23 @@ describe('session control controller', () => {
     expect(pendingBackendChanges.has('conv-cancel')).toBe(false);
   });
 
-  it('updates effort with persistence effects', () => {
+  it('updates model and effort with persistence effects', () => {
+    expect(applySessionControlCommand({
+      conversationId: 'conv-settings',
+      type: 'model',
+      value: 'claude-3-7',
+    })).toEqual({
+      kind: 'model',
+      conversationId: 'conv-settings',
+      stateChanged: true,
+      persist: true,
+      clearContinuation: false,
+      requiresConfirmation: false,
+      summaryKey: 'model.updated',
+      value: 'claude-3-7',
+    });
+    expect(conversationModels.get('conv-settings')).toBe('claude-3-7');
+
     expect(applySessionControlCommand({
       conversationId: 'conv-settings',
       type: 'effort',

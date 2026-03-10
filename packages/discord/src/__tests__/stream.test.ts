@@ -241,7 +241,7 @@ describe('formatEnvironmentSummary', () => {
     })).toBe([
       '## Environment',
       '- Backend: Codex',
-      '- Model: default',
+      '- Model: gpt-5-codex',
       '- Working directory: /tmp/project (auto-detected)',
       '- Git branch: feature/demo',
       '- Mode: code',

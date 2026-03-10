@@ -9,6 +9,7 @@ import {
   runPlatformConversation,
   conversationBackend,
   conversationSessions,
+  conversationModels,
   conversationEffort,
   conversationCwd,
   activeConversations,
@@ -19,6 +20,12 @@ import { streamAgentToDiscord, type StreamTargetChannel } from '../stream.js';
 type CommandHandler = (interaction: ChatInputCommandInteraction) => Promise<void>;
 
 const compactPrompt = 'Summarize our conversation and current task state briefly.';
+
+export const modelCommand = new SlashCommandBuilder()
+  .setName('model')
+  .setDescription('Set agent model for this thread')
+  .setDMPermission(false)
+  .addStringOption((option) => option.setName('model').setDescription('Agent model name').setRequired(true));
 
 export const effortCommand = new SlashCommandBuilder()
   .setName('effort')
@@ -70,6 +77,7 @@ export const compactCommand = new SlashCommandBuilder()
   .setDMPermission(false);
 
 export const agentControlCommands = [
+  modelCommand,
   effortCommand,
   sessionsCommand,
   cwdCommand,
@@ -77,6 +85,7 @@ export const agentControlCommands = [
 ];
 
 export const agentControlCommandHandlers = new Map<string, CommandHandler>([
+  ['model', handleModelCommand],
   ['effort', handleEffortCommand],
   ['sessions', handleSessionsCommand],
   ['cwd', handleCwdCommand],
@@ -101,9 +110,11 @@ async function requireThread(
 }
 
 function conversationSessionSummary(conversationId: string, sessionId: string): string {
+  const model = conversationModels.get(conversationId);
   const effort = conversationEffort.get(conversationId);
   const cwd = conversationCwd.get(conversationId);
   const extras = [
+    model ? `model=${model}` : '',
     effort ? `effort=${effort}` : '',
     cwd ? `cwd=${cwd}` : '',
   ].filter(Boolean);
@@ -111,6 +122,27 @@ function conversationSessionSummary(conversationId: string, sessionId: string): 
   return extras.length > 0
     ? `- <#${conversationId}>: \`${sessionId}\` (${extras.join(', ')})`
     : `- <#${conversationId}>: \`${sessionId}\``;
+}
+
+async function handleModelCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+  const channel = await requireThread(interaction);
+  if (!channel) return;
+
+  const model = interaction.options.getString('model', true).trim();
+  if (!model) {
+    await interaction.reply({ content: 'Please provide a model name.', ephemeral: true });
+    return;
+  }
+
+  const result = core.applySessionControlCommand({
+    conversationId: channel.id,
+    type: 'model',
+    value: model,
+  });
+  if (result.persist) {
+    void core.persistState('discord');
+  }
+  await interaction.reply({ content: `Set model to \`${model}\` for this thread.`, ephemeral: true });
 }
 
 async function handleEffortCommand(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -147,13 +179,14 @@ async function handleSessionsCommand(interaction: ChatInputCommandInteraction): 
 
 function formatConfiguredEnvironment(threadId: string): string {
   const backend = conversationBackend.get(threadId) ?? 'claude';
+  const model = conversationModels.get(threadId) ?? 'backend default';
   const cwd = conversationCwd.get(threadId);
   const cwdText = cwd ? `${cwd} (manual override)` : 'auto-detected by backend';
 
   return [
     '## Environment',
     `- Backend: ${backend}`,
-    `- Model: default`,
+    `- Model: ${model}`,
     `- Working directory: ${cwdText}`,
   ].join('\n');
 }

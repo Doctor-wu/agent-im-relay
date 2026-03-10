@@ -81,7 +81,7 @@ describe('runConversationWithRenderer', () => {
     });
   });
 
-  it('does not pass model to the session (model selection disabled)', async () => {
+  it('clears stale configured models before starting a run', async () => {
     conversationBackend.set('conv-stale-model', 'opencode');
     conversationModels.set('conv-stale-model', 'sonnet');
 
@@ -99,15 +99,12 @@ describe('runConversationWithRenderer', () => {
 
     expect(runConversationSession).toHaveBeenCalledWith('conv-stale-model', expect.objectContaining({
       backend: 'opencode',
+      model: undefined,
     }));
-    expect(runConversationSession).toHaveBeenCalledWith('conv-stale-model', expect.not.objectContaining({
-      model: expect.anything(),
-    }));
-    // conversationModels state is kept but not consumed by the runner
-    expect(conversationModels.get('conv-stale-model')).toBe('sonnet');
+    expect(conversationModels.has('conv-stale-model')).toBe(false);
   });
 
-  it('does not pass model to the session even when backend has no model list', async () => {
+  it('preserves a configured model when the backend does not expose a model list', async () => {
     conversationBackend.set('conv-opaque-model', 'opaque');
     conversationModels.set('conv-opaque-model', 'manual-model');
 
@@ -125,11 +122,8 @@ describe('runConversationWithRenderer', () => {
 
     expect(runConversationSession).toHaveBeenCalledWith('conv-opaque-model', expect.objectContaining({
       backend: 'opaque',
+      model: 'manual-model',
     }));
-    expect(runConversationSession).toHaveBeenCalledWith('conv-opaque-model', expect.not.objectContaining({
-      model: expect.anything(),
-    }));
-    // conversationModels state is preserved (kept but unused by the runner)
     expect(conversationModels.get('conv-opaque-model')).toBe('manual-model');
   });
 
