@@ -59,6 +59,22 @@ describe('setup flow', () => {
 
     const loaded = await runSetup(paths, ['discord', 'feishu']);
 
+    expect((prompts as any).select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Which platform to configure?',
+        options: expect.arrayContaining([
+          expect.objectContaining({
+            value: 'discord',
+            label: 'Discord (Recommended)',
+            hint: 'Best interactive workflow',
+          }),
+          expect.objectContaining({
+            value: 'feishu',
+            label: 'Feishu (飞书)',
+          }),
+        ]),
+      }),
+    );
     expect(loaded.availableIms).toHaveLength(1);
     expect(loaded.availableIms[0]?.id).toBe('discord');
 

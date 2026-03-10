@@ -58,12 +58,23 @@ After startup, send a message to your configured bot to begin interacting with t
 
 | Platform | Status | Notes |
 |------|------|------|
-| **Discord** | ✅ Supported | Slash commands + thread sessions, file upload/download support, streaming output |
+| **Discord** ⭐ Recommended | ✅ Supported | Slash commands + thread sessions, file upload/download support, streaming output |
 | **Feishu (Lark)** | ✅ Supported | Long-connection mode, DM-triggered session groups, interrupt cards on every message |
 
 ### Discord Setup
 
 Create a bot in the [Discord Developer Portal](https://discord.com/developers/applications) and obtain its `Token` and `Client ID`.
+
+Discord is the recommended platform for the best interactive workflow. It supports:
+
+- `/code <prompt>` — Start a coding task and automatically create a dedicated thread for the session
+- `/ask <question>` — Ask a quick question without file tools
+- `/skill <name> <prompt>` — Invoke a predefined skill directly
+- `/model <name>` — Switch the active agent model
+- `/effort <level>` — Set the agent effort level
+- `/interrupt` — Interrupt the current task
+- `/done` — End the current session
+- `@mention` — Mention the bot in a channel to trigger a conversation there as well
 
 ### Feishu Setup
 
