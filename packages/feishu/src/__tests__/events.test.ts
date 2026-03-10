@@ -5,18 +5,6 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 import { conversationBackend, processedEventIds, processedMessages } from '@agent-im-relay/core';
 
 const coreMocks = vi.hoisted(() => ({
-  getAvailableBackendCapabilities: vi.fn(async () => [
-    {
-      name: 'claude',
-      models: [
-        { id: 'sonnet', label: 'Sonnet' },
-      ],
-    },
-    {
-      name: 'opencode',
-      models: [],
-    },
-  ]),
   getAvailableBackendNames: vi.fn(async () => ['claude', 'opencode']),
   initState: vi.fn(async () => undefined),
   persistState: vi.fn(async () => undefined),
@@ -33,7 +21,6 @@ vi.mock('@agent-im-relay/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@agent-im-relay/core')>();
   return {
     ...actual,
-    getAvailableBackendCapabilities: coreMocks.getAvailableBackendCapabilities,
     getAvailableBackendNames: coreMocks.getAvailableBackendNames,
     initState: coreMocks.initState,
     persistState: coreMocks.persistState,
@@ -101,18 +88,6 @@ function extractPostParagraphTexts(content: string): string[] {
 
 afterEach(async () => {
   coreMocks.initState.mockClear();
-  coreMocks.getAvailableBackendCapabilities.mockResolvedValue([
-    {
-      name: 'claude',
-      models: [
-        { id: 'sonnet', label: 'Sonnet' },
-      ],
-    },
-    {
-      name: 'opencode',
-      models: [],
-    },
-  ]);
   coreMocks.getAvailableBackendNames.mockResolvedValue(['claude', 'opencode']);
   coreMocks.persistState.mockClear();
   runtimeMocks.handleFeishuControlAction.mockReset();
@@ -1182,7 +1157,6 @@ describe('Feishu long-connection events', () => {
       'Done',
       'Claude',
       'OpenCode',
-      'Sonnet',
       'Low',
       'Medium',
       'High',
@@ -1234,7 +1208,6 @@ describe('Feishu long-connection events', () => {
       'Done',
       'Claude',
       'OpenCode',
-      'Sonnet',
       'Low',
       'Medium',
       'High',

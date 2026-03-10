@@ -1,14 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   FEISHU_NON_SESSION_CONTROL_TEXT,
-  buildFeishuModelSelectionCardPayload,
   buildFeishuSessionAnchorCardPayload,
   buildFeishuBackendConfirmationCardPayload,
   buildFeishuBackendSelectionCardPayload,
   buildFeishuInterruptCardPayload,
   buildFeishuSessionControlPanelPayload,
   buildFeishuSessionControlCardPayload,
-  buildModelSelectionCard,
   buildSessionAnchorCard,
   buildSessionControlCard,
   createBackendConfirmationCard,
@@ -87,10 +85,7 @@ describe('Feishu cards', () => {
 
   it('keeps the expanded control panel actions separate from the anchor card', () => {
     const panel = buildFeishuSessionControlCardPayload(
-      buildSessionControlCard('session-chat-1', ['claude', 'codex'], [
-        { id: 'sonnet', label: 'Sonnet' },
-        { id: 'opus', label: 'Opus' },
-      ]),
+      buildSessionControlCard('session-chat-1', ['claude', 'codex']),
       context,
     );
 
@@ -98,8 +93,6 @@ describe('Feishu cards', () => {
       'Done',
       'Claude',
       'Codex',
-      'Sonnet',
-      'Opus',
       'Low',
       'Medium',
       'High',
@@ -131,18 +124,6 @@ describe('Feishu cards', () => {
       tag: 'markdown',
       content: 'Stop the current run before sending a correction or a new direction.',
     });
-  });
-
-  it('renders a model selection card from backend-owned model capabilities', () => {
-    const payload = buildFeishuModelSelectionCardPayload(
-      buildModelSelectionCard('session-chat-1', 'claude', [
-        { id: 'sonnet', label: 'Sonnet' },
-        { id: 'opus', label: 'Opus' },
-      ]),
-      context,
-    );
-
-    expect(collectButtonTexts(payload)).toEqual(['Sonnet', 'Opus']);
   });
 
   it('exposes explanatory copy for non-session control requests', () => {

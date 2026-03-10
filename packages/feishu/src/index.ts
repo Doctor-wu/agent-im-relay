@@ -40,7 +40,6 @@ export {
   normalizeFeishuSessionPromptPreview,
 } from './naming.js';
 export {
-  buildModelSelectionCard,
   buildSessionAnchorCard,
   buildSessionControlCard,
   createBackendConfirmationCard,
@@ -50,13 +49,11 @@ export type {
   BackendConfirmationCard,
   BackendSelectionCard,
   FeishuCardContext,
-  ModelSelectionCard,
   SessionAnchorCard,
 } from './cards.js';
 export {
   buildFeishuBackendConfirmationCardPayload,
   buildFeishuBackendSelectionCardPayload,
-  buildFeishuModelSelectionCardPayload,
   buildFeishuSessionAnchorCardPayload,
   buildFeishuSessionControlCardPayload,
 } from './cards.js';

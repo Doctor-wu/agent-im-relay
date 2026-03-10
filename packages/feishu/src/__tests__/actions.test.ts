@@ -4,7 +4,6 @@ import {
   buildAgentPrompt,
   conversationBackend,
   conversationEffort,
-  conversationModels,
   conversationSessions,
   openThreadSessionBinding,
   pendingBackendChanges,
@@ -30,7 +29,6 @@ describe('Feishu actions', () => {
   beforeEach(() => {
     conversationBackend.clear();
     conversationEffort.clear();
-    conversationModels.clear();
     conversationSessions.clear();
     pendingBackendChanges.clear();
     threadSessionBindings.clear();
@@ -38,12 +36,11 @@ describe('Feishu actions', () => {
     resetFeishuSessionChatsForTests();
   });
 
-  it('maps card actions to interrupt, done, backend, model, and effort controls', () => {
+  it('maps card actions to interrupt, done, backend, and effort controls', () => {
     const card = buildSessionControlCard('conv-actions');
     expect(card.actions.map(action => action.type)).toEqual([
       'done',
       'backend',
-      'model',
       'effort',
     ]);
 
@@ -96,16 +93,6 @@ describe('Feishu actions', () => {
       summaryKey: 'backend.updated',
       backend: 'codex',
     });
-    expect(dispatchFeishuCardAction({ conversationId: 'conv-actions', type: 'model', value: 'claude-3-7' })).toEqual({
-      kind: 'model',
-      conversationId: 'conv-actions',
-      value: 'claude-3-7',
-      stateChanged: true,
-      persist: true,
-      clearContinuation: false,
-      requiresConfirmation: false,
-      summaryKey: 'model.updated',
-    });
     expect(dispatchFeishuCardAction({ conversationId: 'conv-actions', type: 'effort', value: 'high' })).toEqual({
       kind: 'effort',
       conversationId: 'conv-actions',
@@ -118,7 +105,6 @@ describe('Feishu actions', () => {
     });
 
     expect(conversationBackend.get('conv-actions')).toBe('codex');
-    expect(conversationModels.get('conv-actions')).toBe('claude-3-7');
     expect(conversationEffort.get('conv-actions')).toBe('high');
   });
 
