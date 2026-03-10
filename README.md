@@ -1,81 +1,27 @@
 # Agent Inbox
 
+> Run local AI agents from Discord or Feishu. Agent Inbox connects IM conversations to Claude Code or OpenAI Codex on your own machine, with no server deployment required.
+
+[![npm version](https://img.shields.io/npm/v/@doctorwu/agent-inbox)](https://www.npmjs.com/package/@doctorwu/agent-inbox)
 [![GitHub release](https://img.shields.io/github/v/release/Doctor-wu/agent-im-relay)](https://github.com/Doctor-wu/agent-im-relay/releases)
 ![Node >=20](https://img.shields.io/badge/node-%3E%3D20-339933)
-![pnpm workspace](https://img.shields.io/badge/pnpm-workspace-F69220)
 ![TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6)
-![Discord](https://img.shields.io/badge/platform-Discord-5865F2)
-![Feishu long connection](https://img.shields.io/badge/platform-Feishu-long_connection-00B96B)
+[![Discord](https://img.shields.io/badge/platform-Discord-5865F2)](https://discord.com)
+[![Feishu](https://img.shields.io/badge/platform-Feishu-00B96B)](https://open.feishu.cn)
 
-Agent Inbox is an inbox-first IM launcher for local Claude and Codex workflows. The repo keeps a pnpm workspace for development, while `apps/agent-inbox` is the user-facing launcher and the packages under `packages/` hold the shared runtime plus IM adapters.
+![Architecture](docs/assets/agent-inbox-architecture.svg)
 
-## What Changed
+## Why Agent Inbox
 
-- User-facing entry is the `apps/agent-inbox` CLI package
-- Published npm package name is `@doctorwu/agent-inbox`
-- Runtime config and data default to `~/.agent-inbox/`
-- Config file is `~/.agent-inbox/config.jsonl`
-- Only configured IM integrations appear in the launcher
-- Feishu now runs as a single-process long-connection adapter
-- Repo-root `.env` is development-only convenience, not the primary user contract
+- Inbox-first workflow: start and continue agent work directly from IM messages, threads, and attachments
+- Local-first runtime: configuration, session state, logs, and exchanged files stay under `~/.agent-inbox/`
+- Multi-platform: currently supports Discord and Feishu with a shared relay architecture
+- Multi-backend: choose Claude Code or OpenAI Codex per conversation
+- Persistent sessions: keep thread context across follow-up messages, interruptions, and resumptions
 
-If `HOME` is unavailable or not writable, runtime state falls back to a writable `INIT_CWD`, current working directory, or temp directory before using `.agent-inbox/`.
+## Quick Start
 
-## Runtime Layout
-
-```text
-~/.agent-inbox/
-  config.jsonl
-  state/
-  artifacts/
-  logs/
-```
-
-`config.jsonl` is line-oriented JSON. Each record can carry a `note` for user guidance.
-
-Example:
-
-```json
-{"type":"meta","version":1}
-{"type":"im","id":"discord","enabled":true,"note":"填写 Discord 机器人信息后可启动","config":{"token":"...","clientId":"..."}}
-{"type":"im","id":"feishu","enabled":false,"note":"填写飞书应用信息后可启动","config":{}}
-{"type":"runtime","note":"全局运行参数","config":{"agentTimeoutMs":600000}}
-```
-
-## Project Structure
-
-```text
-apps/
-  agent-inbox/  @doctorwu/agent-inbox  — User-facing launcher, setup flow, config loading
-
-packages/
-  core/      @agent-im-relay/core     — Shared runtime, state, orchestration
-  discord/   @agent-im-relay/discord  — Discord adapter runtime
-  feishu/    @agent-im-relay/feishu   — Feishu adapter runtime
-```
-
-## Feishu Runtime
-
-The Feishu adapter now stays inside `@agent-im-relay/feishu` and uses the official persistent connection flow directly:
-
-- Long-connection ingress through Feishu's event dispatcher and WebSocket client
-- Private-chat launchers that create dedicated session chats and return native shared-chat receipts
-- Session-group reference messages plus mirrored original prompts for readable context
-- One-shot interrupt cards for each user message inside a session chat
-- Sticky per-conversation session continuity until explicit teardown
-- Inbound file download and outbound artifact upload support
-- Optional event verification and decryption via `FEISHU_VERIFICATION_TOKEN` and `FEISHU_ENCRYPT_KEY`
-
-Typical startup flow:
-
-1. Enable persistent connection mode in the Feishu developer console.
-2. Configure `FEISHU_APP_ID` and `FEISHU_APP_SECRET`, plus `FEISHU_ENCRYPT_KEY` / `FEISHU_VERIFICATION_TOKEN` if your app uses them.
-3. Start `pnpm dev:feishu` on the machine that has the local agent CLI tools and workspace.
-4. Send the bot a private message to create a `Session · {promptPreview}` chat, then continue inside that session chat with the per-message interrupt card.
-
-## Install
-
-The primary distribution path is npm:
+### 1. Install
 
 ```bash
 npm install -g @doctorwu/agent-inbox
@@ -84,7 +30,79 @@ npm install -g @doctorwu/agent-inbox
 npx @doctorwu/agent-inbox
 ```
 
-On first run, `agent-inbox` creates `~/.agent-inbox/` as needed and enters the interactive setup flow automatically when no IM is configured yet. Users do not need to create `config.jsonl` by hand before the first `npx` run.
+### 2. Configure
+
+Run `agent-inbox` once and follow the interactive setup wizard.
+
+- Discord users: follow [docs/discord-setup.md](docs/discord-setup.md) to create the bot, invite it to a server, and collect `token`, `clientId`, and optional `guildIds`
+- Feishu users: enter your app credentials in the same setup flow
+
+### 3. Run
+
+```bash
+agent-inbox
+```
+
+After the relay starts, message your configured bot to begin:
+
+- Discord: use `/code`, `/ask`, or mention the bot in a guild channel to open a thread-backed session
+- Feishu: message the app and continue the session in the created chat flow
+
+## Supported Platforms
+
+| Platform | Status | What you get |
+| --- | --- | --- |
+| Discord | Supported | Slash commands, mention-to-thread sessions, streamed output, attachments, per-thread backend controls |
+| Feishu | Supported | Long-connection runtime, session chat flow, streamed output, attachments, backend controls |
+
+## Supported Backends
+
+| Backend | Status | Notes |
+| --- | --- | --- |
+| Claude Code | Supported | Full code-task workflow with streaming output and tool usage |
+| OpenAI Codex | Supported | Code-task workflow with streaming output through the same relay model |
+
+## Configuration Details
+
+Agent Inbox stores its runtime configuration in `~/.agent-inbox/config.jsonl`.
+
+Example:
+
+```jsonc
+{"type":"meta","version":1}
+{"type":"im","id":"discord","enabled":true,"config":{"token":"your-bot-token","clientId":"your-client-id","guildIds":["your-guild-id"]}}
+{"type":"im","id":"feishu","enabled":false,"config":{"appId":"","appSecret":""}}
+{"type":"runtime","config":{"agentTimeoutMs":600000}}
+```
+
+Notes:
+
+- `guildIds` is optional for Discord. Set one or more guild IDs for server-scoped command registration during testing, or leave it empty for global command registration.
+- The first run creates this file automatically if it does not exist yet.
+
+## Runtime Layout
+
+```text
+~/.agent-inbox/
+  config.jsonl        # Main configuration
+  state/              # Session persistence
+  artifacts/          # Incoming and outgoing file exchange
+  logs/               # Runtime logs
+```
+
+## Repository Layout
+
+```text
+apps/
+  agent-inbox/        @doctorwu/agent-inbox   - user-facing CLI entrypoint and setup flow
+
+packages/
+  core/               @agent-im-relay/core    - shared runtime, session management, backend abstraction
+  discord/            @agent-im-relay/discord - Discord adapter
+  feishu/             @agent-im-relay/feishu  - Feishu adapter
+```
+
+Architecture notes: [docs/agent-inbox-architecture.md](docs/agent-inbox-architecture.md)
 
 ## Development
 
@@ -92,32 +110,20 @@ On first run, `agent-inbox` creates `~/.agent-inbox/` as needed and enters the i
 pnpm install
 pnpm test
 pnpm build
-```
-
-Useful entrypoints:
-
-```bash
-# Run the unified launcher after build
 pnpm start
 
-# Run Discord adapter directly in dev mode
+# Platform-specific dev loops
 pnpm dev:discord
-
-# Run Feishu adapter directly in dev mode
 pnpm dev:feishu
 ```
 
-## Development Env File
+Use the repository root `.env` file for local development. See `.env.example` for the expected variables.
 
-Repo-root `.env` is now development-only convenience for direct package runs. The distributed launcher should prefer `~/.agent-inbox/config.jsonl`.
+Build outputs:
 
-See `.env.example` for the reduced development surface.
+- `apps/agent-inbox/dist/index.mjs`: npm package entrypoint
+- `apps/agent-inbox/dist/agent-inbox`: optional standalone executable built separately
 
-## Current Build Target
+## License
 
-The main distribution target is `apps/agent-inbox`. Its build pipeline can produce:
-
-- `apps/agent-inbox/dist/index.mjs` — bundled launcher entry and npm `bin` target from `pnpm --filter ./apps/agent-inbox build`
-- `apps/agent-inbox/dist/agent-inbox` — optional SEA executable generated by `pnpm --filter ./apps/agent-inbox build:sea` or `build:all`
-
-The launcher bundle no longer depends on the workspace layout at runtime. npm publish is the primary user distribution path; SEA remains an optional CI artifact and should not block npm release flow.
+MIT
