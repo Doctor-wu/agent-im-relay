@@ -1,30 +1,61 @@
 import { describe, expect, it, vi } from 'vitest';
 
 const coreMocks = vi.hoisted(() => ({
-  getAvailableBackendNames: vi.fn(async () => ['claude', 'opencode']),
+  getAvailableBackendCapabilities: vi.fn(async () => [
+    {
+      name: 'claude',
+      models: [
+        { id: 'sonnet', label: 'Sonnet' },
+        { id: 'opus', label: 'Opus' },
+      ],
+    },
+    {
+      name: 'opencode',
+      models: [],
+    },
+  ]),
+  conversationBackend: new Map<string, string>(),
+  conversationCwd: new Map<string, string>(),
+  conversationModels: new Map<string, string>(),
+  persistState: vi.fn(),
 }));
 
 vi.mock('@agent-im-relay/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@agent-im-relay/core')>();
   return {
     ...actual,
-    getAvailableBackendNames: coreMocks.getAvailableBackendNames,
+    getAvailableBackendCapabilities: coreMocks.getAvailableBackendCapabilities,
+    conversationBackend: coreMocks.conversationBackend,
+    conversationCwd: coreMocks.conversationCwd,
+    conversationModels: coreMocks.conversationModels,
+    persistState: coreMocks.persistState,
   };
 });
 
-import { BACKEND_SELECT_ID, promptThreadSetup } from '../commands/thread-setup.js';
+import { BACKEND_SELECT_ID, MODEL_SELECT_ID, applySetupResult, promptThreadSetup } from '../commands/thread-setup.js';
 
 describe('promptThreadSetup', () => {
-  it('renders only backend selection and resolves on select', async () => {
-    let onCollect: ((interaction: any) => Promise<void>) | undefined;
+  it('renders backend selection first and then model selection when the backend reports models', async () => {
+    let onBackendCollect: ((interaction: any) => Promise<void>) | undefined;
+    let onModelCollect: ((interaction: any) => Promise<void>) | undefined;
     const stop = vi.fn();
     const edit = vi.fn().mockResolvedValue(undefined);
-    const createMessageComponentCollector = vi.fn(() => ({
-      on: vi.fn((event: string, handler: (interaction: any) => Promise<void>) => {
-        if (event === 'collect') onCollect = handler;
-      }),
-      stop,
-    }));
+    const collectors: Array<{ on: (event: string, handler: (interaction: any) => Promise<void>) => void; stop: () => void }> = [];
+    const createMessageComponentCollector = vi.fn(() => {
+      const collector = {
+        on: vi.fn((event: string, handler: (interaction: any) => Promise<void>) => {
+          if (event !== 'collect') return;
+          if (!onBackendCollect) {
+            onBackendCollect = handler;
+            return;
+          }
+          onModelCollect = handler;
+        }),
+        stop,
+      };
+      collectors.push(collector);
+      return collector;
+    });
 
     let payload: any;
     const thread = {
@@ -54,25 +85,66 @@ describe('promptThreadSetup', () => {
         value: 'opencode',
       }),
     ]);
-    expect(onCollect).toBeTypeOf('function');
+    expect(onBackendCollect).toBeTypeOf('function');
 
-    await onCollect?.({
+    await onBackendCollect?.({
       customId: BACKEND_SELECT_ID,
-      values: ['opencode'],
+      values: ['claude'],
+      deferUpdate: vi.fn().mockResolvedValue(undefined),
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(edit).toHaveBeenCalledWith({
+      content: '**选择 Model**\nBackend: **claude**',
+      components: [
+        expect.objectContaining({
+          toJSON: expect.any(Function),
+        }),
+      ],
+    });
+    const modelPayload = edit.mock.calls[0]?.[0];
+    expect(modelPayload.components[0].toJSON().components[0].options).toEqual([
+      expect.objectContaining({
+        label: 'Sonnet',
+        value: 'sonnet',
+      }),
+      expect.objectContaining({
+        label: 'Opus',
+        value: 'opus',
+      }),
+    ]);
+    expect(onModelCollect).toBeTypeOf('function');
+
+    await onModelCollect?.({
+      customId: MODEL_SELECT_ID,
+      values: ['opus'],
       deferUpdate: vi.fn().mockResolvedValue(undefined),
     });
 
-    await expect(resultPromise).resolves.toEqual({ backend: 'opencode', cwd: null });
-    expect(edit).toHaveBeenCalledWith({
-      content: '✅ Backend: **opencode**',
+    await expect(resultPromise).resolves.toEqual({ backend: 'claude', model: 'opus', cwd: null });
+    expect(edit).toHaveBeenLastCalledWith({
+      content: '✅ Backend: **claude**\n✅ Model: **opus**',
       components: [],
     });
     expect(stop).toHaveBeenCalled();
+    expect(collectors).toHaveLength(2);
   });
 
   it('falls back to the first available backend on timeout', async () => {
     vi.useFakeTimers();
-    coreMocks.getAvailableBackendNames.mockResolvedValueOnce(['opencode', 'claude']);
+    coreMocks.getAvailableBackendCapabilities.mockResolvedValueOnce([
+      {
+        name: 'opencode',
+        models: [],
+      },
+      {
+        name: 'claude',
+        models: [
+          { id: 'sonnet', label: 'Sonnet' },
+        ],
+      },
+    ]);
 
     const edit = vi.fn().mockResolvedValue(undefined);
     const createMessageComponentCollector = vi.fn(() => ({
@@ -93,12 +165,23 @@ describe('promptThreadSetup', () => {
 
     await vi.advanceTimersByTimeAsync(60_000);
 
-    await expect(resultPromise).resolves.toEqual({ backend: 'opencode', cwd: null });
+    await expect(resultPromise).resolves.toEqual({ backend: 'opencode', model: null, cwd: null });
     expect(edit).toHaveBeenCalledWith({
       content: '⏰ 超时，使用默认配置。',
       components: [],
     });
 
     vi.useRealTimers();
+  });
+
+  it('persists the selected model together with the backend', async () => {
+    await applySetupResult('thread-1', {
+      backend: 'claude',
+      model: 'sonnet',
+      cwd: null,
+    });
+
+    expect(coreMocks.conversationBackend.get('thread-1')).toBe('claude');
+    expect(coreMocks.conversationModels.get('thread-1')).toBe('sonnet');
   });
 });

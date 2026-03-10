@@ -8,15 +8,20 @@ import {
 import {
   conversationBackend,
   conversationCwd,
-  getAvailableBackendNames,
+  conversationModels,
+  getAvailableBackendCapabilities,
   persistState,
+  type AgentBackendCapability,
+  type BackendModel,
   type BackendName,
 } from '@agent-im-relay/core';
 
 export const BACKEND_SELECT_ID = 'thread_setup:backend';
+export const MODEL_SELECT_ID = 'thread_setup:model';
 
 export type SetupResult = {
   backend: BackendName;
+  model: string | null;
   cwd: string | null;
 };
 
@@ -48,18 +53,29 @@ function describeBackend(backend: BackendName): { label: string; description: st
   };
 }
 
-function buildBackendMenu(backends: BackendName[]): ActionRowBuilder<StringSelectMenuBuilder> {
+function buildBackendMenu(backends: AgentBackendCapability[]): ActionRowBuilder<StringSelectMenuBuilder> {
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(BACKEND_SELECT_ID)
       .setPlaceholder('选择 AI Backend')
       .addOptions(backends.map((backend) => {
-        const details = describeBackend(backend);
+        const details = describeBackend(backend.name);
         return new StringSelectMenuOptionBuilder()
           .setLabel(details.label)
-          .setValue(backend)
+          .setValue(backend.name)
           .setDescription(details.description);
       })),
+  );
+}
+
+function buildModelMenu(models: BackendModel[]): ActionRowBuilder<StringSelectMenuBuilder> {
+  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(MODEL_SELECT_ID)
+      .setPlaceholder('选择 Model')
+      .addOptions(models.map(model => new StringSelectMenuOptionBuilder()
+        .setLabel(model.label)
+        .setValue(model.id))),
   );
 }
 
@@ -69,7 +85,7 @@ export async function promptThreadSetup(
   thread: AnyThreadChannel,
   prompt: string,
 ): Promise<SetupResult> {
-  const availableBackends = await getAvailableBackendNames();
+  const availableBackends = await getAvailableBackendCapabilities();
   const fallbackBackend = availableBackends[0];
   if (!fallbackBackend) {
     throw new Error('No available backends detected.');
@@ -81,9 +97,25 @@ export async function promptThreadSetup(
   });
 
   return new Promise((resolve) => {
+    let settled = false;
+    let fallbackResult: SetupResult = {
+      backend: fallbackBackend.name,
+      model: fallbackBackend.models[0]?.id ?? null,
+      cwd: null,
+    };
+    const finish = (result: SetupResult) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+
     const timer = setTimeout(() => {
       void msg.edit({ content: '⏰ 超时，使用默认配置。', components: [] });
-      resolve({ backend: fallbackBackend, cwd: null });
+      finish(fallbackResult);
     }, SETUP_TIMEOUT_MS);
 
     const collector = msg.createMessageComponentCollector({
@@ -96,13 +128,46 @@ export async function promptThreadSetup(
     collector.on('collect', async (interaction) => {
       await interaction.deferUpdate();
       const selectedBackend = interaction.values[0] as BackendName;
-      clearTimeout(timer);
       collector.stop();
+      const capability = availableBackends.find(backend => backend.name === selectedBackend);
+      const models = capability?.models ?? [];
+      fallbackResult = {
+        backend: selectedBackend,
+        model: models[0]?.id ?? null,
+        cwd: null,
+      };
+
+      if (models.length === 0) {
+        await msg.edit({
+          content: `✅ Backend: **${selectedBackend}**`,
+          components: [],
+        });
+        finish({ backend: selectedBackend, model: null, cwd: null });
+        return;
+      }
+
       await msg.edit({
-        content: `✅ Backend: **${selectedBackend}**`,
-        components: [],
+        content: `**选择 Model**\nBackend: **${selectedBackend}**`,
+        components: [buildModelMenu(models)],
       });
-      resolve({ backend: selectedBackend, cwd: null });
+
+      const modelCollector = msg.createMessageComponentCollector({
+        componentType: ComponentType.StringSelect,
+        max: 1,
+        filter: candidate => candidate.customId === MODEL_SELECT_ID,
+        time: SETUP_TIMEOUT_MS,
+      });
+
+      modelCollector.on('collect', async (modelInteraction) => {
+        await modelInteraction.deferUpdate();
+        const selectedModel = modelInteraction.values[0] ?? null;
+        modelCollector.stop();
+        await msg.edit({
+          content: `✅ Backend: **${selectedBackend}**\n✅ Model: **${selectedModel}**`,
+          components: [],
+        });
+        finish({ backend: selectedBackend, model: selectedModel, cwd: null });
+      });
     });
   });
 }
@@ -112,6 +177,11 @@ export async function applySetupResult(
   result: SetupResult,
 ): Promise<void> {
   conversationBackend.set(threadId, result.backend);
+  if (result.model) {
+    conversationModels.set(threadId, result.model);
+  } else {
+    conversationModels.delete(threadId);
+  }
   if (result.cwd) {
     conversationCwd.set(threadId, result.cwd);
   }

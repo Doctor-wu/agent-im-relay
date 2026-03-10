@@ -3,6 +3,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const coreMocks = vi.hoisted(() => ({
   applySessionControlCommand: vi.fn(),
   evaluateConversationRunRequest: vi.fn(),
+  getAvailableBackendCapabilities: vi.fn(async () => [
+    {
+      name: 'claude',
+      models: [
+        { id: 'sonnet', label: 'Sonnet' },
+      ],
+    },
+    {
+      name: 'opencode',
+      models: [],
+    },
+  ]),
   getAvailableBackendNames: vi.fn(async () => ['claude', 'opencode']),
   runPlatformConversation: vi.fn(),
 }));
@@ -12,6 +24,7 @@ vi.mock('@agent-im-relay/core', async (importOriginal) => {
   return {
     ...actual,
     applySessionControlCommand: coreMocks.applySessionControlCommand,
+    getAvailableBackendCapabilities: coreMocks.getAvailableBackendCapabilities,
     evaluateConversationRunRequest: coreMocks.evaluateConversationRunRequest,
     getAvailableBackendNames: coreMocks.getAvailableBackendNames,
     runPlatformConversation: coreMocks.runPlatformConversation,
@@ -45,6 +58,18 @@ describe('Feishu runtime', () => {
     conversationMode.clear();
     coreMocks.applySessionControlCommand.mockReset();
     coreMocks.evaluateConversationRunRequest.mockReset();
+    coreMocks.getAvailableBackendCapabilities.mockResolvedValue([
+      {
+        name: 'claude',
+        models: [
+          { id: 'sonnet', label: 'Sonnet' },
+        ],
+      },
+      {
+        name: 'opencode',
+        models: [],
+      },
+    ]);
     coreMocks.getAvailableBackendNames.mockResolvedValue(['claude', 'opencode']);
     coreMocks.runPlatformConversation.mockReset();
 
@@ -197,6 +222,54 @@ describe('Feishu runtime', () => {
     }));
   });
 
+  it('prompts for model selection before resuming a pending run when the backend exposes models', async () => {
+    coreMocks.evaluateConversationRunRequest
+      .mockReturnValueOnce({
+        kind: 'setup-required',
+        conversationId: 'conv-model-gated',
+        reason: 'backend-selection',
+      })
+      .mockReturnValueOnce({
+        kind: 'ready',
+        conversationId: 'conv-model-gated',
+        backend: 'claude',
+      });
+
+    const transport = {
+      sendText: vi.fn(async () => undefined),
+      sendCard: vi.fn(async () => undefined),
+      updateCard: vi.fn(async () => undefined),
+      uploadFile: vi.fn(async () => undefined),
+    };
+
+    await runFeishuConversation({
+      conversationId: 'conv-model-gated',
+      target: {
+        chatId: 'chat-1',
+      },
+      prompt: 'ship it',
+      mode: 'code',
+      transport,
+      defaultCwd: process.cwd(),
+    });
+
+    conversationBackend.set('conv-model-gated', 'claude');
+
+    await expect(resumePendingFeishuRun({
+      conversationId: 'conv-model-gated',
+      transport,
+      defaultCwd: process.cwd(),
+    })).resolves.toEqual({ kind: 'blocked' });
+
+    const modelCard = transport.sendCard.mock.calls.at(-1)?.[1] as Record<string, any>;
+    const buttonTexts = modelCard.body.elements
+      .filter((element: Record<string, unknown>) => element.tag === 'button')
+      .map((button: Record<string, any>) => button.text.content);
+
+    expect(buttonTexts).toEqual(['Sonnet']);
+    expect(coreMocks.runPlatformConversation).not.toHaveBeenCalled();
+  });
+
   it('returns an error when backend selection is required but no backends are available', async () => {
     coreMocks.evaluateConversationRunRequest.mockReturnValueOnce({
       kind: 'setup-required',
@@ -231,6 +304,7 @@ describe('Feishu runtime', () => {
   });
 
   it('builds the session control panel from currently available backends', async () => {
+    conversationBackend.set('session-chat-1', 'claude');
     const transport = {
       sendText: vi.fn(async () => undefined),
       sendCard: vi.fn(async () => undefined),
@@ -255,8 +329,7 @@ describe('Feishu runtime', () => {
       'Done',
       'Claude',
       'OpenCode',
-      'Claude 3.7',
-      'GPT-5 Codex',
+      'Sonnet',
       'Low',
       'Medium',
       'High',
@@ -330,7 +403,7 @@ describe('Feishu runtime', () => {
       buildFeishuSessionControlPanelPayload('session-chat-1', {
         conversationId: 'session-chat-1',
         chatId: 'session-chat-1',
-      }, ['claude', 'opencode']),
+      }, ['claude', 'opencode'], [{ id: 'sonnet', label: 'Sonnet' }]),
     );
     expect(transport.sendCard.mock.calls[1]?.[1]).toEqual(transport.sendCard.mock.calls[0]?.[1]);
   });

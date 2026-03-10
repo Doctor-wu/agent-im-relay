@@ -30,16 +30,24 @@ export { buildAgentPrompt, streamAgentSession, extractEvents, createClaudeArgs }
 export { runConversationSession, interruptConversationRun, isConversationRunning, resetConversationRuntimeForTests } from './agent/runtime.js';
 export type { AgentEnvironment, AgentStreamEvent, AgentSessionOptions } from './agent/session.js';
 export {
+  getAvailableBackendCapabilities,
   getAvailableBackendNames,
   getAvailableBackends,
   getBackend,
+  getBackendSupportedModels,
   getRegisteredBackendNames,
   isBackendCommandAvailable,
+  isBackendModelSupported,
   isRegisteredBackendName,
   registerBackend,
   resetBackendRegistryForTests,
 } from './agent/backend.js';
-export type { BackendName, AgentBackend } from './agent/backend.js';
+export type {
+  AgentBackend,
+  AgentBackendCapability,
+  BackendModel,
+  BackendName,
+} from './agent/backend.js';
 export { toolsForMode } from './agent/tools.js';
 export type { AgentMode } from './agent/tools.js';
 export { runConversationWithRenderer } from './runtime/conversation-runner.js';

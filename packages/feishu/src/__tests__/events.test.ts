@@ -5,6 +5,18 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 import { conversationBackend, processedEventIds, processedMessages } from '@agent-im-relay/core';
 
 const coreMocks = vi.hoisted(() => ({
+  getAvailableBackendCapabilities: vi.fn(async () => [
+    {
+      name: 'claude',
+      models: [
+        { id: 'sonnet', label: 'Sonnet' },
+      ],
+    },
+    {
+      name: 'opencode',
+      models: [],
+    },
+  ]),
   getAvailableBackendNames: vi.fn(async () => ['claude', 'opencode']),
   initState: vi.fn(async () => undefined),
   persistState: vi.fn(async () => undefined),
@@ -21,6 +33,7 @@ vi.mock('@agent-im-relay/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@agent-im-relay/core')>();
   return {
     ...actual,
+    getAvailableBackendCapabilities: coreMocks.getAvailableBackendCapabilities,
     getAvailableBackendNames: coreMocks.getAvailableBackendNames,
     initState: coreMocks.initState,
     persistState: coreMocks.persistState,
@@ -88,6 +101,18 @@ function extractPostParagraphTexts(content: string): string[] {
 
 afterEach(async () => {
   coreMocks.initState.mockClear();
+  coreMocks.getAvailableBackendCapabilities.mockResolvedValue([
+    {
+      name: 'claude',
+      models: [
+        { id: 'sonnet', label: 'Sonnet' },
+      ],
+    },
+    {
+      name: 'opencode',
+      models: [],
+    },
+  ]);
   coreMocks.getAvailableBackendNames.mockResolvedValue(['claude', 'opencode']);
   coreMocks.persistState.mockClear();
   runtimeMocks.handleFeishuControlAction.mockReset();
@@ -1123,6 +1148,7 @@ describe('Feishu long-connection events', () => {
   it('opens the expanded control panel when the anchor control action is clicked', async () => {
     runtimeMocks.handleFeishuControlAction.mockResolvedValue({ kind: 'applied' });
     runtimeMocks.resumePendingFeishuRun.mockResolvedValue({ kind: 'none' });
+    conversationBackend.set('conv-1', 'claude');
     const sendCard = vi.fn(async () => undefined);
 
     const router = createFeishuEventRouter(baseConfig, {
@@ -1156,8 +1182,7 @@ describe('Feishu long-connection events', () => {
       'Done',
       'Claude',
       'OpenCode',
-      'Claude 3.7',
-      'GPT-5 Codex',
+      'Sonnet',
       'Low',
       'Medium',
       'High',
@@ -1192,6 +1217,8 @@ describe('Feishu long-connection events', () => {
       } as never,
     });
 
+    conversationBackend.set('session-chat-1', 'claude');
+
     await router.handleMenuActionEvent({
       event_key: 'open-session-controls',
       chat_id: 'session-chat-1',
@@ -1207,8 +1234,7 @@ describe('Feishu long-connection events', () => {
       'Done',
       'Claude',
       'OpenCode',
-      'Claude 3.7',
-      'GPT-5 Codex',
+      'Sonnet',
       'Low',
       'Medium',
       'High',

@@ -1,4 +1,4 @@
-import type { BackendName } from '@agent-im-relay/core';
+import type { BackendModel, BackendName } from '@agent-im-relay/core';
 import type { AgentMode } from '@agent-im-relay/core';
 
 export interface BackendSelectionCard {
@@ -13,6 +13,13 @@ export interface BackendConfirmationCard {
   conversationId: string;
   currentBackend: BackendName;
   requestedBackend: BackendName;
+}
+
+export interface ModelSelectionCard {
+  type: 'model-selection';
+  conversationId: string;
+  backend: BackendName;
+  models: BackendModel[];
 }
 
 export interface SessionAnchorAction {
@@ -38,6 +45,7 @@ export interface SessionControlCard {
   conversationId: string;
   actions: SessionControlAction[];
   backends: BackendName[];
+  models: BackendModel[];
 }
 
 export interface FeishuCardContext {
@@ -99,9 +107,23 @@ export function createBackendConfirmationCard(
   };
 }
 
+export function buildModelSelectionCard(
+  conversationId: string,
+  backend: BackendName,
+  models: BackendModel[],
+): ModelSelectionCard {
+  return {
+    type: 'model-selection',
+    conversationId,
+    backend,
+    models,
+  };
+}
+
 export function buildSessionControlCard(
   conversationId: string,
   backends: BackendName[] = ['claude', 'codex'],
+  models: BackendModel[] = [],
 ): SessionControlCard {
   return {
     type: 'session-controls',
@@ -113,6 +135,7 @@ export function buildSessionControlCard(
       { type: 'effort' },
     ],
     backends,
+    models,
   };
 }
 
@@ -210,6 +233,27 @@ export function buildFeishuBackendConfirmationCardPayload(
   };
 }
 
+export function buildFeishuModelSelectionCardPayload(
+  card: ModelSelectionCard,
+  context: FeishuCardContext,
+): Record<string, unknown> {
+  return {
+    schema: '2.0',
+    header: {
+      title: plainText('Choose Model'),
+    },
+    body: {
+      elements: [
+        {
+          tag: 'markdown',
+          content: `Select a model for backend \`${card.backend}\`.`,
+        },
+        ...card.models.map(model => button(model.label, context, 'model', { value: model.id })),
+      ],
+    },
+  };
+}
+
 export function buildFeishuSessionControlCardPayload(
   card: SessionControlCard,
   context: FeishuCardContext,
@@ -227,8 +271,7 @@ export function buildFeishuSessionControlCardPayload(
         },
         button('Done', context, 'done'),
         ...card.backends.map(backend => button(backendLabel(backend), context, 'backend', { value: backend })),
-        button('Claude 3.7', context, 'model', { value: 'claude-3-7-sonnet' }),
-        button('GPT-5 Codex', context, 'model', { value: 'gpt-5-codex' }),
+        ...card.models.map(model => button(model.label, context, 'model', { value: model.id })),
         button('Low', context, 'effort', { value: 'low' }),
         button('Medium', context, 'effort', { value: 'medium' }),
         button('High', context, 'effort', { value: 'high' }),
@@ -241,9 +284,10 @@ export function buildFeishuSessionControlPanelPayload(
   conversationId: string,
   context: FeishuCardContext,
   backends: BackendName[] = ['claude', 'codex'],
+  models: BackendModel[] = [],
 ): Record<string, unknown> {
   return buildFeishuSessionControlCardPayload(
-    buildSessionControlCard(conversationId, backends),
+    buildSessionControlCard(conversationId, backends, models),
     context,
   );
 }

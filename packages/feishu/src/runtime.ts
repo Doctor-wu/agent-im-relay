@@ -1,20 +1,24 @@
 import {
   applySessionControlCommand,
   conversationBackend,
+  conversationModels,
   conversationMode,
   evaluateConversationRunRequest,
+  getAvailableBackendCapabilities,
   getAvailableBackendNames,
   runPlatformConversation,
   type AgentStreamEvent,
+  type BackendModel,
   type BackendName,
   type RemoteAttachmentLike,
   type SessionControlCommand,
   type SessionControlResult,
 } from '@agent-im-relay/core';
 import {
-  buildFeishuBackendConfirmationCardPayload,
   buildFeishuBackendSelectionCardPayload,
+  buildFeishuModelSelectionCardPayload,
   buildFeishuSessionControlPanelPayload,
+  buildModelSelectionCard,
   buildSessionControlCard,
   createBackendConfirmationCard,
   createBackendSelectionCard,
@@ -50,6 +54,22 @@ export type FeishuRuntimeTransport = {
 
 const pendingAttachments = new Map<string, RemoteAttachmentLike[]>();
 const pendingRuns = new Map<string, PendingFeishuRun>();
+
+async function resolveFeishuCapabilities(
+  conversationId: string,
+): Promise<{ backends: BackendName[]; models: BackendModel[] }> {
+  const capabilities = await getAvailableBackendCapabilities();
+  const currentBackend = conversationBackend.get(conversationId);
+  return {
+    backends: capabilities.map(capability => capability.name),
+    models: capabilities.find(capability => capability.name === currentBackend)?.models ?? [],
+  };
+}
+
+async function getBackendModels(backend: BackendName): Promise<BackendModel[]> {
+  const capabilities = await getAvailableBackendCapabilities();
+  return capabilities.find(capability => capability.name === backend)?.models ?? [];
+}
 
 export type FeishuRunGateResult =
   | {
@@ -191,13 +211,14 @@ export async function openFeishuSessionControlPanel(options: {
   }
 
   const conversationId = sessionChat?.sessionChatId ?? options.conversationId;
-  const availableBackends = await getAvailableBackendNames();
+  const capabilities = await resolveFeishuCapabilities(conversationId);
   await options.transport.sendCard(
     options.target,
     buildFeishuSessionControlPanelPayload(
       conversationId,
       buildFeishuCardContext(conversationId, options.target),
-      availableBackends,
+      capabilities.backends,
+      capabilities.models,
     ),
   );
   return { kind: 'opened' };
@@ -407,6 +428,29 @@ export async function resumePendingFeishuRun(options: {
 
   if (!run) {
     return { kind: 'none' };
+  }
+
+  const backend = conversationBackend.get(options.conversationId);
+  if (backend) {
+    const models = await getBackendModels(backend);
+    const selectedModel = conversationModels.get(options.conversationId);
+    const requiresModelSelection = models.length > 0
+      && (!selectedModel || !models.some(model => model.id === selectedModel));
+
+    if (requiresModelSelection) {
+      storePendingFeishuRun(run);
+      await options.transport.sendCard(
+        run.target,
+        buildFeishuModelSelectionCardPayload(
+          buildModelSelectionCard(options.conversationId, backend, models),
+          buildFeishuCardContext(options.conversationId, run.target, {
+            prompt: run.prompt,
+            mode: run.mode,
+          }),
+        ),
+      );
+      return { kind: 'blocked' };
+    }
   }
 
   return runFeishuConversation({

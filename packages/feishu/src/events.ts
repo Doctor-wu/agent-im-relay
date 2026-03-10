@@ -777,7 +777,7 @@ export function createFeishuEventRouter(
         return;
       }
 
-      if (actionType === 'backend' || actionType === 'confirm-backend') {
+      if (actionType === 'backend' || actionType === 'confirm-backend' || actionType === 'model') {
         try {
           const resumed = await resumePendingFeishuRun({
             conversationId,

@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { AgentBackend } from '../../agent/backend.js';
+import {
+  registerBackend,
+  resetBackendRegistryForTests,
+  type AgentBackend,
+} from '../../agent/backend.js';
 import {
   resetConversationRuntimeForTests,
   runConversationSession,
@@ -20,6 +24,7 @@ function createBackend(events: Array<unknown>): AgentBackend {
   return {
     name: 'claude',
     isAvailable: () => true,
+    getSupportedModels: () => [],
     async *stream(options) {
       for (const event of events) {
         if (options.abortSignal?.aborted) {
@@ -31,6 +36,20 @@ function createBackend(events: Array<unknown>): AgentBackend {
       }
     },
   };
+}
+
+function registerTestBackend(
+  name: string,
+  models: string[],
+): void {
+  registerBackend({
+    name,
+    isAvailable: () => true,
+    getSupportedModels: () => models.map(model => ({ id: model, label: model })),
+    async *stream() {
+      yield { type: 'done', result: `${name}:ok` } as const;
+    },
+  });
 }
 
 async function collect(events: AsyncIterable<unknown>): Promise<unknown[]> {
@@ -51,6 +70,9 @@ describe('session control controller', () => {
     pendingBackendChanges.clear();
     threadSessionBindings.clear();
     threadContinuationSnapshots.clear();
+    resetBackendRegistryForTests();
+    registerTestBackend('claude', ['sonnet', 'opus']);
+    registerTestBackend('codex', ['gpt-5.4']);
   });
 
   it('returns a noop interrupt result for idle conversations', () => {
@@ -203,6 +225,7 @@ describe('session control controller', () => {
     conversationBackend.set('conv-confirm', 'claude');
     conversationSessions.set('conv-confirm', 'session-2');
     pendingBackendChanges.set('conv-confirm', 'codex');
+    conversationModels.set('conv-confirm', 'sonnet');
 
     expect(applySessionControlCommand({
       conversationId: 'conv-confirm',
@@ -219,6 +242,7 @@ describe('session control controller', () => {
       backend: 'codex',
     });
     expect(conversationBackend.get('conv-confirm')).toBe('codex');
+    expect(conversationModels.has('conv-confirm')).toBe(false);
     expect(conversationSessions.has('conv-confirm')).toBe(false);
     expect(pendingBackendChanges.has('conv-confirm')).toBe(false);
   });
