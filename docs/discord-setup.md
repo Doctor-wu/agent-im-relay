@@ -149,5 +149,5 @@ Then verify the Discord side:
 
 ## References
 
-- [Discord Application Commands documentation](https://docs.discord.com/developers/docs/interactions/application-commands)
+- [Discord Application Commands documentation](https://docs.discord.com/developers/interactions/application-commands)
 - [Discord Message Content Privileged Intent FAQ](https://support-dev.discord.com/hc/en-us/articles/4404772028055-Message-Content-Privileged-Intent-FAQ)

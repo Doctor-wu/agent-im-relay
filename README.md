@@ -19,6 +19,20 @@
 - Multi-backend: choose Claude Code or OpenAI Codex per conversation
 - Persistent sessions: keep thread context across follow-up messages, interruptions, and resumptions
 
+## Use Cases
+
+- Run coding tasks from a Discord thread without opening a terminal for every request
+- Let teammates send prompts, logs, screenshots, or files to an agent through a familiar IM tool
+- Keep one long-running session per thread or chat while iterating on a task
+- Switch between Claude Code and Codex depending on the task or model preference
+
+## Roadmap
+
+- Add more IM connectors beyond Discord and Feishu
+- Add more backend options on top of the current Claude Code and Codex support
+- Improve first-run onboarding, setup guides, and deployment ergonomics
+- Expand session controls, attachment flows, and response rendering across platforms
+
 ## Quick Start
 
 ### 1. Install
@@ -86,6 +100,10 @@ Example:
 
 Notes:
 
+- Discord required: `token`, `clientId`
+- Discord optional: `guildIds`
+- Feishu required: `appId`, `appSecret`
+- Feishu optional: `verificationToken`, `encryptKey`, `baseUrl`, `port`
 - `guildIds` is optional for Discord. Set one or more guild IDs for server-scoped command registration during testing, or leave it empty for global command registration.
 - The first run creates this file automatically if it does not exist yet.
 
