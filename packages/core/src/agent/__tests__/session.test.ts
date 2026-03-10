@@ -79,16 +79,15 @@ describe('createClaudeArgs', () => {
     expect(args.at(-1)).toBe('why?');
   });
 
-  it('adds explicit model and effort arguments', () => {
+  it('adds effort argument', () => {
     const args = createClaudeArgs({
       mode: 'code',
       prompt: 'summarize',
-      model: 'sonnet',
       effort: 'high',
     });
 
-    expect(args).toEqual(expect.arrayContaining(['--model', 'sonnet']));
     expect(args).toEqual(expect.arrayContaining(['--effort', 'high']));
+    expect(args).not.toContain('--model');
     expect(args.at(-1)).toBe('summarize');
   });
 });

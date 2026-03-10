@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import { config } from '../../config.js';
@@ -8,7 +5,6 @@ import {
   isBackendCommandAvailable,
   registerBackend,
   type AgentBackend,
-  type BackendModel,
 } from '../backend.js';
 import { buildEnvironment } from '../environment.js';
 import type { AgentSessionOptions, AgentStreamEvent } from '../session.js';
@@ -181,10 +177,6 @@ export function extractEvents(
 export function createClaudeArgs(options: AgentSessionOptions): string[] {
   const args = ['-p', '--output-format', 'stream-json', '--verbose'];
 
-  if (options.model) {
-    args.push('--model', options.model);
-  }
-
   if (options.effort) {
     args.push('--effort', options.effort);
   }
@@ -206,25 +198,6 @@ function toErrorMessage(error: unknown): string {
   return String(error);
 }
 
-function readClaudeModelFile(path: string): BackendModel[] {
-  try {
-    const raw = JSON.parse(readFileSync(path, 'utf8')) as { model?: string };
-    return typeof raw.model === 'string'
-      ? [{ id: raw.model, label: raw.model }]
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function getSupportedClaudeModels(): BackendModel[] {
-  const base = join(homedir(), '.claude');
-  return [
-    ...readClaudeModelFile(join(base, 'settings.json')),
-    ...readClaudeModelFile(join(base, 'settings copy.json')),
-  ];
-}
-
 async function* streamClaude(options: AgentSessionOptions): AsyncGenerator<AgentStreamEvent, void> {
   const cwd = options.cwd ?? config.claudeCwd;
   yield {
@@ -234,7 +207,6 @@ async function* streamClaude(options: AgentSessionOptions): AsyncGenerator<Agent
       options,
       cwd,
       options.cwd ? 'explicit' : 'default',
-      options.model,
     ),
   };
 
@@ -343,7 +315,6 @@ async function* streamClaude(options: AgentSessionOptions): AsyncGenerator<Agent
 export const claudeBackend: AgentBackend = {
   name: 'claude',
   isAvailable: () => isBackendCommandAvailable(config.claudeBin),
-  getSupportedModels: getSupportedClaudeModels,
   stream: streamClaude,
 };
 

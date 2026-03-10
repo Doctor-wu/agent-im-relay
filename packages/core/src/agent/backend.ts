@@ -87,13 +87,12 @@ export async function getAvailableBackendCapabilities(): Promise<AgentBackendCap
   const backends = await getAvailableBackends();
   return backends.map(backend => ({
     name: backend.name,
-    models: getBackendSupportedModels(backend.name),
+    models: [],
   }));
 }
 
-export function isBackendModelSupported(name: BackendName, model: string): boolean {
-  const models = getBackendSupportedModels(name);
-  return models.length > 0 && models.some(candidate => candidate.id === model);
+export function isBackendModelSupported(_name: BackendName, _model: string): boolean {
+  return false;
 }
 
 export function resetBackendRegistryForTests(): void {

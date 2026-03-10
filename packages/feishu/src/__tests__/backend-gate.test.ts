@@ -4,9 +4,7 @@ const coreMocks = vi.hoisted(() => ({
   getAvailableBackendCapabilities: vi.fn(async () => [
     {
       name: 'claude',
-      models: [
-        { id: 'sonnet', label: 'Sonnet' },
-      ],
+      models: [],
     },
     {
       name: 'codex',
@@ -50,9 +48,7 @@ describe('Feishu backend gate', () => {
     coreMocks.getAvailableBackendCapabilities.mockResolvedValue([
       {
         name: 'claude',
-        models: [
-          { id: 'sonnet', label: 'Sonnet' },
-        ],
+        models: [],
       },
       {
         name: 'codex',

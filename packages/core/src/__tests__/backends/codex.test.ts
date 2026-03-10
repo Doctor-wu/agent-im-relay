@@ -42,7 +42,6 @@ describe('codex backend', () => {
     const args = createCodexArgs({
       mode: 'code',
       prompt: 'test',
-      model: 'gpt-5',
       cwd: '/tmp/project',
     });
 
@@ -51,13 +50,12 @@ describe('codex backend', () => {
       '--json',
       '--skip-git-repo-check',
       '--full-auto',
-      '--model',
-      'gpt-5',
       '--cd',
       '/tmp/project',
       '-',
     ]);
     expect(args).not.toContain('-q');
+    expect(args).not.toContain('--model');
   });
 
   it('builds resume arguments when resuming a session', () => {
@@ -65,7 +63,6 @@ describe('codex backend', () => {
       mode: 'code',
       prompt: 'test',
       resumeSessionId: 'session-123',
-      model: 'gpt-5',
       cwd: '/tmp/project',
     });
 
@@ -76,12 +73,11 @@ describe('codex backend', () => {
       '--json',
       '--skip-git-repo-check',
       '--full-auto',
-      '--model',
-      'gpt-5',
       '-',
     ]);
     // --cd is not supported by `codex exec resume`
     expect(args).not.toContain('--cd');
+    expect(args).not.toContain('--model');
   });
 
   it('extracts text and tool events from Codex JSONL items', () => {
@@ -237,7 +233,7 @@ describe('codex backend', () => {
     });
   });
 
-  it('emits explicit cwd and requested model in environment summary', async () => {
+  it('emits explicit cwd in environment summary', async () => {
     vi.mocked(spawn).mockReturnValue(
       makeProcess(JSON.stringify({
         type: 'item.completed',
@@ -254,7 +250,6 @@ describe('codex backend', () => {
       mode: 'code',
       prompt: 'test',
       cwd: '/tmp/project',
-      model: 'gpt-5-codex',
     }));
 
     expect(events[0]).toEqual({
@@ -263,8 +258,8 @@ describe('codex backend', () => {
         backend: 'codex',
         mode: 'code',
         model: {
-          requested: 'gpt-5-codex',
-          resolved: 'gpt-5-codex',
+          requested: undefined,
+          resolved: undefined,
         },
         cwd: {
           value: '/tmp/project',

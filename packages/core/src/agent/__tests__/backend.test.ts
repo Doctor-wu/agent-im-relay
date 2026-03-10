@@ -44,7 +44,7 @@ describe('backend registry', () => {
     await expect(getAvailableBackendNames()).resolves.toEqual(['claude']);
   });
 
-  it('returns available backend capabilities with backend-owned models', async () => {
+  it('returns available backend capabilities with empty models', async () => {
     registerBackend(createBackend('claude', true, [
       { id: 'sonnet', label: 'Sonnet' },
       { id: 'opus', label: 'Opus' },
@@ -56,10 +56,7 @@ describe('backend registry', () => {
     await expect(getAvailableBackendCapabilities()).resolves.toEqual([
       {
         name: 'claude',
-        models: [
-          { id: 'sonnet', label: 'Sonnet' },
-          { id: 'opus', label: 'Opus' },
-        ],
+        models: [],
       },
     ]);
   });

@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import { config } from '../../config.js';
@@ -8,7 +5,6 @@ import {
   isBackendCommandAvailable,
   registerBackend,
   type AgentBackend,
-  type BackendModel,
 } from '../backend.js';
 import { buildEnvironment } from '../environment.js';
 import type { AgentSessionOptions, AgentStreamEvent } from '../session.js';
@@ -71,10 +67,6 @@ function isAuthoritativeOpencodeResumeFailure(error: string): boolean {
 
 export function createOpencodeArgs(options: AgentSessionOptions): string[] {
   const args = ['run', '--format', 'json'];
-
-  if (options.model) {
-    args.push('--model', options.model);
-  }
 
   if (options.effort) {
     args.push('--variant', options.effort);
@@ -151,42 +143,6 @@ function toErrorMessage(error: unknown): string {
   return String(error);
 }
 
-function getSupportedOpencodeModels(): BackendModel[] {
-  try {
-    const raw = JSON.parse(readFileSync(join(homedir(), '.config', 'opencode', 'opencode.json'), 'utf8')) as {
-      provider?: Record<string, { models?: Record<string, { name?: string }> }>;
-      model?: string;
-    };
-
-    const discovered = Object.values(raw.provider ?? {}).flatMap((provider) => {
-      if (!provider.models || typeof provider.models !== 'object') {
-        return [];
-      }
-
-      return Object.entries(provider.models).flatMap(([id, model]) => {
-        if (!id) {
-          return [];
-        }
-
-        return [{
-          id,
-          label: typeof model?.name === 'string' ? model.name : id,
-        }];
-      });
-    });
-
-    if (discovered.length > 0) {
-      return discovered;
-    }
-
-    return typeof raw.model === 'string'
-      ? [{ id: raw.model, label: raw.model }]
-      : [];
-  } catch {
-    return [];
-  }
-}
-
 async function* streamOpencode(options: AgentSessionOptions): AsyncGenerator<AgentStreamEvent, void> {
   const cwd = options.cwd ?? config.claudeCwd;
   yield {
@@ -196,7 +152,6 @@ async function* streamOpencode(options: AgentSessionOptions): AsyncGenerator<Age
       options,
       cwd,
       options.cwd ? 'explicit' : 'default',
-      options.model,
     ),
   };
 
@@ -332,7 +287,6 @@ async function* streamOpencode(options: AgentSessionOptions): AsyncGenerator<Age
 export const opencodeBackend: AgentBackend = {
   name: 'opencode',
   isAvailable: () => isBackendCommandAvailable(config.opencodeBin),
-  getSupportedModels: getSupportedOpencodeModels,
   stream: streamOpencode,
 };
 

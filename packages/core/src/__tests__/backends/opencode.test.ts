@@ -44,7 +44,6 @@ describe('opencode backend', () => {
     const args = createOpencodeArgs({
       mode: 'code',
       prompt: 'ship it',
-      model: 'openai/gpt-5',
       effort: 'high',
     });
 
@@ -52,12 +51,11 @@ describe('opencode backend', () => {
       'run',
       '--format',
       'json',
-      '--model',
-      'openai/gpt-5',
       '--variant',
       'high',
       'ship it',
     ]);
+    expect(args).not.toContain('--model');
   });
 
   it('builds resume arguments when resuming a session', () => {

@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import { config } from '../../config.js';
@@ -8,7 +5,6 @@ import {
   isBackendCommandAvailable,
   registerBackend,
   type AgentBackend,
-  type BackendModel,
 } from '../backend.js';
 import { buildEnvironment } from '../environment.js';
 import type { AgentSessionOptions, AgentStreamEvent } from '../session.js';
@@ -63,10 +59,6 @@ export function createCodexArgs(options: AgentSessionOptions): string[] {
 
   if (options.mode === 'code') {
     args.push('--full-auto');
-  }
-
-  if (options.model) {
-    args.push('--model', options.model);
   }
 
   // --cd is only supported by `codex exec`, not `codex exec resume`
@@ -143,48 +135,6 @@ function toErrorMessage(error: unknown): string {
   return String(error);
 }
 
-function readCodexConfigModel(): BackendModel[] {
-  try {
-    const configText = readFileSync(join(homedir(), '.codex', 'config.toml'), 'utf8');
-    const match = configText.match(/^model\s*=\s*"([^"\n]+)"/m);
-    return match?.[1]
-      ? [{ id: match[1], label: match[1] }]
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function readCodexModelCache(): BackendModel[] {
-  try {
-    const raw = JSON.parse(readFileSync(join(homedir(), '.codex', 'models_cache.json'), 'utf8')) as {
-      models?: Array<{ slug?: string; display_name?: string }>;
-    };
-    if (!Array.isArray(raw.models)) {
-      return [];
-    }
-
-    return raw.models.flatMap((model) => {
-      const id = typeof model.slug === 'string' ? model.slug : undefined;
-      if (!id) {
-        return [];
-      }
-
-      return [{
-        id,
-        label: typeof model.display_name === 'string' ? model.display_name : id,
-      }];
-    });
-  } catch {
-    return [];
-  }
-}
-
-function getSupportedCodexModels(): BackendModel[] {
-  const cachedModels = readCodexModelCache();
-  return cachedModels.length > 0 ? cachedModels : readCodexConfigModel();
-}
-
 async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentStreamEvent, void> {
   const cwd = options.cwd ?? config.claudeCwd;
   let environmentCwd = cwd;
@@ -192,7 +142,7 @@ async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentS
 
   yield {
     type: 'environment',
-    environment: buildEnvironment('codex', options, environmentCwd, environmentSource, options.model),
+    environment: buildEnvironment('codex', options, environmentCwd, environmentSource),
   };
 
   const prompt = options.cwd
@@ -275,7 +225,7 @@ async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentS
                 environmentSource = 'auto-detected';
                 yield {
                   type: 'environment',
-                  environment: buildEnvironment('codex', options, environmentCwd, environmentSource, options.model),
+                  environment: buildEnvironment('codex', options, environmentCwd, environmentSource),
                 };
               }
             }
@@ -327,7 +277,6 @@ async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentS
 export const codexBackend: AgentBackend = {
   name: 'codex',
   isAvailable: () => isBackendCommandAvailable(config.codexBin),
-  getSupportedModels: getSupportedCodexModels,
   stream: streamCodex,
 };
 

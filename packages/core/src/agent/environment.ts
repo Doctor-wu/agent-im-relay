@@ -39,14 +39,13 @@ export function buildEnvironment(
   options: AgentSessionOptions,
   cwd: string | undefined,
   source: AgentEnvironment['cwd']['source'],
-  resolvedModel?: string,
 ): AgentEnvironment {
   return {
     backend,
     mode: options.mode,
     model: {
-      requested: options.model,
-      resolved: resolvedModel,
+      requested: undefined,
+      resolved: undefined,
     },
     cwd: {
       value: cwd,
