@@ -3,13 +3,16 @@ import { stripArtifactManifest, type AgentEnvironment, type AgentStreamEvent } f
 export type TelegramTarget = {
   chatId: number;
   threadId?: number;
+  /** When set, the first bot message in this session replies to this message ID,
+   *  triggering Telegram's "View Thread" button in regular groups. */
+  replyToMessageId?: number;
 };
 
 export type TelegramTransport = {
   sendMessage(
     target: TelegramTarget,
     text: string,
-    options?: { parseMode?: 'HTML' },
+    options?: { parseMode?: 'HTML'; replyToMessageId?: number },
   ): Promise<number>;
   editMessage(
     chatId: number,
@@ -230,7 +233,12 @@ export async function streamAgentToTelegram(
       if (chunk === previous) continue;
 
       if (!existingId) {
-        const msgId = await transport.sendMessage(target, chunk || '…', { parseMode: 'HTML' });
+        // Always reply to replyToMessageId when set — this ensures all overflow messages
+        // also appear in the comment thread (critical for channel discussion groups)
+        const msgId = await transport.sendMessage(target, chunk || '…', {
+          parseMode: 'HTML',
+          replyToMessageId: target.replyToMessageId,
+        });
         sentMessageIds.push(msgId);
       } else {
         await transport.editMessage(target.chatId, existingId, chunk || '…', { parseMode: 'HTML' }).catch(() => {});
