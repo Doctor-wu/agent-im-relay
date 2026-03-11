@@ -107,7 +107,7 @@ export function resolveBackendModelId(name: BackendName, model: string): string 
     return exactMatch.id;
   }
 
-  if (name === 'opencode' && !requestedModel.includes('/')) {
+  if (name === 'opencode') {
     const suffixMatches = models.filter(candidate => candidate.id.endsWith(`/${requestedModel}`));
     if (suffixMatches.length === 1) {
       return suffixMatches[0]!.id;

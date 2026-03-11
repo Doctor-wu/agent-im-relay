@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   getAvailableBackendCapabilities,
   getAvailableBackendNames,
+  resolveBackendModelId,
   getRegisteredBackendNames,
   isRegisteredBackendName,
   registerBackend,
@@ -62,5 +63,15 @@ describe('backend registry', () => {
         ],
       },
     ]);
+  });
+
+  it('resolves legacy OpenCode model ids by unique suffix even when they already contain slashes', () => {
+    registerBackend(createBackend('opencode', true, [
+      { id: 'openrouter/anthropic/claude-3.7-sonnet', label: 'openrouter/anthropic/claude-3.7-sonnet' },
+    ]));
+
+    expect(resolveBackendModelId('opencode', 'anthropic/claude-3.7-sonnet')).toBe(
+      'openrouter/anthropic/claude-3.7-sonnet',
+    );
   });
 });
