@@ -16,7 +16,7 @@ export interface AgentBackendCapability {
 export interface AgentBackend {
   readonly name: BackendName;
   isAvailable(): boolean | Promise<boolean>;
-  getSupportedModels?(): BackendModel[];
+  listModels?(): BackendModel[];
   stream(options: AgentSessionOptions): AsyncGenerator<AgentStreamEvent, void>;
 }
 
@@ -76,7 +76,7 @@ function normalizeBackendModels(models: BackendModel[]): BackendModel[] {
 
 export function getBackendSupportedModels(name: BackendName): BackendModel[] {
   try {
-    const models = getBackend(name).getSupportedModels?.() ?? [];
+    const models = getBackend(name).listModels?.() ?? [];
     return normalizeBackendModels(models);
   } catch {
     return [];

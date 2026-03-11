@@ -17,7 +17,7 @@ function createBackend(
   return {
     name,
     isAvailable: () => available,
-    getSupportedModels: () => models,
+    listModels: () => models,
     async *stream() {
       yield { type: 'done', result: `${name}:ok` } as const;
     },

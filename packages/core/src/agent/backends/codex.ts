@@ -327,7 +327,7 @@ async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentS
 export const codexBackend: AgentBackend = {
   name: 'codex',
   isAvailable: () => isBackendCommandAvailable(config.codexBin),
-  getSupportedModels: getSupportedCodexModels,
+  listModels: getSupportedCodexModels,
   stream: streamCodex,
 };
 

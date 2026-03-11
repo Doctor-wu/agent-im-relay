@@ -24,7 +24,7 @@ function createBackend(events: Array<unknown>): AgentBackend {
   return {
     name: 'claude',
     isAvailable: () => true,
-    getSupportedModels: () => [],
+    listModels: () => [],
     async *stream(options) {
       for (const event of events) {
         if (options.abortSignal?.aborted) {
@@ -45,7 +45,7 @@ function registerTestBackend(
   registerBackend({
     name,
     isAvailable: () => true,
-    getSupportedModels: () => models.map(model => ({ id: model, label: model })),
+    listModels: () => models.map(model => ({ id: model, label: model })),
     async *stream() {
       yield { type: 'done', result: `${name}:ok` } as const;
     },

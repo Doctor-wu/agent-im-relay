@@ -1,6 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Readable } from 'node:stream';
 
+const { readFileSyncMock } = vi.hoisted(() => ({
+  readFileSyncMock: vi.fn(),
+}));
+
+vi.mock('node:fs', async () => {
+  const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
+  return {
+    ...actual,
+    readFileSync: readFileSyncMock,
+  };
+});
+
 vi.mock('node:child_process', () => ({
   spawn: vi.fn(),
   spawnSync: vi.fn(() => ({ status: 0 })),
@@ -38,6 +50,33 @@ function makeProcess(stdout: string, stderr = '', exitCode = 0) {
 describe('opencode backend', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    readFileSyncMock.mockReset();
+  });
+
+  it('lists configured models as provider/modelKey values', async () => {
+    readFileSyncMock.mockReturnValue(JSON.stringify({
+      provider: {
+        openai: {
+          models: {
+            'gpt-5': { name: 'GPT-5' },
+            'gpt-4.1': {},
+          },
+        },
+        anthropic: {
+          models: {
+            sonnet: { name: 'Claude Sonnet' },
+          },
+        },
+      },
+    }) as any);
+
+    const { opencodeBackend } = await import('../../agent/backends/opencode.js');
+
+    expect(opencodeBackend.listModels?.()).toEqual([
+      { id: 'openai/gpt-5', label: 'openai/gpt-5' },
+      { id: 'openai/gpt-4.1', label: 'openai/gpt-4.1' },
+      { id: 'anthropic/sonnet', label: 'anthropic/sonnet' },
+    ]);
   });
 
   it('builds run arguments for a fresh session', () => {

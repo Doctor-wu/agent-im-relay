@@ -43,7 +43,7 @@ function registerTestBackend(name: string, models: string[]): void {
   registerBackend({
     name,
     isAvailable: () => true,
-    getSupportedModels: () => models.map(model => ({ id: model, label: model })),
+    listModels: () => models.map(model => ({ id: model, label: model })),
     async *stream() {
       yield { type: 'done', result: `${name}:ok` } as const;
     },
