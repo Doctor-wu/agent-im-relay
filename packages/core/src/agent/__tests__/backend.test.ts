@@ -76,14 +76,16 @@ describe('backend registry', () => {
     );
   });
 
-  it('preserves manual Claude concrete model ids via compatibility resolution', () => {
+  it('preserves only known Claude concrete model id patterns via compatibility resolution', () => {
     registerBackend(createBackend('claude', true, [
       { id: 'sonnet', label: 'Sonnet' },
       { id: 'opus', label: 'Opus' },
     ]));
 
     expect(resolveBackendModelId('claude', 'claude-sonnet-4-5')).toBe('claude-sonnet-4-5');
+    expect(resolveBackendModelId('claude', 'claude-opuz-4-5')).toBeUndefined();
     expect(isBackendModelSupported('claude', 'claude-sonnet-4-5')).toBe(false);
     expect(isBackendModelSupported('claude', 'claude-sonnet-4-5', { allowCompatibility: true })).toBe(true);
+    expect(isBackendModelSupported('claude', 'claude-opuz-4-5', { allowCompatibility: true })).toBe(false);
   });
 });

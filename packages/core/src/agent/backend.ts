@@ -25,6 +25,10 @@ export interface AgentBackend {
 }
 
 const registry = new Map<BackendName, AgentBackend>();
+const CLAUDE_COMPATIBLE_MODEL_PATTERNS = [
+  /^claude-(?:opus|sonnet|haiku)-\d(?:-\d+)*(?:-(?:latest|\d{8}))?$/,
+  /^claude-\d(?:-\d+)*-(?:opus|sonnet|haiku)(?:-(?:latest|\d{8}))?$/,
+];
 
 export function registerBackend(backend: AgentBackend): void {
   registry.set(backend.name, backend);
@@ -100,7 +104,10 @@ function resolveCompatibleBackendModelId(
   requestedModel: string,
   models: BackendModel[],
 ): string | undefined {
-  if (name === 'claude' && requestedModel.startsWith('claude-')) {
+  if (
+    name === 'claude'
+    && CLAUDE_COMPATIBLE_MODEL_PATTERNS.some(pattern => pattern.test(requestedModel))
+  ) {
     return requestedModel;
   }
 
