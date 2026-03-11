@@ -4,13 +4,14 @@ import {
   GatewayIntentBits,
   REST,
   Routes,
-  SlashCommandBuilder,
+  type AutocompleteInteraction,
   type AnyThreadChannel,
   type ChatInputCommandInteraction,
   type Message,
 } from 'discord.js';
 import { fileURLToPath } from 'node:url';
 import {
+  applyMessageControlDirectives,
   conversationBackend,
   activeConversations,
   processedMessages,
@@ -20,6 +21,7 @@ import {
   listSkills,
   Orchestrator,
   type IncomingMessage,
+  preprocessConversationMessage,
 } from '@agent-im-relay/core';
 import { config } from './config.js';
 import { createDiscordAdapter } from './adapter.js';
@@ -35,16 +37,14 @@ import { doneCommand, handleDoneCommand } from './commands/done.js';
 import { interruptCommand, handleInterruptCommand } from './commands/interrupt.js';
 import { agentControlCommandHandlers, agentControlCommands } from './commands/agent-control.js';
 import {
+  handleSkillAutocomplete,
   handleSkillCommand,
-  handleSkillModalSubmit,
-  handleSkillSelectMenu,
   skillCommand,
-  SKILL_MODAL_CUSTOM_ID_PREFIX,
-  SKILL_SELECT_CUSTOM_ID,
 } from './commands/skill.js';
 import { promptThreadSetup, applySetupResult } from './commands/thread-setup.js';
 
 type CommandHandler = (interaction: ChatInputCommandInteraction) => Promise<void>;
+type AutocompleteHandler = (interaction: AutocompleteInteraction) => Promise<void>;
 
 // --- Command registry ---
 const commandHandlers = new Map<string, CommandHandler>([
@@ -54,6 +54,10 @@ const commandHandlers = new Map<string, CommandHandler>([
   ['skill', handleSkillCommand],
   ['done', handleDoneCommand],
   ...agentControlCommandHandlers.entries(),
+]);
+
+const autocompleteHandlers = new Map<string, AutocompleteHandler>([
+  ['skill', handleSkillAutocomplete],
 ]);
 
 const commandDefinitions = [
@@ -127,6 +131,16 @@ async function runThreadConversation(
   });
 }
 
+async function persistDiscordMessageControls(
+  conversationId: string,
+  directives: ReturnType<typeof preprocessConversationMessage>['directives'],
+): Promise<void> {
+  const results = applyMessageControlDirectives({ conversationId, directives });
+  if (results.some(result => result.persist)) {
+    await persistState('discord');
+  }
+}
+
 type HandleDiscordMessageCreateDependencies = {
   botUser?: { id: string };
   hasOpenStickyThreadSession?: (conversationId: string) => boolean;
@@ -171,20 +185,24 @@ export async function handleDiscordMessageCreate(
   processedMessages.add(message.id);
   setTimeout(() => processedMessages.delete(message.id), 60_000);
 
-  const prompt = routedMessage.prompt;
-
-  if (!prompt) {
-    await message.channel.send(
-      buildDiscordReplyPayload('Please include a prompt after mentioning me.', replyContext),
-    ).catch(() => {});
-    return;
-  }
+  const preprocessed = preprocessConversationMessage(routedMessage.prompt);
+  const prompt = preprocessed.prompt;
 
   // React immediately to acknowledge
   await message.react(REACTIONS.received).catch(() => {});
 
   try {
     if (message.channel.isThread()) {
+      await persistDiscordMessageControls(message.channel.id, preprocessed.directives);
+      if (!prompt) {
+        if (preprocessed.directives.length === 0) {
+          await message.channel.send(
+            buildDiscordReplyPayload('Please include a prompt after mentioning me.', replyContext),
+          ).catch(() => {});
+        }
+        return;
+      }
+
       await (dependencies.runThreadConversation ?? runThreadConversation)(
         message.channel,
         prompt,
@@ -194,16 +212,33 @@ export async function handleDiscordMessageCreate(
       return;
     }
 
+    if (!prompt && preprocessed.directives.length === 0) {
+      await message.channel.send(
+        buildDiscordReplyPayload('Please include a prompt after mentioning me.', replyContext),
+      ).catch(() => {});
+      return;
+    }
+
     if (pendingConversationCreation.has(message.id)) return;
     pendingConversationCreation.add(message.id);
 
     try {
       const thread = await (dependencies.ensureMentionThread ?? ensureMentionThread)(message as Message<true>, prompt);
-      await thread.send(`**${message.author.displayName}:** ${prompt}`);
+      if (prompt) {
+        await thread.send(`**${message.author.displayName}:** ${prompt}`);
+      }
+      await persistDiscordMessageControls(thread.id, preprocessed.directives);
+
+      if (!prompt) {
+        return;
+      }
 
       // Show backend setup only if backend not yet chosen
       if (!conversationBackend.has(thread.id)) {
         const result = await (dependencies.promptThreadSetup ?? promptThreadSetup)(thread, prompt);
+        if (!result) {
+          return;
+        }
         await (dependencies.applySetupResult ?? applySetupResult)(thread.id, result);
       }
 
@@ -260,13 +295,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
-    if (interaction.isStringSelectMenu() && interaction.customId === SKILL_SELECT_CUSTOM_ID) {
-      await handleSkillSelectMenu(interaction);
-      return;
-    }
+    if (interaction.isAutocomplete()) {
+      const handler = autocompleteHandlers.get(interaction.commandName);
+      if (!handler) return;
 
-    if (interaction.isModalSubmit() && interaction.customId.startsWith(SKILL_MODAL_CUSTOM_ID_PREFIX)) {
-      await handleSkillModalSubmit(interaction, runThreadConversation);
+      await handler(interaction);
     }
   } catch (error) {
     const errorText = toErrorMessage(error);

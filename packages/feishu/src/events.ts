@@ -1,9 +1,12 @@
 import { readFile } from 'node:fs/promises';
 import {
+  applyMessageControlDirectives,
   initState,
   persistState,
+  preprocessConversationMessage,
   processedEventIds,
   processedMessages,
+  type BackendName,
 } from '@agent-im-relay/core';
 import { createFeishuClient } from './api.js';
 import type { FeishuConfig } from './config.js';
@@ -508,6 +511,16 @@ export function createFeishuEventRouter(
     }
   }
 
+  async function persistFeishuMessageControls(
+    conversationId: string,
+    directives: ReturnType<typeof preprocessConversationMessage>['directives'],
+  ): Promise<void> {
+    const results = applyMessageControlDirectives({ conversationId, directives });
+    if (results.some(result => result.persist)) {
+      await persistFeishuState();
+    }
+  }
+
   async function handleMessageEvent(payload: FeishuMessageReceiveEvent): Promise<void> {
     const dedup = ingressDeduplicator.claimMessage(payload);
     if (dedup.duplicate) {
@@ -567,7 +580,9 @@ export function createFeishuEventRouter(
         ? await buildManagedAttachments(client, message.message_id, attachmentInfos)
         : [];
 
-      if (isFeishuDoneCommand(messageText)) {
+      const preprocessed = preprocessConversationMessage(messageText);
+
+      if (isFeishuDoneCommand(preprocessed.prompt)) {
         if (message.chat_type === 'p2p') {
           await transport.sendText(target, 'Use /done inside the session chat you want to close.');
           succeeded = true;
@@ -587,13 +602,7 @@ export function createFeishuEventRouter(
         return;
       }
 
-      const request = resolveFeishuMessageRequest(messageText);
-      if (!request.prompt) {
-        await transport.sendText(target, 'Please include a prompt after mentioning the bot.');
-        succeeded = true;
-        return;
-      }
-
+      const request = resolveFeishuMessageRequest(preprocessed.prompt);
       if (message.chat_type === 'p2p') {
         const duplicateSessionChat = findFeishuSessionChatBySourceMessage({
           sourceP2pChatId: message.chat_id,
@@ -611,6 +620,12 @@ export function createFeishuEventRouter(
           return;
         }
 
+        if (!request.prompt && preprocessed.directives.length === 0) {
+          await transport.sendText(target, 'Please include a prompt after mentioning the bot.');
+          succeeded = true;
+          return;
+        }
+
         try {
           const launch = await launchFeishuSessionFromPrivateChat({
             client,
@@ -623,6 +638,12 @@ export function createFeishuEventRouter(
           });
           if (launch.mirroredMessageId) {
             rememberMirroredFeishuMessageId(launch.mirroredMessageId);
+          }
+          await persistFeishuMessageControls(launch.sessionChatId, preprocessed.directives);
+
+          if (!request.prompt) {
+            succeeded = true;
+            return;
           }
 
           await runFeishuSessionFlow({
@@ -650,7 +671,18 @@ export function createFeishuEventRouter(
         return;
       }
 
+      if (!request.prompt) {
+        if (preprocessed.directives.length > 0) {
+          await persistFeishuMessageControls(conversationId, preprocessed.directives);
+        } else {
+          await transport.sendText(target, 'Please include a prompt after mentioning the bot.');
+        }
+        succeeded = true;
+        return;
+      }
+
       try {
+        await persistFeishuMessageControls(conversationId, preprocessed.directives);
         await runFeishuSessionFlow({
           conversationId,
           target,
@@ -716,9 +748,9 @@ export function createFeishuEventRouter(
 
       const result = await handleFeishuControlAction({
         action: actionType === 'backend'
-          ? { conversationId, type: 'backend', value: action.value as 'claude' | 'codex' }
+          ? { conversationId, type: 'backend', value: String(action.value) as BackendName }
           : actionType === 'confirm-backend'
-            ? { conversationId, type: 'confirm-backend', value: action.value as 'claude' | 'codex' }
+            ? { conversationId, type: 'confirm-backend', value: String(action.value) as BackendName }
             : actionType === 'cancel-backend'
               ? { conversationId, type: 'cancel-backend' }
               : actionType === 'model'
@@ -745,7 +777,7 @@ export function createFeishuEventRouter(
         return;
       }
 
-      if (actionType === 'backend' || actionType === 'confirm-backend') {
+      if (actionType === 'backend' || actionType === 'confirm-backend' || actionType === 'model') {
         try {
           const resumed = await resumePendingFeishuRun({
             conversationId,

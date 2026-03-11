@@ -7,6 +7,10 @@ import { runConversationWithRenderer, type ConversationRunPhase } from '../runti
 import { conversationBackend } from '../state.js';
 import { applySessionControlCommand } from '../session-control/controller.js';
 import type { SessionControlCommand } from '../session-control/types.js';
+export {
+  applyMessageControlDirectives,
+  preprocessConversationMessage,
+} from './message-preprocessing.js';
 
 export type ConversationRunEvaluation =
   | {

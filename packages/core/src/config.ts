@@ -20,22 +20,12 @@ function numberEnv(env: NodeJS.ProcessEnv, key: string, fallback: number): numbe
   return parsed;
 }
 
-function setOptionalEnv(key: string, value: string | undefined): void {
-  if (value) {
-    process.env[key] = value;
-    return;
-  }
-
-  delete process.env[key];
-}
-
 function setNumericEnv(key: string, value: number): void {
   process.env[key] = String(value);
 }
 
 export interface CoreConfig {
   agentTimeoutMs: number;
-  claudeModel?: string;
   claudeCwd: string;
   stateFile: string;
   artifactsBaseDir: string;
@@ -43,6 +33,7 @@ export interface CoreConfig {
   artifactMaxSizeBytes: number;
   claudeBin: string;
   codexBin: string;
+  opencodeBin: string;
 }
 
 export function readCoreConfig(env: NodeJS.ProcessEnv = process.env): CoreConfig {
@@ -50,7 +41,6 @@ export function readCoreConfig(env: NodeJS.ProcessEnv = process.env): CoreConfig
 
   return {
     agentTimeoutMs: numberEnv(env, 'AGENT_TIMEOUT_MS', 10 * 60 * 1000),
-    claudeModel: optionalEnv(env, 'CLAUDE_MODEL'),
     claudeCwd: optionalEnv(env, 'CLAUDE_CWD') || process.cwd(),
     stateFile: optionalEnv(env, 'STATE_FILE') || relayPaths.stateFile,
     artifactsBaseDir: optionalEnv(env, 'ARTIFACTS_BASE_DIR') || relayPaths.artifactsDir,
@@ -58,12 +48,13 @@ export function readCoreConfig(env: NodeJS.ProcessEnv = process.env): CoreConfig
     artifactMaxSizeBytes: numberEnv(env, 'ARTIFACT_MAX_SIZE_BYTES', 8 * 1024 * 1024),
     claudeBin: optionalEnv(env, 'CLAUDE_BIN') || 'claude',
     codexBin: optionalEnv(env, 'CODEX_BIN') || 'codex',
+    opencodeBin: optionalEnv(env, 'OPENCODE_BIN') || 'opencode',
   };
 }
 
 export function applyCoreConfigEnvironment(config: CoreConfig): void {
   setNumericEnv('AGENT_TIMEOUT_MS', config.agentTimeoutMs);
-  setOptionalEnv('CLAUDE_MODEL', config.claudeModel);
+  delete process.env['CLAUDE_MODEL'];
   process.env['CLAUDE_CWD'] = config.claudeCwd;
   process.env['STATE_FILE'] = config.stateFile;
   process.env['ARTIFACTS_BASE_DIR'] = config.artifactsBaseDir;
@@ -71,6 +62,7 @@ export function applyCoreConfigEnvironment(config: CoreConfig): void {
   setNumericEnv('ARTIFACT_MAX_SIZE_BYTES', config.artifactMaxSizeBytes);
   process.env['CLAUDE_BIN'] = config.claudeBin;
   process.env['CODEX_BIN'] = config.codexBin;
+  process.env['OPENCODE_BIN'] = config.opencodeBin;
 }
 
 const configProxyHandler: ProxyHandler<CoreConfig> = {

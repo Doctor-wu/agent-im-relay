@@ -23,7 +23,7 @@ export async function runFeishuSessionFlow(options: {
   attachments?: Parameters<typeof runFeishuConversation>[0]['attachments'];
   attachmentFetchImpl?: Parameters<typeof runFeishuConversation>[0]['attachmentFetchImpl'];
   persistState?: () => Promise<void>;
-}): Promise<{ kind: 'blocked' | 'started' | 'busy' }> {
+}): Promise<{ kind: 'blocked' | 'started' | 'busy' | 'error' }> {
   const dispatch = options.sourceMessageId
     ? beginFeishuDispatch(options.sourceMessageId)
     : { dispatchId: randomUUID() };

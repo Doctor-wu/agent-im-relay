@@ -1,4 +1,33 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const coreMocks = vi.hoisted(() => ({
+  getAvailableBackendCapabilities: vi.fn(async () => [
+    {
+      name: 'claude',
+      models: [
+        { id: 'sonnet', label: 'Sonnet' },
+      ],
+    },
+    {
+      name: 'codex',
+      models: [],
+    },
+    {
+      name: 'opencode',
+      models: [],
+    },
+  ]),
+  getAvailableBackendNames: vi.fn(async () => ['claude', 'opencode']),
+}));
+
+vi.mock('@agent-im-relay/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@agent-im-relay/core')>();
+  return {
+    ...actual,
+    getAvailableBackendCapabilities: coreMocks.getAvailableBackendCapabilities,
+    getAvailableBackendNames: coreMocks.getAvailableBackendNames,
+  };
+});
 
 import {
   conversationBackend,
@@ -18,6 +47,23 @@ import {
 
 describe('Feishu backend gate', () => {
   beforeEach(() => {
+    coreMocks.getAvailableBackendCapabilities.mockResolvedValue([
+      {
+        name: 'claude',
+        models: [
+          { id: 'sonnet', label: 'Sonnet' },
+        ],
+      },
+      {
+        name: 'codex',
+        models: [],
+      },
+      {
+        name: 'opencode',
+        models: [],
+      },
+    ]);
+    coreMocks.getAvailableBackendNames.mockResolvedValue(['claude', 'opencode']);
     conversationBackend.clear();
     conversationSessions.clear();
     pendingBackendChanges.clear();
@@ -25,8 +71,8 @@ describe('Feishu backend gate', () => {
     threadContinuationSnapshots.clear();
   });
 
-  it('blocks a new conversation until backend selection completes', () => {
-    const result = beginFeishuConversationRun({
+  it('blocks a new conversation until backend selection completes', async () => {
+    const result = await beginFeishuConversationRun({
       conversationId: 'conv-new',
       prompt: 'Build it',
     });
@@ -38,14 +84,15 @@ describe('Feishu backend gate', () => {
     expect(result.card).toEqual(expect.objectContaining({
       type: 'backend-selection',
       conversationId: 'conv-new',
+      backends: ['claude', 'opencode'],
     }));
     expect(conversationBackend.has('conv-new')).toBe(false);
   });
 
-  it('reuses the saved backend for an existing conversation without re-prompting', () => {
+  it('reuses the saved backend for an existing conversation without re-prompting', async () => {
     conversationBackend.set('conv-existing', 'codex');
 
-    const result = beginFeishuConversationRun({
+    const result = await beginFeishuConversationRun({
       conversationId: 'conv-existing',
       prompt: 'Continue',
     });

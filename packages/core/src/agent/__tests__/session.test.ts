@@ -1,5 +1,6 @@
 import { Readable } from 'node:stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { registerBackend, type AgentBackend } from '../backend.js';
 import type { AgentStreamEvent } from '../session.js';
 import { createClaudeArgs, extractEvents, streamAgentSession } from '../session.js';
 import { spawn } from 'node:child_process';
@@ -38,6 +39,14 @@ function createMockChildProcess(
       }
     }),
   };
+}
+
+async function collect(events: AsyncIterable<AgentStreamEvent>): Promise<AgentStreamEvent[]> {
+  const collected: AgentStreamEvent[] = [];
+  for await (const event of events) {
+    collected.push(event);
+  }
+  return collected;
 }
 
 describe('createClaudeArgs', () => {
@@ -238,5 +247,25 @@ describe('streamAgentSession', () => {
     expect(args).toEqual(expect.arrayContaining(['--dangerously-skip-permissions']));
     expect(args.at(-1)).toContain('test prompt');
     expect(args.at(-1)).toContain('```artifacts');
+  });
+
+  it('emits an error when a registered backend is unavailable', async () => {
+    const backend: AgentBackend = {
+      name: 'offline-test-backend',
+      isAvailable: () => false,
+      async *stream() {
+        yield { type: 'done', result: 'should not run' } as const;
+      },
+    };
+
+    registerBackend(backend);
+
+    await expect(collect(streamAgentSession({
+      mode: 'ask',
+      prompt: 'test prompt',
+      backend: 'offline-test-backend',
+    }))).resolves.toEqual([
+      { type: 'error', error: 'Backend not available: offline-test-backend' },
+    ]);
   });
 });

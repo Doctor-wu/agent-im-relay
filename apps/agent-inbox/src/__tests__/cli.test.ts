@@ -39,7 +39,10 @@ vi.mock('../config.js', async (importOriginal) => {
 vi.mock('../setup.js', () => ({
   runSetup: mocks.runSetup,
   getUnconfiguredPlatforms: mocks.getUnconfiguredPlatforms,
-  PLATFORM_LABELS: { discord: 'Discord', feishu: 'Feishu (飞书)' },
+  PLATFORM_LABELS: {
+    discord: 'Discord (Recommended)',
+    feishu: 'Feishu (飞书)',
+  },
   ALL_PLATFORM_IDS: ['discord', 'feishu'],
 }));
 

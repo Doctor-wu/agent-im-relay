@@ -1,4 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  registerBackend,
+  resetBackendRegistryForTests,
+  type AgentBackend,
+} from '../../agent/backend.js';
 
 const { runConversationSession } = vi.hoisted(() => ({
   runConversationSession: vi.fn(),
@@ -34,6 +39,17 @@ async function drainEvents(events: AsyncIterable<unknown>): Promise<void> {
   }
 }
 
+function registerTestBackend(name: string, models: string[]): void {
+  registerBackend({
+    name,
+    isAvailable: () => true,
+    listModels: () => models.map(model => ({ id: model, label: model })),
+    async *stream() {
+      yield { type: 'done', result: `${name}:ok` } as const;
+    },
+  } satisfies AgentBackend);
+}
+
 describe('runConversationWithRenderer', () => {
   beforeEach(() => {
     activeConversations.clear();
@@ -44,6 +60,10 @@ describe('runConversationWithRenderer', () => {
     conversationSessions.clear();
     threadSessionBindings.clear();
     threadContinuationSnapshots.clear();
+    resetBackendRegistryForTests();
+    registerTestBackend('claude', ['sonnet', 'opus']);
+    registerTestBackend('opencode', ['openai/gpt-5']);
+    registerTestBackend('opaque', []);
     runConversationSession.mockReset();
     runConversationSession.mockImplementation(async function* () {
       yield {
@@ -59,6 +79,98 @@ describe('runConversationWithRenderer', () => {
       yield { type: 'status', status: 'cwd:/tmp/auto' };
       yield { type: 'done', result: 'done' };
     });
+  });
+
+  it('clears stale configured models before starting a run', async () => {
+    conversationBackend.set('conv-stale-model', 'opencode');
+    conversationModels.set('conv-stale-model', 'sonnet');
+
+    const render = vi.fn(async (_options, events) => {
+      await drainEvents(events);
+    });
+
+    await runConversationWithRenderer({
+      conversationId: 'conv-stale-model',
+      target: { id: 'channel-stale-model' },
+      prompt: 'hello',
+      defaultCwd: '/tmp/workspace',
+      render,
+    });
+
+    expect(runConversationSession).toHaveBeenCalledWith('conv-stale-model', expect.objectContaining({
+      backend: 'opencode',
+      model: undefined,
+    }));
+    expect(conversationModels.has('conv-stale-model')).toBe(false);
+  });
+
+  it('migrates legacy OpenCode model ids to the canonical provider/modelKey form', async () => {
+    conversationBackend.set('conv-opencode-legacy-model', 'opencode');
+    conversationModels.set('conv-opencode-legacy-model', 'gpt-5');
+
+    const render = vi.fn(async (_options, events) => {
+      await drainEvents(events);
+    });
+
+    await runConversationWithRenderer({
+      conversationId: 'conv-opencode-legacy-model',
+      target: { id: 'channel-opencode-legacy-model' },
+      prompt: 'hello',
+      defaultCwd: '/tmp/workspace',
+      render,
+    });
+
+    expect(runConversationSession).toHaveBeenCalledWith('conv-opencode-legacy-model', expect.objectContaining({
+      backend: 'opencode',
+      model: 'openai/gpt-5',
+    }));
+    expect(conversationModels.get('conv-opencode-legacy-model')).toBe('openai/gpt-5');
+  });
+
+  it('preserves manual Claude model ids even when they are not in the discovered alias list', async () => {
+    conversationBackend.set('conv-claude-manual-model', 'claude');
+    conversationModels.set('conv-claude-manual-model', 'claude-sonnet-4-5');
+
+    const render = vi.fn(async (_options, events) => {
+      await drainEvents(events);
+    });
+
+    await runConversationWithRenderer({
+      conversationId: 'conv-claude-manual-model',
+      target: { id: 'channel-claude-manual-model' },
+      prompt: 'hello',
+      defaultCwd: '/tmp/workspace',
+      render,
+    });
+
+    expect(runConversationSession).toHaveBeenCalledWith('conv-claude-manual-model', expect.objectContaining({
+      backend: 'claude',
+      model: 'claude-sonnet-4-5',
+    }));
+    expect(conversationModels.get('conv-claude-manual-model')).toBe('claude-sonnet-4-5');
+  });
+
+  it('preserves a configured model when the backend does not expose a model list', async () => {
+    conversationBackend.set('conv-opaque-model', 'opaque');
+    conversationModels.set('conv-opaque-model', 'manual-model');
+
+    const render = vi.fn(async (_options, events) => {
+      await drainEvents(events);
+    });
+
+    await runConversationWithRenderer({
+      conversationId: 'conv-opaque-model',
+      target: { id: 'channel-opaque-model' },
+      prompt: 'hello',
+      defaultCwd: '/tmp/workspace',
+      render,
+    });
+
+    expect(runConversationSession).toHaveBeenCalledWith('conv-opaque-model', expect.objectContaining({
+      backend: 'opaque',
+      model: 'manual-model',
+    }));
+    expect(conversationModels.get('conv-opaque-model')).toBe('manual-model');
   });
 
   it('creates a pending sticky binding for the first message in a thread', async () => {

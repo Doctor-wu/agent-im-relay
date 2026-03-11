@@ -29,14 +29,35 @@ export type { AgentSessionFactory, OrchestratorOptions } from './orchestrator.js
 export { buildAgentPrompt, streamAgentSession, extractEvents, createClaudeArgs } from './agent/session.js';
 export { runConversationSession, interruptConversationRun, isConversationRunning, resetConversationRuntimeForTests } from './agent/runtime.js';
 export type { AgentEnvironment, AgentStreamEvent, AgentSessionOptions } from './agent/session.js';
-export type { BackendName, AgentBackend } from './agent/backend.js';
+export {
+  getAvailableBackendCapabilities,
+  getAvailableBackendNames,
+  getAvailableBackends,
+  getBackend,
+  getBackendSupportedModels,
+  getRegisteredBackendNames,
+  isBackendCommandAvailable,
+  isBackendModelSupported,
+  isRegisteredBackendName,
+  resolveBackendModelId,
+  registerBackend,
+  resetBackendRegistryForTests,
+} from './agent/backend.js';
+export type {
+  AgentBackend,
+  AgentBackendCapability,
+  BackendModel,
+  BackendName,
+} from './agent/backend.js';
 export { toolsForMode } from './agent/tools.js';
 export type { AgentMode } from './agent/tools.js';
 export { runConversationWithRenderer } from './runtime/conversation-runner.js';
 export type { ConversationRunPhase } from './runtime/conversation-runner.js';
 export {
   applyConversationControlAction,
+  applyMessageControlDirectives,
   evaluateConversationRunRequest,
+  preprocessConversationMessage,
   runPlatformConversation,
 } from './platform/conversation.js';
 export type {
@@ -44,6 +65,10 @@ export type {
   ConversationControlResult,
   ConversationRunEvaluation,
 } from './platform/conversation.js';
+export type {
+  MessageControlDirective,
+  PreprocessedConversationMessage,
+} from './platform/message-preprocessing.js';
 export { applySessionControlCommand } from './session-control/controller.js';
 export type { SessionControlCommand, SessionControlResult } from './session-control/types.js';
 export {

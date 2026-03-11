@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { runConversationSession } from '../agent/runtime.js';
 import {
+  getBackendSupportedModels,
+  isBackendModelSupported,
+  resolveBackendModelId,
+} from '../agent/backend.js';
+import {
   activeConversations,
   conversationBackend,
   conversationCwd,
@@ -83,6 +88,32 @@ function resolveBackendName(
   return existingBackend ?? 'claude';
 }
 
+function resolveConfiguredModel(
+  conversationId: string,
+  backendName: BackendName,
+): string | undefined {
+  const configuredModel = conversationModels.get(conversationId);
+  if (!configuredModel) {
+    return undefined;
+  }
+
+  const supportedModels = getBackendSupportedModels(backendName);
+  if (supportedModels.length === 0) {
+    return configuredModel;
+  }
+
+  const resolvedModel = resolveBackendModelId(backendName, configuredModel);
+  if (resolvedModel) {
+    if (resolvedModel !== configuredModel) {
+      conversationModels.set(conversationId, resolvedModel);
+    }
+    return resolvedModel;
+  }
+
+  conversationModels.delete(conversationId);
+  return undefined;
+}
+
 function inferStopReason(error: string): ThreadContinuationStopReason {
   if (/timed out/i.test(error)) {
     return 'timeout';
@@ -152,6 +183,7 @@ export async function runConversationWithRenderer<TTarget, TTrigger = unknown>(
       prompt: options.prompt,
       sourceMessageId: options.sourceMessageId,
     }) ?? { prompt: options.prompt };
+    const model = resolveConfiguredModel(conversationId, backendName);
     openThreadSessionBinding({ conversationId, backend: backendName });
     const resumeMode = resolveThreadResumeMode(conversationId);
 
@@ -167,7 +199,7 @@ export async function runConversationWithRenderer<TTarget, TTrigger = unknown>(
     const events = runConversationSession(conversationId, {
       mode: options.mode ?? 'code',
       prompt,
-      model: conversationModels.get(conversationId),
+      model,
       effort: conversationEffort.get(conversationId),
       cwd: runCwd,
       backend: options.backend ?? backendName,

@@ -8,6 +8,15 @@ afterEach(() => {
 });
 
 describe('core config', () => {
+  it('does not expose relay-level model config', async () => {
+    vi.stubEnv('CLAUDE_MODEL', 'sonnet');
+
+    const { readCoreConfig } = await import('../config.js');
+    const config = readCoreConfig(process.env);
+
+    expect('claudeModel' in config).toBe(false);
+  });
+
   it('reflects environment overrides even after the module is imported', async () => {
     const { config } = await import('../config.js');
 

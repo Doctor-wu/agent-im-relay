@@ -2,9 +2,22 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { processedEventIds, processedMessages } from '@agent-im-relay/core';
+import { conversationBackend, processedEventIds, processedMessages } from '@agent-im-relay/core';
 
 const coreMocks = vi.hoisted(() => ({
+  getAvailableBackendCapabilities: vi.fn(async () => [
+    {
+      name: 'claude',
+      models: [
+        { id: 'sonnet', label: 'Sonnet' },
+      ],
+    },
+    {
+      name: 'opencode',
+      models: [],
+    },
+  ]),
+  getAvailableBackendNames: vi.fn(async () => ['claude', 'opencode']),
   initState: vi.fn(async () => undefined),
   persistState: vi.fn(async () => undefined),
 }));
@@ -20,6 +33,8 @@ vi.mock('@agent-im-relay/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@agent-im-relay/core')>();
   return {
     ...actual,
+    getAvailableBackendCapabilities: coreMocks.getAvailableBackendCapabilities,
+    getAvailableBackendNames: coreMocks.getAvailableBackendNames,
     initState: coreMocks.initState,
     persistState: coreMocks.persistState,
   };
@@ -86,11 +101,25 @@ function extractPostParagraphTexts(content: string): string[] {
 
 afterEach(async () => {
   coreMocks.initState.mockClear();
+  coreMocks.getAvailableBackendCapabilities.mockResolvedValue([
+    {
+      name: 'claude',
+      models: [
+        { id: 'sonnet', label: 'Sonnet' },
+      ],
+    },
+    {
+      name: 'opencode',
+      models: [],
+    },
+  ]);
+  coreMocks.getAvailableBackendNames.mockResolvedValue(['claude', 'opencode']);
   coreMocks.persistState.mockClear();
   runtimeMocks.handleFeishuControlAction.mockReset();
   runtimeMocks.queuePendingFeishuAttachments.mockReset();
   runtimeMocks.resumePendingFeishuRun.mockReset();
   runtimeMocks.runFeishuConversation.mockReset();
+  conversationBackend.clear();
   processedEventIds.clear();
   processedMessages.clear();
   resetFeishuSessionChatsForTests();
@@ -187,6 +216,69 @@ describe('Feishu long-connection events', () => {
       conversationId: 'chat-1',
       prompt: 'hello bot',
       mode: 'code',
+    }));
+  });
+
+  it('applies backend control tags before dispatching a Feishu run', async () => {
+    runtimeMocks.runFeishuConversation.mockResolvedValue({ kind: 'started' });
+    const router = createFeishuEventRouter(baseConfig, {
+      client: {
+        replyMessage: vi.fn(async () => undefined),
+        sendMessage: vi.fn(async () => undefined),
+        sendCard: vi.fn(async () => undefined),
+        uploadFileContent: vi.fn(async () => 'file-key'),
+        sendFileMessage: vi.fn(async () => undefined),
+        downloadMessageResource: vi.fn(async () => new Response()),
+      } as never,
+    });
+
+    await router.handleMessageEvent({
+      message: {
+        message_id: 'message-control-run-1',
+        chat_id: 'chat-control-run-1',
+        chat_type: 'group',
+        message_type: 'text',
+        mentions: [{ id: { open_id: 'bot-open-id' }, name: 'relay-bot' }],
+        content: JSON.stringify({ text: '@_user_1 <set-backend>codex</set-backend>\nship it' }),
+      },
+    });
+
+    expect(conversationBackend.get('chat-control-run-1')).toBe('codex');
+    expect(runtimeMocks.runFeishuConversation).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 'chat-control-run-1',
+      prompt: 'ship it',
+      mode: 'code',
+    }));
+  });
+
+  it('applies standalone backend control tags without prompting for missing text', async () => {
+    const replyMessage = vi.fn(async () => undefined);
+    const router = createFeishuEventRouter(baseConfig, {
+      client: {
+        replyMessage,
+        sendMessage: vi.fn(async () => undefined),
+        sendCard: vi.fn(async () => undefined),
+        uploadFileContent: vi.fn(async () => 'file-key'),
+        sendFileMessage: vi.fn(async () => undefined),
+        downloadMessageResource: vi.fn(async () => new Response()),
+      } as never,
+    });
+
+    await router.handleMessageEvent({
+      message: {
+        message_id: 'message-control-only-1',
+        chat_id: 'chat-control-only-1',
+        chat_type: 'group',
+        message_type: 'text',
+        mentions: [{ id: { open_id: 'bot-open-id' }, name: 'relay-bot' }],
+        content: JSON.stringify({ text: '@_user_1 <set-backend>codex</set-backend>' }),
+      },
+    });
+
+    expect(conversationBackend.get('chat-control-only-1')).toBe('codex');
+    expect(runtimeMocks.runFeishuConversation).not.toHaveBeenCalled();
+    expect(replyMessage).not.toHaveBeenCalledWith(expect.objectContaining({
+      content: JSON.stringify({ text: 'Please include a prompt after mentioning the bot.' }),
     }));
   });
 
@@ -364,6 +456,63 @@ describe('Feishu long-connection events', () => {
       },
       prompt: 'hello bot',
       mode: 'code',
+    }));
+  });
+
+  it('creates a session group for standalone backend control tags in private chats', async () => {
+    const createSessionChat = vi.fn(async () => ({
+      chatId: 'session-chat-1',
+      name: 'Session · New session',
+    }));
+    const sendSharedChatMessage = vi.fn(async () => 'message-share-1');
+    const sendMessage = vi.fn()
+      .mockResolvedValueOnce('message-ref-1');
+    const replyMessage = vi.fn(async () => undefined);
+    const router = createFeishuEventRouter(baseConfig, {
+      client: {
+        createSessionChat,
+        sendSharedChatMessage,
+        replyMessage,
+        sendMessage,
+        sendCard: vi.fn(async () => 'message-card-1'),
+        uploadFileContent: vi.fn(async () => 'file-key'),
+        sendFileMessage: vi.fn(async () => undefined),
+        downloadMessageResource: vi.fn(async () => new Response()),
+      } as never,
+    });
+
+    await router.handleMessageEvent({
+      sender: {
+        sender_id: {
+          open_id: 'ou_user_1',
+        },
+      },
+      message: {
+        message_id: 'message-control-only-p2p-1',
+        chat_id: 'p2p-chat-1',
+        chat_type: 'p2p',
+        message_type: 'text',
+        content: JSON.stringify({ text: '<set-backend>codex</set-backend>' }),
+      },
+    });
+
+    expect(createSessionChat).toHaveBeenCalledWith(expect.objectContaining({
+      userOpenId: 'ou_user_1',
+      name: 'Session · New session',
+    }));
+    expect(sendSharedChatMessage).toHaveBeenCalledWith({
+      receiveId: 'p2p-chat-1',
+      chatId: 'session-chat-1',
+    });
+    expect(sendMessage).toHaveBeenCalledOnce();
+    expect(extractPostParagraphTexts(sendMessage.mock.calls[0]![0].content)).toEqual([
+      '【Common commands】',
+      '/interrupt - stop the current run',
+    ]);
+    expect(conversationBackend.get('session-chat-1')).toBe('codex');
+    expect(runtimeMocks.runFeishuConversation).not.toHaveBeenCalled();
+    expect(replyMessage).not.toHaveBeenCalledWith(expect.objectContaining({
+      content: JSON.stringify({ text: 'Please include a prompt after mentioning the bot.' }),
     }));
   });
 
@@ -999,6 +1148,7 @@ describe('Feishu long-connection events', () => {
   it('opens the expanded control panel when the anchor control action is clicked', async () => {
     runtimeMocks.handleFeishuControlAction.mockResolvedValue({ kind: 'applied' });
     runtimeMocks.resumePendingFeishuRun.mockResolvedValue({ kind: 'none' });
+    conversationBackend.set('conv-1', 'claude');
     const sendCard = vi.fn(async () => undefined);
 
     const router = createFeishuEventRouter(baseConfig, {
@@ -1031,9 +1181,8 @@ describe('Feishu long-connection events', () => {
     expect(buttonTexts).toEqual([
       'Done',
       'Claude',
-      'Codex',
-      'Claude 3.7',
-      'GPT-5 Codex',
+      'OpenCode',
+      'Sonnet',
       'Low',
       'Medium',
       'High',
@@ -1068,6 +1217,8 @@ describe('Feishu long-connection events', () => {
       } as never,
     });
 
+    conversationBackend.set('session-chat-1', 'claude');
+
     await router.handleMenuActionEvent({
       event_key: 'open-session-controls',
       chat_id: 'session-chat-1',
@@ -1082,9 +1233,8 @@ describe('Feishu long-connection events', () => {
     expect(buttonTexts).toEqual([
       'Done',
       'Claude',
-      'Codex',
-      'Claude 3.7',
-      'GPT-5 Codex',
+      'OpenCode',
+      'Sonnet',
       'Low',
       'Medium',
       'High',

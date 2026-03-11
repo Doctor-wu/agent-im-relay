@@ -1,7 +1,15 @@
+import { readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { config } from '../../config.js';
-import { registerBackend, type AgentBackend } from '../backend.js';
+import {
+  isBackendCommandAvailable,
+  registerBackend,
+  type AgentBackend,
+  type BackendModel,
+} from '../backend.js';
 import { buildEnvironment } from '../environment.js';
 import type { AgentSessionOptions, AgentStreamEvent } from '../session.js';
 import { toolsForMode } from '../tools.js';
@@ -173,9 +181,8 @@ export function extractEvents(
 export function createClaudeArgs(options: AgentSessionOptions): string[] {
   const args = ['-p', '--output-format', 'stream-json', '--verbose'];
 
-  const model = options.model ?? config.claudeModel;
-  if (model) {
-    args.push('--model', model);
+  if (options.model) {
+    args.push('--model', options.model);
   }
 
   if (options.effort) {
@@ -199,6 +206,31 @@ function toErrorMessage(error: unknown): string {
   return String(error);
 }
 
+function readClaudeConfiguredModels(path: string): BackendModel[] {
+  try {
+    const raw = JSON.parse(readFileSync(path, 'utf8')) as { model?: string };
+    return typeof raw.model === 'string'
+      ? [{ id: raw.model, label: raw.model }]
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function getSupportedClaudeModels(): BackendModel[] {
+  const aliases = ['sonnet', 'opus', 'haiku', 'sonnet1m'].map(model => ({
+    id: model,
+    label: model,
+  }));
+  const base = join(homedir(), '.claude');
+
+  return [
+    ...aliases,
+    ...readClaudeConfiguredModels(join(base, 'settings.json')),
+    ...readClaudeConfiguredModels(join(base, 'settings copy.json')),
+  ];
+}
+
 async function* streamClaude(options: AgentSessionOptions): AsyncGenerator<AgentStreamEvent, void> {
   const cwd = options.cwd ?? config.claudeCwd;
   yield {
@@ -208,7 +240,7 @@ async function* streamClaude(options: AgentSessionOptions): AsyncGenerator<Agent
       options,
       cwd,
       options.cwd ? 'explicit' : 'default',
-      options.model ?? config.claudeModel,
+      options.model,
     ),
   };
 
@@ -316,6 +348,8 @@ async function* streamClaude(options: AgentSessionOptions): AsyncGenerator<Agent
 
 export const claudeBackend: AgentBackend = {
   name: 'claude',
+  isAvailable: () => isBackendCommandAvailable(config.claudeBin),
+  listModels: getSupportedClaudeModels,
   stream: streamClaude,
 };
 
