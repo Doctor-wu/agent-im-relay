@@ -16,6 +16,13 @@ const coreMocks = vi.hoisted(() => ({
     },
   ]),
   getAvailableBackendNames: vi.fn(async () => ['claude', 'opencode']),
+  resolveBackendModelId: vi.fn((backend: string, model: string) => {
+    if (backend === 'claude' && model === 'sonnet') return 'sonnet';
+    if (backend === 'opencode' && (model === 'gpt-5' || model === 'openai/gpt-5')) {
+      return 'openai/gpt-5';
+    }
+    return undefined;
+  }),
   runPlatformConversation: vi.fn(),
 }));
 
@@ -27,6 +34,7 @@ vi.mock('@agent-im-relay/core', async (importOriginal) => {
     getAvailableBackendCapabilities: coreMocks.getAvailableBackendCapabilities,
     evaluateConversationRunRequest: coreMocks.evaluateConversationRunRequest,
     getAvailableBackendNames: coreMocks.getAvailableBackendNames,
+    resolveBackendModelId: coreMocks.resolveBackendModelId,
     runPlatformConversation: coreMocks.runPlatformConversation,
   };
 });
@@ -74,6 +82,14 @@ describe('Feishu runtime', () => {
       },
     ]);
     coreMocks.getAvailableBackendNames.mockResolvedValue(['claude', 'opencode']);
+    coreMocks.resolveBackendModelId.mockReset();
+    coreMocks.resolveBackendModelId.mockImplementation((backend: string, model: string) => {
+      if (backend === 'claude' && model === 'sonnet') return 'sonnet';
+      if (backend === 'opencode' && (model === 'gpt-5' || model === 'openai/gpt-5')) {
+        return 'openai/gpt-5';
+      }
+      return undefined;
+    });
     coreMocks.runPlatformConversation.mockReset();
 
     coreMocks.evaluateConversationRunRequest.mockReturnValue({
@@ -310,6 +326,55 @@ describe('Feishu runtime', () => {
       .map((button: Record<string, any>) => button.text.content);
 
     expect(buttonTexts).toEqual(['Sonnet']);
+  });
+
+  it('does not re-block legacy OpenCode models that can be normalized to provider/modelKey', async () => {
+    coreMocks.evaluateConversationRunRequest.mockReturnValueOnce({
+      kind: 'ready',
+      conversationId: 'conv-opencode-legacy',
+      backend: 'opencode',
+    });
+    coreMocks.getAvailableBackendCapabilities.mockResolvedValueOnce([
+      {
+        name: 'claude',
+        models: [
+          { id: 'sonnet', label: 'Sonnet' },
+        ],
+      },
+      {
+        name: 'opencode',
+        models: [
+          { id: 'openai/gpt-5', label: 'openai/gpt-5' },
+        ],
+      },
+    ]);
+    conversationBackend.set('conv-opencode-legacy', 'opencode');
+    conversationModels.set('conv-opencode-legacy', 'gpt-5');
+
+    const transport = {
+      sendText: vi.fn(async () => undefined),
+      sendCard: vi.fn(async () => undefined),
+      updateCard: vi.fn(async () => undefined),
+      uploadFile: vi.fn(async () => undefined),
+    };
+
+    await expect(runFeishuConversation({
+      conversationId: 'conv-opencode-legacy',
+      target: {
+        chatId: 'chat-1',
+      },
+      prompt: 'ship it',
+      mode: 'code',
+      transport,
+      defaultCwd: process.cwd(),
+    })).resolves.toEqual({ kind: 'started' });
+
+    expect(coreMocks.runPlatformConversation).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 'conv-opencode-legacy',
+      backend: 'opencode',
+    }));
+    expect(conversationModels.get('conv-opencode-legacy')).toBe('openai/gpt-5');
+    expect(transport.sendCard).not.toHaveBeenCalled();
   });
 
   it('returns an error when backend selection is required but no backends are available', async () => {

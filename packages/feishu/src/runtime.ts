@@ -6,6 +6,7 @@ import {
   evaluateConversationRunRequest,
   getAvailableBackendCapabilities,
   getAvailableBackendNames,
+  resolveBackendModelId,
   runPlatformConversation,
   type AgentStreamEvent,
   type BackendModel,
@@ -82,8 +83,15 @@ async function getRequiredModelSelectionCard(
 
   const models = await getBackendModels(backend);
   const selectedModel = conversationModels.get(conversationId);
-  const requiresModelSelection = models.length > 0
-    && (!selectedModel || !models.some(model => model.id === selectedModel));
+  const normalizedModel = selectedModel
+    ? resolveBackendModelId(backend, selectedModel)
+    : undefined;
+
+  if (selectedModel && normalizedModel && normalizedModel !== selectedModel) {
+    conversationModels.set(conversationId, normalizedModel);
+  }
+
+  const requiresModelSelection = models.length > 0 && !normalizedModel;
 
   return requiresModelSelection
     ? buildModelSelectionCard(conversationId, backend, models)

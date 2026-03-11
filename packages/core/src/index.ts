@@ -39,6 +39,7 @@ export {
   isBackendCommandAvailable,
   isBackendModelSupported,
   isRegisteredBackendName,
+  resolveBackendModelId,
   registerBackend,
   resetBackendRegistryForTests,
 } from './agent/backend.js';

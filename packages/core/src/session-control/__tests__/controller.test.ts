@@ -222,6 +222,46 @@ describe('session control controller', () => {
     expect(conversationBackend.get('conv-new-backend')).toBe('codex');
   });
 
+  it('clears stale models when switching to a new backend instead of applying legacy suffix migration', () => {
+    conversationBackend.set('conv-opencode-switch', 'codex');
+    conversationModels.set('conv-opencode-switch', 'gpt-5');
+    resetBackendRegistryForTests();
+    registerTestBackend('codex', ['gpt-5']);
+    registerTestBackend('opencode', ['openai/gpt-5']);
+
+    expect(applySessionControlCommand({
+      conversationId: 'conv-opencode-switch',
+      type: 'backend',
+      value: 'opencode',
+    })).toEqual({
+      kind: 'backend',
+      conversationId: 'conv-opencode-switch',
+      stateChanged: true,
+      persist: false,
+      clearContinuation: false,
+      requiresConfirmation: true,
+      summaryKey: 'backend.confirm',
+      currentBackend: 'codex',
+      requestedBackend: 'opencode',
+    });
+
+    expect(applySessionControlCommand({
+      conversationId: 'conv-opencode-switch',
+      type: 'confirm-backend',
+      value: 'opencode',
+    })).toEqual({
+      kind: 'confirm-backend',
+      conversationId: 'conv-opencode-switch',
+      backend: 'opencode',
+      stateChanged: true,
+      persist: true,
+      clearContinuation: false,
+      requiresConfirmation: false,
+      summaryKey: 'backend.updated',
+    });
+    expect(conversationModels.has('conv-opencode-switch')).toBe(false);
+  });
+
   it('confirms a pending backend switch and clears continuation state', () => {
     conversationBackend.set('conv-confirm', 'claude');
     conversationSessions.set('conv-confirm', 'session-2');

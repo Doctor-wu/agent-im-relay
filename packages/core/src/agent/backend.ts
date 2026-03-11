@@ -118,7 +118,13 @@ export function resolveBackendModelId(name: BackendName, model: string): string 
 }
 
 export function isBackendModelSupported(name: BackendName, model: string): boolean {
-  return resolveBackendModelId(name, model) !== undefined;
+  const requestedModel = model.trim();
+  if (!requestedModel) {
+    return false;
+  }
+
+  const models = getBackendSupportedModels(name);
+  return models.length > 0 && models.some(candidate => candidate.id === requestedModel);
 }
 
 export function resetBackendRegistryForTests(): void {
