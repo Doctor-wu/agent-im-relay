@@ -276,6 +276,8 @@ function mergeScopedObjectRecord<T extends object>(
   return merged;
 }
 
+let writeQueue: Promise<void> = Promise.resolve();
+
 async function readExistingPersistedState(): Promise<Partial<PersistedState>> {
   try {
     const raw = await readFile(config.stateFile, 'utf-8');
@@ -341,6 +343,26 @@ export async function loadState(
 }
 
 export async function saveState(
+  sessions: Map<string, string>,
+  models: Map<string, string>,
+  effort: Map<string, string>,
+  cwd: Map<string, string>,
+  backend: Map<string, string>,
+  threadSessionBindings: Map<string, ThreadSessionBinding>,
+  threadContinuationSnapshots: Map<string, ThreadContinuationSnapshot>,
+  savedCwdList: string[],
+  options: StateScopeOptions = {},
+): Promise<void> {
+  const task = writeQueue.then(() => doSaveState(
+    sessions, models, effort, cwd, backend,
+    threadSessionBindings, threadContinuationSnapshots,
+    savedCwdList, options,
+  ));
+  writeQueue = task.catch(() => {});
+  return task;
+}
+
+async function doSaveState(
   sessions: Map<string, string>,
   models: Map<string, string>,
   effort: Map<string, string>,
