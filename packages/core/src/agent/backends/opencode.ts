@@ -155,9 +155,10 @@ function getSupportedOpencodeModels(): BackendModel[] {
   try {
     const raw = JSON.parse(readFileSync(join(homedir(), '.config', 'opencode', 'opencode.json'), 'utf8')) as {
       provider?: Record<string, { models?: Record<string, { name?: string }> }>;
+      model?: string;
     };
 
-    return Object.entries(raw.provider ?? {}).flatMap(([providerName, provider]) => {
+    const discovered = Object.entries(raw.provider ?? {}).flatMap(([providerName, provider]) => {
       if (!provider.models || typeof provider.models !== 'object') {
         return [];
       }
@@ -174,6 +175,14 @@ function getSupportedOpencodeModels(): BackendModel[] {
         }];
       });
     });
+
+    if (discovered.length > 0) {
+      return discovered;
+    }
+
+    return typeof raw.model === 'string'
+      ? [{ id: raw.model, label: raw.model }]
+      : [];
   } catch {
     return [];
   }

@@ -91,9 +91,34 @@ export async function getAvailableBackendCapabilities(): Promise<AgentBackendCap
   }));
 }
 
-export function isBackendModelSupported(name: BackendName, model: string): boolean {
+export function resolveBackendModelId(name: BackendName, model: string): string | undefined {
+  const requestedModel = model.trim();
+  if (!requestedModel) {
+    return undefined;
+  }
+
   const models = getBackendSupportedModels(name);
-  return models.length > 0 && models.some(candidate => candidate.id === model);
+  if (models.length === 0) {
+    return undefined;
+  }
+
+  const exactMatch = models.find(candidate => candidate.id === requestedModel);
+  if (exactMatch) {
+    return exactMatch.id;
+  }
+
+  if (name === 'opencode' && !requestedModel.includes('/')) {
+    const suffixMatches = models.filter(candidate => candidate.id.endsWith(`/${requestedModel}`));
+    if (suffixMatches.length === 1) {
+      return suffixMatches[0]!.id;
+    }
+  }
+
+  return undefined;
+}
+
+export function isBackendModelSupported(name: BackendName, model: string): boolean {
+  return resolveBackendModelId(name, model) !== undefined;
 }
 
 export function resetBackendRegistryForTests(): void {

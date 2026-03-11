@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { runConversationSession } from '../agent/runtime.js';
-import { getBackendSupportedModels, isBackendModelSupported } from '../agent/backend.js';
+import {
+  getBackendSupportedModels,
+  isBackendModelSupported,
+  resolveBackendModelId,
+} from '../agent/backend.js';
 import {
   activeConversations,
   conversationBackend,
@@ -98,8 +102,12 @@ function resolveConfiguredModel(
     return configuredModel;
   }
 
-  if (isBackendModelSupported(backendName, configuredModel)) {
-    return configuredModel;
+  const resolvedModel = resolveBackendModelId(backendName, configuredModel);
+  if (resolvedModel) {
+    if (resolvedModel !== configuredModel) {
+      conversationModels.set(conversationId, resolvedModel);
+    }
+    return resolvedModel;
   }
 
   conversationModels.delete(conversationId);

@@ -104,6 +104,29 @@ describe('runConversationWithRenderer', () => {
     expect(conversationModels.has('conv-stale-model')).toBe(false);
   });
 
+  it('migrates legacy OpenCode model ids to the canonical provider/modelKey form', async () => {
+    conversationBackend.set('conv-opencode-legacy-model', 'opencode');
+    conversationModels.set('conv-opencode-legacy-model', 'gpt-5');
+
+    const render = vi.fn(async (_options, events) => {
+      await drainEvents(events);
+    });
+
+    await runConversationWithRenderer({
+      conversationId: 'conv-opencode-legacy-model',
+      target: { id: 'channel-opencode-legacy-model' },
+      prompt: 'hello',
+      defaultCwd: '/tmp/workspace',
+      render,
+    });
+
+    expect(runConversationSession).toHaveBeenCalledWith('conv-opencode-legacy-model', expect.objectContaining({
+      backend: 'opencode',
+      model: 'openai/gpt-5',
+    }));
+    expect(conversationModels.get('conv-opencode-legacy-model')).toBe('openai/gpt-5');
+  });
+
   it('preserves a configured model when the backend does not expose a model list', async () => {
     conversationBackend.set('conv-opaque-model', 'opaque');
     conversationModels.set('conv-opaque-model', 'manual-model');

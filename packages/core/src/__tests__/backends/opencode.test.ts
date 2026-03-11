@@ -79,6 +79,18 @@ describe('opencode backend', () => {
     ]);
   });
 
+  it('falls back to the top-level model when provider metadata is absent', async () => {
+    readFileSyncMock.mockReturnValue(JSON.stringify({
+      model: 'openai/gpt-5',
+    }) as any);
+
+    const { opencodeBackend } = await import('../../agent/backends/opencode.js');
+
+    expect(opencodeBackend.listModels?.()).toEqual([
+      { id: 'openai/gpt-5', label: 'openai/gpt-5' },
+    ]);
+  });
+
   it('builds run arguments for a fresh session', () => {
     const args = createOpencodeArgs({
       mode: 'code',
