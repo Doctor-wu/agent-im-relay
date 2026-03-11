@@ -2,11 +2,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   getAvailableBackendCapabilities,
   getAvailableBackendNames,
-  resolveBackendModelId,
   getRegisteredBackendNames,
+  isBackendModelSupported,
   isRegisteredBackendName,
   registerBackend,
   resetBackendRegistryForTests,
+  resolveBackendModelId,
   type AgentBackend,
 } from '../backend.js';
 
@@ -73,5 +74,16 @@ describe('backend registry', () => {
     expect(resolveBackendModelId('opencode', 'anthropic/claude-3.7-sonnet')).toBe(
       'openrouter/anthropic/claude-3.7-sonnet',
     );
+  });
+
+  it('preserves manual Claude concrete model ids via compatibility resolution', () => {
+    registerBackend(createBackend('claude', true, [
+      { id: 'sonnet', label: 'Sonnet' },
+      { id: 'opus', label: 'Opus' },
+    ]));
+
+    expect(resolveBackendModelId('claude', 'claude-sonnet-4-5')).toBe('claude-sonnet-4-5');
+    expect(isBackendModelSupported('claude', 'claude-sonnet-4-5')).toBe(false);
+    expect(isBackendModelSupported('claude', 'claude-sonnet-4-5', { allowCompatibility: true })).toBe(true);
   });
 });

@@ -13,6 +13,10 @@ export interface AgentBackendCapability {
   models: BackendModel[];
 }
 
+type BackendModelResolutionOptions = {
+  allowCompatibility?: boolean;
+};
+
 export interface AgentBackend {
   readonly name: BackendName;
   isAvailable(): boolean | Promise<boolean>;
@@ -91,7 +95,30 @@ export async function getAvailableBackendCapabilities(): Promise<AgentBackendCap
   }));
 }
 
-export function resolveBackendModelId(name: BackendName, model: string): string | undefined {
+function resolveCompatibleBackendModelId(
+  name: BackendName,
+  requestedModel: string,
+  models: BackendModel[],
+): string | undefined {
+  if (name === 'claude' && requestedModel.startsWith('claude-')) {
+    return requestedModel;
+  }
+
+  if (name === 'opencode') {
+    const suffixMatches = models.filter(candidate => candidate.id.endsWith(`/${requestedModel}`));
+    if (suffixMatches.length === 1) {
+      return suffixMatches[0]!.id;
+    }
+  }
+
+  return undefined;
+}
+
+export function resolveBackendModelId(
+  name: BackendName,
+  model: string,
+  options: BackendModelResolutionOptions = {},
+): string | undefined {
   const requestedModel = model.trim();
   if (!requestedModel) {
     return undefined;
@@ -107,24 +134,40 @@ export function resolveBackendModelId(name: BackendName, model: string): string 
     return exactMatch.id;
   }
 
-  if (name === 'opencode') {
-    const suffixMatches = models.filter(candidate => candidate.id.endsWith(`/${requestedModel}`));
-    if (suffixMatches.length === 1) {
-      return suffixMatches[0]!.id;
+  if (options.allowCompatibility ?? true) {
+    const compatibleMatch = resolveCompatibleBackendModelId(name, requestedModel, models);
+    if (compatibleMatch) {
+      return compatibleMatch;
     }
   }
 
   return undefined;
 }
 
-export function isBackendModelSupported(name: BackendName, model: string): boolean {
+export function isBackendModelSupported(
+  name: BackendName,
+  model: string,
+  options: BackendModelResolutionOptions = {},
+): boolean {
   const requestedModel = model.trim();
   if (!requestedModel) {
     return false;
   }
 
   const models = getBackendSupportedModels(name);
-  return models.length > 0 && models.some(candidate => candidate.id === requestedModel);
+  if (models.length === 0) {
+    return false;
+  }
+
+  if (models.some(candidate => candidate.id === requestedModel)) {
+    return true;
+  }
+
+  if (!(options.allowCompatibility ?? false)) {
+    return false;
+  }
+
+  return resolveCompatibleBackendModelId(name, requestedModel, models) !== undefined;
 }
 
 export function resetBackendRegistryForTests(): void {

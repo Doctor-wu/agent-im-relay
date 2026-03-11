@@ -222,6 +222,29 @@ describe('session control controller', () => {
     expect(conversationBackend.get('conv-new-backend')).toBe('codex');
   });
 
+  it('migrates legacy OpenCode models when re-selecting the same backend', () => {
+    conversationBackend.set('conv-opencode-refresh', 'opencode');
+    conversationModels.set('conv-opencode-refresh', 'gpt-5');
+    resetBackendRegistryForTests();
+    registerTestBackend('opencode', ['openai/gpt-5']);
+
+    expect(applySessionControlCommand({
+      conversationId: 'conv-opencode-refresh',
+      type: 'backend',
+      value: 'opencode',
+    })).toEqual({
+      kind: 'backend',
+      conversationId: 'conv-opencode-refresh',
+      stateChanged: true,
+      persist: true,
+      clearContinuation: false,
+      requiresConfirmation: false,
+      summaryKey: 'backend.updated',
+      backend: 'opencode',
+    });
+    expect(conversationModels.get('conv-opencode-refresh')).toBe('openai/gpt-5');
+  });
+
   it('clears stale models when switching to a new backend instead of applying legacy suffix migration', () => {
     conversationBackend.set('conv-opencode-switch', 'codex');
     conversationModels.set('conv-opencode-switch', 'gpt-5');

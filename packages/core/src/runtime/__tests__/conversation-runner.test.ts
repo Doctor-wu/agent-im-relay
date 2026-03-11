@@ -127,6 +127,29 @@ describe('runConversationWithRenderer', () => {
     expect(conversationModels.get('conv-opencode-legacy-model')).toBe('openai/gpt-5');
   });
 
+  it('preserves manual Claude model ids even when they are not in the discovered alias list', async () => {
+    conversationBackend.set('conv-claude-manual-model', 'claude');
+    conversationModels.set('conv-claude-manual-model', 'claude-sonnet-4-5');
+
+    const render = vi.fn(async (_options, events) => {
+      await drainEvents(events);
+    });
+
+    await runConversationWithRenderer({
+      conversationId: 'conv-claude-manual-model',
+      target: { id: 'channel-claude-manual-model' },
+      prompt: 'hello',
+      defaultCwd: '/tmp/workspace',
+      render,
+    });
+
+    expect(runConversationSession).toHaveBeenCalledWith('conv-claude-manual-model', expect.objectContaining({
+      backend: 'claude',
+      model: 'claude-sonnet-4-5',
+    }));
+    expect(conversationModels.get('conv-claude-manual-model')).toBe('claude-sonnet-4-5');
+  });
+
   it('preserves a configured model when the backend does not expose a model list', async () => {
     conversationBackend.set('conv-opaque-model', 'opaque');
     conversationModels.set('conv-opaque-model', 'manual-model');

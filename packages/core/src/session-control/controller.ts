@@ -1,4 +1,4 @@
-import { isBackendModelSupported } from '../agent/backend.js';
+import { isBackendModelSupported, resolveBackendModelId } from '../agent/backend.js';
 import { interruptConversationRun } from '../agent/runtime.js';
 import { closeThreadSession } from '../thread-session/manager.js';
 import {
@@ -26,18 +26,25 @@ function updateStringMap(
 function clearModelIfUnsupported(
   conversationId: string,
   backend: string,
-): { cleared: boolean } {
+  options: { allowCompatibility?: boolean } = {},
+): { changed: boolean } {
   const model = conversationModels.get(conversationId);
   if (!model) {
-    return { cleared: false };
+    return { changed: false };
   }
 
-  if (isBackendModelSupported(backend, model)) {
-    return { cleared: false };
+  if (!isBackendModelSupported(backend, model, options)) {
+    conversationModels.delete(conversationId);
+    return { changed: true };
   }
 
-  conversationModels.delete(conversationId);
-  return { cleared: true };
+  const resolvedModel = resolveBackendModelId(backend, model, options) ?? model.trim();
+  if (resolvedModel !== model) {
+    conversationModels.set(conversationId, resolvedModel);
+    return { changed: true };
+  }
+
+  return { changed: false };
 }
 
 export function applySessionControlCommand(command: SessionControlCommand): SessionControlResult {
@@ -90,13 +97,15 @@ export function applySessionControlCommand(command: SessionControlCommand): Sess
     const hadPendingChange = pendingBackendChanges.delete(command.conversationId);
     const backendChanged = currentBackend !== command.value;
     conversationBackend.set(command.conversationId, command.value);
-    const { cleared } = clearModelIfUnsupported(command.conversationId, command.value);
+    const { changed: modelChanged } = clearModelIfUnsupported(command.conversationId, command.value, {
+      allowCompatibility: !backendChanged,
+    });
 
     return {
       kind: 'backend',
       conversationId: command.conversationId,
-      stateChanged: backendChanged || hadPendingChange || cleared,
-      persist: backendChanged || cleared,
+      stateChanged: backendChanged || hadPendingChange || modelChanged,
+      persist: backendChanged || modelChanged,
       clearContinuation: false,
       requiresConfirmation: false,
       summaryKey: 'backend.updated',
@@ -113,14 +122,14 @@ export function applySessionControlCommand(command: SessionControlCommand): Sess
     const cleared = closeThreadSession({ conversationId: command.conversationId });
     const clearContinuation = cleared.bindingCleared || cleared.snapshotCleared || cleared.sessionCleared;
     conversationBackend.set(command.conversationId, backend);
-    const { cleared: modelCleared } = clearModelIfUnsupported(command.conversationId, backend);
+    const { changed: modelChanged } = clearModelIfUnsupported(command.conversationId, backend);
 
     return {
       kind: 'confirm-backend',
       conversationId: command.conversationId,
       backend,
-      stateChanged: hadPendingChange || backendChanged || clearContinuation || modelCleared,
-      persist: hadPendingChange || backendChanged || clearContinuation || modelCleared,
+      stateChanged: hadPendingChange || backendChanged || clearContinuation || modelChanged,
+      persist: hadPendingChange || backendChanged || clearContinuation || modelChanged,
       clearContinuation,
       requiresConfirmation: false,
       summaryKey: 'backend.updated',
