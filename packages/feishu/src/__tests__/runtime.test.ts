@@ -59,6 +59,7 @@ import {
 } from '../runtime.js';
 
 afterEach(() => {
+  vi.useRealTimers();
   resetFeishuRuntimeForTests();
 });
 
@@ -326,6 +327,78 @@ describe('Feishu runtime', () => {
       .map((button: Record<string, any>) => button.text.content);
 
     expect(buttonTexts).toEqual(['Sonnet']);
+  });
+
+  it('auto-selects the first available model after timeout and resumes the pending run', async () => {
+    vi.useFakeTimers();
+    coreMocks.applySessionControlCommand.mockImplementation(({ conversationId, type, value }: any) => {
+      if (type !== 'model') {
+        throw new Error(`Unexpected control command: ${type}`);
+      }
+
+      conversationModels.set(conversationId, String(value));
+      return {
+        kind: 'model',
+        conversationId,
+        value: String(value),
+        stateChanged: true,
+        persist: true,
+        clearContinuation: false,
+        requiresConfirmation: false,
+        summaryKey: 'model.updated',
+      };
+    });
+    coreMocks.evaluateConversationRunRequest.mockReturnValueOnce({
+      kind: 'ready',
+      conversationId: 'conv-model-timeout',
+      backend: 'claude',
+    });
+    coreMocks.getAvailableBackendCapabilities.mockResolvedValueOnce([
+      {
+        name: 'claude',
+        models: [
+          { id: 'sonnet', label: 'Sonnet' },
+          { id: 'opus', label: 'Opus' },
+        ],
+      },
+      {
+        name: 'opencode',
+        models: [],
+      },
+    ]);
+    conversationBackend.set('conv-model-timeout', 'claude');
+
+    const transport = {
+      sendText: vi.fn(async () => undefined),
+      sendCard: vi.fn(async () => undefined),
+      updateCard: vi.fn(async () => undefined),
+      uploadFile: vi.fn(async () => undefined),
+    };
+
+    await expect(runFeishuConversation({
+      conversationId: 'conv-model-timeout',
+      target: {
+        chatId: 'chat-1',
+      },
+      prompt: 'ship it',
+      mode: 'code',
+      transport,
+      defaultCwd: process.cwd(),
+      modelSelectionTimeoutMs: 10_000,
+    })).resolves.toEqual({ kind: 'blocked' });
+
+    expect(coreMocks.runPlatformConversation).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(coreMocks.runPlatformConversation).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(conversationModels.get('conv-model-timeout')).toBe('sonnet');
+    expect(coreMocks.runPlatformConversation).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 'conv-model-timeout',
+      backend: 'claude',
+      prompt: 'ship it',
+    }));
   });
 
   it('does not re-block legacy OpenCode models that can be normalized to provider/modelKey', async () => {

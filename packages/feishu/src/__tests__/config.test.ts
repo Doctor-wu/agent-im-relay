@@ -22,8 +22,20 @@ describe('readFeishuConfig', () => {
     expect(config.feishuAppId).toBe('cli_test_app_id');
     expect(config.feishuAppSecret).toBe('test-secret');
     expect(config.feishuBaseUrl).toBe('https://example.invalid');
+    expect(config.feishuModelSelectionTimeoutMs).toBe(10_000);
     expect('feishuPort' in config).toBe(false);
     expect(config.agentTimeoutMs).toBeGreaterThan(0);
+  });
+
+  it('allows overriding the model auto-selection timeout', () => {
+    const config = readFeishuConfig({
+      ...process.env,
+      FEISHU_APP_ID: 'cli_test_app_id',
+      FEISHU_APP_SECRET: 'test-secret',
+      FEISHU_MODEL_SELECTION_TIMEOUT_MS: '2500',
+    });
+
+    expect(config.feishuModelSelectionTimeoutMs).toBe(2_500);
   });
 
   it('throws when required Feishu environment variables are missing', () => {
@@ -47,6 +59,8 @@ describe('readFeishuConfig', () => {
       artifactMaxSizeBytes: 123_456,
       claudeBin: '/tmp/bin/claude',
       codexBin: '/tmp/bin/codex',
+      opencodeBin: '/tmp/bin/opencode',
+      feishuModelSelectionTimeoutMs: 2_345,
       feishuAppId: 'test-app-id',
       feishuAppSecret: 'test-secret',
       feishuBaseUrl: 'https://open.feishu.cn',
@@ -62,6 +76,8 @@ describe('readFeishuConfig', () => {
     expect(process.env['CLAUDE_CWD']).toBe('/tmp/feishu-workspace');
     expect(process.env['CLAUDE_BIN']).toBe('/tmp/bin/claude');
     expect(process.env['CODEX_BIN']).toBe('/tmp/bin/codex');
+    expect(process.env['OPENCODE_BIN']).toBe('/tmp/bin/opencode');
+    expect(process.env['FEISHU_MODEL_SELECTION_TIMEOUT_MS']).toBe('2345');
   });
 });
 
@@ -76,6 +92,8 @@ describe('startup entry', () => {
       artifactMaxSizeBytes: 8 * 1024 * 1024,
       claudeBin: '/opt/homebrew/bin/claude',
       codexBin: '/opt/homebrew/bin/codex',
+      opencodeBin: '/opt/homebrew/bin/opencode',
+      feishuModelSelectionTimeoutMs: 10_000,
       feishuAppId: 'test-app-id',
       feishuAppSecret: 'test-secret',
       feishuBaseUrl: 'https://open.feishu.cn',
@@ -104,6 +122,8 @@ describe('startup entry', () => {
       artifactMaxSizeBytes: 8 * 1024 * 1024,
       claudeBin: '/opt/homebrew/bin/claude',
       codexBin: '/opt/homebrew/bin/codex',
+      opencodeBin: '/opt/homebrew/bin/opencode',
+      feishuModelSelectionTimeoutMs: 10_000,
       feishuAppId: 'test-app-id',
       feishuAppSecret: 'test-secret',
       feishuBaseUrl: 'https://open.feishu.cn',
