@@ -18,6 +18,12 @@ const coreMocks = vi.hoisted(() => ({
   conversationCwd: new Map<string, string>(),
   conversationModels: new Map<string, string>(),
   persistState: vi.fn(),
+  resolveBackendModelId: vi.fn((backend: string, model: string) => {
+    if (backend === 'claude' && (model === 'sonnet' || model === 'opus')) {
+      return model;
+    }
+    return undefined;
+  }),
 }));
 
 vi.mock('@agent-im-relay/core', async (importOriginal) => {
@@ -29,6 +35,7 @@ vi.mock('@agent-im-relay/core', async (importOriginal) => {
     conversationCwd: coreMocks.conversationCwd,
     conversationModels: coreMocks.conversationModels,
     persistState: coreMocks.persistState,
+    resolveBackendModelId: coreMocks.resolveBackendModelId,
   };
 });
 
@@ -260,7 +267,7 @@ describe('promptThreadSetup', () => {
     void resultPromise;
   });
 
-  it('cancels setup when model selection times out', async () => {
+  it('falls back to the first model when selection times out after choosing a backend', async () => {
     coreMocks.getAvailableBackendCapabilities.mockResolvedValueOnce([
       {
         name: 'claude',
@@ -325,11 +332,74 @@ describe('promptThreadSetup', () => {
 
     await onModelEnd?.([], 'time');
 
-    await expect(resultPromise).resolves.toBeNull();
+    await expect(resultPromise).resolves.toEqual({
+      backend: 'claude',
+      model: 'sonnet',
+      cwd: null,
+    });
     expect(edit).toHaveBeenLastCalledWith({
-      content: '⏰ Model 选择超时，请重新开始 setup。',
+      content: '⏰ Model 选择超时，使用默认 Model：**sonnet**。',
       components: [],
     });
+  });
+
+  it('opens model selection directly for preset backends and falls back on timeout', async () => {
+    vi.useFakeTimers();
+
+    let onModelCollect: ((interaction: any) => Promise<void>) | undefined;
+    let onModelEnd: ((interactions: any, reason: string) => Promise<void>) | undefined;
+    const edit = vi.fn().mockResolvedValue(undefined);
+    const createMessageComponentCollector = vi.fn(() => ({
+      on: vi.fn((event: string, handler: (interaction: any) => Promise<void>) => {
+        if (event === 'collect') {
+          onModelCollect = handler;
+          return;
+        }
+
+        if (event === 'end') {
+          onModelEnd = handler as (interactions: any, reason: string) => Promise<void>;
+        }
+      }),
+      stop: vi.fn(),
+    }));
+
+    const thread = {
+      send: vi.fn(async () => ({
+        edit,
+        createMessageComponentCollector,
+      })),
+    } as any;
+
+    const resultPromise = promptThreadSetup(thread, 'Timeout please', {
+      presetBackend: 'claude',
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(thread.send).toHaveBeenCalledWith({
+      content: '**选择 Model**\nBackend: **claude**',
+      components: [
+        expect.objectContaining({
+          toJSON: expect.any(Function),
+        }),
+      ],
+    });
+    expect(onModelCollect).toBeTypeOf('function');
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    await onModelEnd?.([], 'time');
+
+    await expect(resultPromise).resolves.toEqual({
+      backend: 'claude',
+      model: 'sonnet',
+      cwd: null,
+    });
+    expect(edit).toHaveBeenLastCalledWith({
+      content: '⏰ Model 选择超时，使用默认 Model：**sonnet**。',
+      components: [],
+    });
+
+    vi.useRealTimers();
   });
 
   it('persists the selected model together with the backend', async () => {
