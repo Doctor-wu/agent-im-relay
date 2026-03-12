@@ -16,6 +16,28 @@ describe('app config', () => {
     expect(parsed.runtime.agentTimeoutMs).toBe(1200);
   });
 
+  it('parses the last used platform preference from config JSONL', () => {
+    const parsed = parseConfigJsonl([
+      '{"type":"meta","version":1}',
+      '{"type":"local-preferences","lastUsedPlatform":"feishu"}',
+      '{"type":"im","id":"discord","enabled":true,"config":{"token":"abc","clientId":"123"}}',
+      '{"type":"im","id":"feishu","enabled":true,"config":{"appId":"app-1","appSecret":"secret"}}',
+    ].join('\n'));
+
+    expect((parsed as { lastUsedPlatform?: string }).lastUsedPlatform).toBe('feishu');
+  });
+
+  it('ignores invalid last used platform preference values', () => {
+    const parsed = parseConfigJsonl([
+      '{"type":"meta","version":1}',
+      '{"type":"local-preferences","lastUsedPlatform":"slack"}',
+      '{"type":"im","id":"discord","enabled":true,"config":{"token":"abc","clientId":"123"}}',
+    ].join('\n'));
+
+    expect((parsed as { lastUsedPlatform?: string }).lastUsedPlatform).toBeUndefined();
+    expect(parsed.errors).toHaveLength(0);
+  });
+
   it('reports malformed lines without crashing the whole file', () => {
     const parsed = parseConfigJsonl('{"type":"meta","version":1}\nnope');
 

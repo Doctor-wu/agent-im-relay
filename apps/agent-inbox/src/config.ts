@@ -36,6 +36,11 @@ export type RuntimeRecord = {
   config: RuntimeConfig;
 };
 
+export type LocalPreferencesRecord = {
+  type: 'local-preferences';
+  lastUsedPlatform?: 'discord' | 'feishu';
+};
+
 export type DiscordImRecord = {
   type: 'im';
   id: 'discord';
@@ -52,7 +57,12 @@ export type FeishuImRecord = {
   config: FeishuImConfig;
 };
 
-export type AppConfigRecord = MetaRecord | RuntimeRecord | DiscordImRecord | FeishuImRecord;
+export type AppConfigRecord =
+  | MetaRecord
+  | RuntimeRecord
+  | LocalPreferencesRecord
+  | DiscordImRecord
+  | FeishuImRecord;
 
 export type AvailableIm =
   | {
@@ -70,6 +80,7 @@ export interface LoadedAppConfig {
   records: AppConfigRecord[];
   availableIms: AvailableIm[];
   runtime: RuntimeConfig;
+  lastUsedPlatform?: AvailableIm['id'];
   errors: string[];
 }
 
@@ -122,6 +133,10 @@ function asPositiveNumber(value: unknown): number | undefined {
   return value;
 }
 
+function asPlatformId(value: unknown): AvailableIm['id'] | undefined {
+  return value === 'discord' || value === 'feishu' ? value : undefined;
+}
+
 function normalizeRuntimeRecord(
   value: Record<string, unknown>,
 ): RuntimeRecord {
@@ -137,6 +152,15 @@ function normalizeRuntimeRecord(
       streamUpdateIntervalMs: asPositiveNumber(config.streamUpdateIntervalMs),
       discordMessageCharLimit: asPositiveNumber(config.discordMessageCharLimit),
     },
+  };
+}
+
+function normalizeLocalPreferencesRecord(
+  value: Record<string, unknown>,
+): LocalPreferencesRecord {
+  return {
+    type: 'local-preferences',
+    lastUsedPlatform: asPlatformId(value.lastUsedPlatform),
   };
 }
 
@@ -201,6 +225,10 @@ function parseConfigRecord(value: unknown, lineNumber: number): {
     return { record: normalizeRuntimeRecord(value) };
   }
 
+  if (value.type === 'local-preferences') {
+    return { record: normalizeLocalPreferencesRecord(value) };
+  }
+
   if (value.type === 'im') {
     if (value.id === 'discord') {
       return { record: normalizeDiscordImRecord(value) };
@@ -248,6 +276,7 @@ export function parseConfigJsonl(input: string): LoadedAppConfig {
     records: ensureDefaultRecords(records),
     availableIms: resolveAvailableIms(records),
     runtime: resolveRuntimeConfig(records),
+    lastUsedPlatform: resolveLastUsedPlatform(records),
     errors,
   };
 }
@@ -272,6 +301,14 @@ export function resolveRuntimeConfig(records: AppConfigRecord[]): RuntimeConfig 
     ...DEFAULT_RUNTIME_RECORD.config,
     ...(runtimeRecord?.config ?? {}),
   };
+}
+
+export function resolveLastUsedPlatform(
+  records: AppConfigRecord[],
+): AvailableIm['id'] | undefined {
+  return records.find(
+    (record): record is LocalPreferencesRecord => record.type === 'local-preferences',
+  )?.lastUsedPlatform;
 }
 
 export function resolveAvailableIms(records: AppConfigRecord[]): AvailableIm[] {
@@ -328,6 +365,7 @@ export async function loadAppConfig(paths: RelayPaths): Promise<LoadedAppConfig>
         records: ensureDefaultRecords([]),
         availableIms: [],
         runtime: resolveRuntimeConfig([]),
+        lastUsedPlatform: undefined,
         errors: [],
       };
     }
