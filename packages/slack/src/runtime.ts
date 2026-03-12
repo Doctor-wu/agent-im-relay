@@ -9,7 +9,6 @@ import {
   getAvailableBackendCapabilities,
   getAvailableBackendNames,
   listSkills,
-  readCoreConfig,
   resolveBackendModelId,
   runPlatformConversation,
   type AgentStreamEvent,
@@ -102,6 +101,7 @@ type SlackPendingRun = {
   backend?: BackendName;
 };
 
+// TODO(slack): persist pending runs via resolveSlackPendingRunStateFile once restart-resume is required.
 const pendingRuns = new Map<string, SlackPendingRun>();
 const pendingModelTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -449,6 +449,7 @@ async function autoSelectModelAndResume(options: SlackRuntimeOptions, conversati
   if (selection.requiresSelection && selection.backend) {
     const fallbackModel = selection.models[0]?.id;
     if (!fallbackModel) {
+      resetPendingRun(conversationId);
       return;
     }
 
@@ -468,6 +469,10 @@ export function resetSlackRuntimeForTests(): void {
   }
   pendingModelTimers.clear();
   pendingRuns.clear();
+}
+
+export function hasPendingSlackRun(conversationId: string): boolean {
+  return pendingRuns.has(conversationId);
 }
 
 export function createSlackRuntime(options: SlackRuntimeOptions): SlackRuntime {
@@ -650,13 +655,7 @@ export function createSlackRuntime(options: SlackRuntimeOptions): SlackRuntime {
   }
 
   async function start(): Promise<void> {
-    const config = options.config ?? {
-      ...readCoreConfig(),
-      slackBotToken: 'test-bot-token',
-      slackAppToken: 'test-app-token',
-      slackSigningSecret: 'test-signing-secret',
-      slackSocketMode: true,
-    };
+    const config = options.config ?? readSlackConfig();
     const app = createApp(config);
     app.command('/code', async ({ command, ack }: any) => {
       await ack();

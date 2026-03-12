@@ -161,6 +161,21 @@ describe('Slack runtime', () => {
     };
 
     const runtime = createSlackRuntime({
+      config: {
+        agentTimeoutMs: 1_000,
+        claudeCwd: process.cwd(),
+        stateFile: '/tmp/slack-runtime-state.json',
+        artifactsBaseDir: '/tmp/slack-runtime-artifacts',
+        artifactRetentionDays: 14,
+        artifactMaxSizeBytes: 8 * 1024 * 1024,
+        claudeBin: 'claude',
+        codexBin: 'codex',
+        opencodeBin: 'opencode',
+        slackBotToken: 'xoxb-test',
+        slackAppToken: 'xapp-test',
+        slackSigningSecret: 'signing-secret',
+        slackSocketMode: true,
+      },
       transport,
       defaultCwd: process.cwd(),
       createApp: () => app as any,
@@ -176,6 +191,25 @@ describe('Slack runtime', () => {
     expect(app.action).toHaveBeenCalled();
     expect(app.event).toHaveBeenCalledWith('message', expect.any(Function));
     expect(app.start).toHaveBeenCalledOnce();
+  });
+
+  it('throws on start when no Slack config is provided from options or env', async () => {
+    const { createSlackRuntime } = await import('../runtime.js');
+    const transport = createMockTransport();
+    const app = {
+      command: vi.fn(),
+      action: vi.fn(),
+      event: vi.fn(),
+      start: vi.fn(async () => undefined),
+    };
+
+    const runtime = createSlackRuntime({
+      transport,
+      defaultCwd: process.cwd(),
+      createApp: () => app as any,
+    });
+
+    await expect(runtime.start()).rejects.toThrow('Missing required environment variable: SLACK_BOT_TOKEN');
   });
 
   it('always creates a fresh thread for /code and starts the run there', async () => {
@@ -346,6 +380,55 @@ describe('Slack runtime', () => {
       conversationId: '1741766400.123456',
       backend: 'claude',
     }));
+  });
+
+  it('clears the pending run when model auto-selection cannot choose a fallback', async () => {
+    vi.useFakeTimers();
+    const { createSlackRuntime, hasPendingSlackRun } = await import('../runtime.js');
+    const transport = createMockTransport();
+    const runtime = createSlackRuntime({
+      transport,
+      defaultCwd: process.cwd(),
+      modelSelectionTimeoutMs: 10_000,
+    });
+
+    coreMocks.evaluateConversationRunRequest.mockReturnValueOnce({
+      kind: 'ready',
+      conversationId: '1741766400.123456',
+      backend: 'claude',
+    });
+    coreMocks.getAvailableBackendCapabilities.mockResolvedValue([
+      {
+        name: 'claude',
+        models: [
+          { id: '', label: 'Broken model' },
+        ],
+      },
+      {
+        name: 'opencode',
+        models: [],
+      },
+    ]);
+    conversationBackend.set('1741766400.123456', 'claude');
+
+    await expect(runtime.handleCommand({
+      command: '/code',
+      text: 'ship it',
+      channel_id: 'C123',
+      user_id: 'U123',
+      user_name: 'Alice',
+      trigger_id: 'trigger-5',
+      command_ts: 'cmd-5',
+    })).resolves.toEqual({
+      kind: 'blocked',
+      conversationId: '1741766400.123456',
+      reason: 'model-selection',
+    });
+
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(hasPendingSlackRun('1741766400.123456')).toBe(false);
+    expect(coreMocks.runPlatformConversation).not.toHaveBeenCalled();
   });
 
   it('routes active-thread user messages back into the mapped conversation', async () => {

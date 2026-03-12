@@ -15,6 +15,8 @@ export interface SlackTriggerContext {
 
 type PendingInteractiveRequest = {
   resolve: (value: string) => void;
+  reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
 };
 
 const conversations = new Map<string, SlackConversationRecord>();
@@ -62,9 +64,20 @@ export function consumeSlackTriggerContext(triggerMessageId: string): SlackTrigg
   return context;
 }
 
-export function waitForSlackInteractiveValue(conversationId: string): Promise<string> {
-  return new Promise((resolve) => {
-    interactiveRequests.set(conversationId, { resolve });
+export function waitForSlackInteractiveValue(
+  conversationId: string,
+  timeoutMs: number = 60_000,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      interactiveRequests.delete(conversationId);
+      reject(new Error('Slack interactive request timed out.'));
+    }, timeoutMs);
+    if (typeof (timer as { unref?: () => void }).unref === 'function') {
+      (timer as { unref: () => void }).unref();
+    }
+
+    interactiveRequests.set(conversationId, { resolve, reject, timer });
   });
 }
 
@@ -75,6 +88,7 @@ export function resolveSlackInteractiveValue(conversationId: string, value: stri
   }
 
   interactiveRequests.delete(conversationId);
+  clearTimeout(request.timer);
   request.resolve(value);
   return true;
 }
@@ -124,6 +138,10 @@ export async function loadSlackConversationState(stateFile: string): Promise<voi
 }
 
 export function resetSlackStateForTests(): void {
+  for (const request of interactiveRequests.values()) {
+    clearTimeout(request.timer);
+    request.reject(new Error('Slack interactive request reset.'));
+  }
   conversations.clear();
   threadConversationIds.clear();
   triggerContexts.clear();

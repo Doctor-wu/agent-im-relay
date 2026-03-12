@@ -26,7 +26,7 @@ export {
   waitForSlackInteractiveValue,
 } from './state.js';
 export type { SlackConversationRecord, SlackTriggerContext } from './state.js';
-export { createSlackBoltTransport, createSlackRuntime, isSlackRuntimeMainModule, resetSlackRuntimeForTests, startSlackRuntime } from './runtime.js';
+export { createSlackBoltTransport, createSlackRuntime, hasPendingSlackRun, isSlackRuntimeMainModule, resetSlackRuntimeForTests, startSlackRuntime } from './runtime.js';
 export type { SlackActionPayload, SlackAppLike, SlackCommandPayload, SlackRuntime, SlackRuntimeOptions, SlackRuntimeTransport } from './runtime.js';
 
 if (isSlackRuntimeMainModule()) {
