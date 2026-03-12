@@ -236,18 +236,14 @@ export async function handleDiscordMessageCreate(
       }
 
       const configuredBackend = conversationBackend.get(thread.id);
-      const capabilities = configuredBackend
-        ? await getAvailableBackendCapabilities()
-        : [];
-      const backendCapability = configuredBackend
-        ? capabilities.find(backend => backend.name === configuredBackend)
-        : undefined;
-      const requiresModelSetup = Boolean(
-        configuredBackend
-        && backendCapability
-        && backendCapability.models.length > 0
-        && !conversationModels.get(thread.id),
-      );
+      const hasModel = conversationModels.has(thread.id);
+      let requiresModelSetup = false;
+
+      if (configuredBackend && !hasModel) {
+        const capabilities = await getAvailableBackendCapabilities();
+        const backendCapability = capabilities.find(backend => backend.name === configuredBackend);
+        requiresModelSetup = Boolean(backendCapability && backendCapability.models.length > 0);
+      }
 
       if (!configuredBackend || requiresModelSetup) {
         const result = await (dependencies.promptThreadSetup ?? promptThreadSetup)(
