@@ -2,7 +2,12 @@ import { mkdir } from 'node:fs/promises';
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import { resolveRelayPaths } from '@agent-im-relay/core';
-import { loadAppConfig, type AvailableIm } from './config.js';
+import {
+  loadAppConfig,
+  saveAppConfig,
+  type AvailableIm,
+  upsertRecord,
+} from './config.js';
 import { acquirePidLock, registerPidCleanup } from './pid-lock.js';
 import { startSelectedIm } from './runtime.js';
 import {
@@ -12,6 +17,26 @@ import {
 } from './setup.js';
 
 const CONFIGURE_NEW = '__configure_new__' as const;
+
+function orderAvailableIms(
+  availableIms: AvailableIm[],
+  lastUsedPlatform: AvailableIm['id'] | undefined,
+): AvailableIm[] {
+  const rememberedPlatform = availableIms.some(im => im.id === lastUsedPlatform)
+    ? lastUsedPlatform
+    : undefined;
+
+  return availableIms
+    .map((im, index) => ({
+      im,
+      index,
+      priority: rememberedPlatform
+        ? (im.id === rememberedPlatform ? 0 : 1)
+        : (im.id === 'discord' ? 0 : 1),
+    }))
+    .sort((left, right) => left.priority - right.priority || left.index - right.index)
+    .map(({ im }) => im);
+}
 
 export async function runCli(): Promise<void> {
   p.intro(pc.bgCyan(pc.black(' Agent Inbox ')));
@@ -42,11 +67,18 @@ export async function runCli(): Promise<void> {
       continue;
     }
 
+    const orderedIms = orderAvailableIms(
+      loaded.availableIms,
+      loaded.lastUsedPlatform,
+    );
+
     const options: Array<{ value: string; label: string; hint?: string }> =
-      loaded.availableIms.map(im => ({
+      orderedIms.map(im => ({
         value: im.id,
         label: PLATFORM_LABELS[im.id] ?? im.id,
-        hint: im.note ?? 'configured',
+        hint: im.id === loaded.lastUsedPlatform
+          ? 'Last used'
+          : (im.note ?? 'configured'),
       }));
 
     if (unconfigured.length > 0) {
@@ -74,6 +106,14 @@ export async function runCli(): Promise<void> {
     const selectedIm = loaded.availableIms.find(
       im => im.id === selected,
     )!;
+
+    await saveAppConfig(
+      paths,
+      upsertRecord(loaded.records, {
+        type: 'local-preferences',
+        lastUsedPlatform: selectedIm.id,
+      }),
+    );
 
     const acquired = await acquirePidLock(paths.pidsDir, selectedIm.id);
     if (!acquired) {
