@@ -38,6 +38,15 @@ describe('readFeishuConfig', () => {
     expect(config.feishuModelSelectionTimeoutMs).toBe(2_500);
   });
 
+  it('rejects dirty model auto-selection timeout input', () => {
+    expect(() => readFeishuConfig({
+      ...process.env,
+      FEISHU_APP_ID: 'cli_test_app_id',
+      FEISHU_APP_SECRET: 'test-secret',
+      FEISHU_MODEL_SELECTION_TIMEOUT_MS: '10s',
+    })).toThrow('Invalid numeric environment variable: FEISHU_MODEL_SELECTION_TIMEOUT_MS');
+  });
+
   it('throws when required Feishu environment variables are missing', () => {
     expect(() => readFeishuConfig({
       ...process.env,

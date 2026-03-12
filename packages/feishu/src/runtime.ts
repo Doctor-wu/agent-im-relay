@@ -30,6 +30,7 @@ import {
   type ModelSelectionCard,
 } from './cards.js';
 import { parseAskCommand } from './commands/ask.js';
+import { resolveFeishuModelSelectionTimeoutMs } from './config.js';
 import { getFeishuSessionChat } from './session-chat.js';
 
 export type FeishuTarget = {
@@ -57,24 +58,13 @@ export type FeishuRuntimeTransport = {
 const pendingAttachments = new Map<string, RemoteAttachmentLike[]>();
 const pendingRuns = new Map<string, PendingFeishuRun>();
 const pendingModelSelectionTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const DEFAULT_MODEL_SELECTION_TIMEOUT_MS = 10_000;
 
 function readModelSelectionTimeoutMs(timeoutMs?: number): number {
   if (timeoutMs !== undefined) {
     return timeoutMs;
   }
 
-  const raw = process.env['FEISHU_MODEL_SELECTION_TIMEOUT_MS']?.trim();
-  if (!raw) {
-    return DEFAULT_MODEL_SELECTION_TIMEOUT_MS;
-  }
-
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error('Invalid numeric environment variable: FEISHU_MODEL_SELECTION_TIMEOUT_MS');
-  }
-
-  return parsed;
+  return resolveFeishuModelSelectionTimeoutMs();
 }
 
 function maybeUnrefTimer(timer: ReturnType<typeof setTimeout>): void {

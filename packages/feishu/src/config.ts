@@ -17,13 +17,13 @@ function optionalEnv(env: NodeJS.ProcessEnv, key: string): string | undefined {
 }
 
 function numberEnv(env: NodeJS.ProcessEnv, key: string, fallback: number): number {
-  const raw = env[key];
+  const raw = env[key]?.trim();
   if (!raw) {
     return fallback;
   }
 
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error(`Invalid numeric environment variable: ${key}`);
   }
 
@@ -52,6 +52,12 @@ export function resolveFeishuSessionChatStateFile(stateFile: string): string {
   return join(dirname(stateFile), 'feishu-session-chats.json');
 }
 
+export function resolveFeishuModelSelectionTimeoutMs(
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  return numberEnv(env, 'FEISHU_MODEL_SELECTION_TIMEOUT_MS', 10_000);
+}
+
 export function readFeishuConfig(env: NodeJS.ProcessEnv = process.env): FeishuConfig {
   return {
     ...readCoreConfig(env),
@@ -60,7 +66,7 @@ export function readFeishuConfig(env: NodeJS.ProcessEnv = process.env): FeishuCo
     feishuEncryptKey: optionalEnv(env, 'FEISHU_ENCRYPT_KEY'),
     feishuVerificationToken: optionalEnv(env, 'FEISHU_VERIFICATION_TOKEN'),
     feishuBaseUrl: optionalEnv(env, 'FEISHU_BASE_URL') || 'https://open.feishu.cn',
-    feishuModelSelectionTimeoutMs: numberEnv(env, 'FEISHU_MODEL_SELECTION_TIMEOUT_MS', 10_000),
+    feishuModelSelectionTimeoutMs: resolveFeishuModelSelectionTimeoutMs(env),
   };
 }
 
