@@ -56,6 +56,7 @@ import {
   resetFeishuRuntimeForTests,
   resumePendingFeishuRun,
   runFeishuConversation,
+  scheduleModelSelectionTimeout,
 } from '../runtime.js';
 
 afterEach(() => {
@@ -775,5 +776,131 @@ describe('Feishu runtime', () => {
 
     expect(transport.updateCard).not.toHaveBeenCalled();
     expect(transport.sendCard).not.toHaveBeenCalled();
+  });
+});
+
+describe('Feishu model selection timeout', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    conversationBackend.clear();
+    conversationModels.clear();
+    conversationMode.clear();
+    coreMocks.evaluateConversationRunRequest.mockReset();
+    coreMocks.getAvailableBackendCapabilities.mockResolvedValue([
+      {
+        name: 'claude',
+        models: [
+          { id: 'sonnet', label: 'Sonnet' },
+          { id: 'haiku', label: 'Haiku' },
+        ],
+      },
+    ]);
+    coreMocks.resolveBackendModelId.mockReset();
+    coreMocks.resolveBackendModelId.mockImplementation((backend: string, model: string) => {
+      if (backend === 'claude' && (model === 'sonnet' || model === 'haiku')) {
+        return model;
+      }
+      return undefined;
+    });
+    coreMocks.runPlatformConversation.mockReset();
+    coreMocks.runPlatformConversation.mockResolvedValue(true);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('auto-selects the first model after timeout for preset backends', async () => {
+    coreMocks.evaluateConversationRunRequest
+      .mockReturnValueOnce({
+        kind: 'ready',
+        conversationId: 'conv-timeout',
+        backend: 'claude',
+      })
+      .mockReturnValue({
+        kind: 'ready',
+        conversationId: 'conv-timeout',
+        backend: 'claude',
+      });
+
+    conversationBackend.set('conv-timeout', 'claude');
+
+    const transport = {
+      sendText: vi.fn(async () => undefined),
+      sendCard: vi.fn(async () => undefined),
+      updateCard: vi.fn(async () => undefined),
+      uploadFile: vi.fn(async () => undefined),
+    };
+
+    await expect(runFeishuConversation({
+      conversationId: 'conv-timeout',
+      target: { chatId: 'chat-1' },
+      prompt: 'ship it',
+      mode: 'code',
+      transport,
+      defaultCwd: process.cwd(),
+    })).resolves.toEqual({ kind: 'blocked' });
+
+    scheduleModelSelectionTimeout({
+      conversationId: 'conv-timeout',
+      transport,
+      defaultCwd: process.cwd(),
+    });
+
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(conversationModels.get('conv-timeout')).toBe('sonnet');
+    expect(coreMocks.runPlatformConversation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 'conv-timeout',
+        prompt: 'ship it',
+      }),
+    );
+  });
+
+  it('cancels the timeout fallback when a model is selected manually first', async () => {
+    coreMocks.evaluateConversationRunRequest
+      .mockReturnValueOnce({
+        kind: 'ready',
+        conversationId: 'conv-cancel-timeout',
+        backend: 'claude',
+      })
+      .mockReturnValue({
+        kind: 'ready',
+        conversationId: 'conv-cancel-timeout',
+        backend: 'claude',
+      });
+
+    conversationBackend.set('conv-cancel-timeout', 'claude');
+
+    const transport = {
+      sendText: vi.fn(async () => undefined),
+      sendCard: vi.fn(async () => undefined),
+      updateCard: vi.fn(async () => undefined),
+      uploadFile: vi.fn(async () => undefined),
+    };
+
+    await expect(runFeishuConversation({
+      conversationId: 'conv-cancel-timeout',
+      target: { chatId: 'chat-1' },
+      prompt: 'ship it',
+      mode: 'code',
+      transport,
+      defaultCwd: process.cwd(),
+    })).resolves.toEqual({ kind: 'blocked' });
+
+    const cancel = scheduleModelSelectionTimeout({
+      conversationId: 'conv-cancel-timeout',
+      transport,
+      defaultCwd: process.cwd(),
+    });
+
+    conversationModels.set('conv-cancel-timeout', 'haiku');
+    cancel();
+
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(coreMocks.runPlatformConversation).not.toHaveBeenCalled();
+    expect(conversationModels.get('conv-cancel-timeout')).toBe('haiku');
   });
 });

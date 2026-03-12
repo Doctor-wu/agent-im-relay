@@ -49,7 +49,20 @@ vi.mock('@agent-im-relay/core', () => ({
     directives: [],
   })),
   applyMessageControlDirectives: vi.fn(() => []),
+  getAvailableBackendCapabilities: vi.fn(async () => [
+    {
+      name: 'claude',
+      models: [
+        { id: 'sonnet', label: 'Sonnet' },
+      ],
+    },
+    {
+      name: 'codex',
+      models: [],
+    },
+  ]),
   conversationBackend: new Map(),
+  conversationModels: new Map(),
   activeConversations: new Set(),
   processedMessages: new Set(),
   pendingConversationCreation: new Set(),
@@ -116,6 +129,7 @@ import { handleDiscordMessageCreate } from '../index.js';
 import { handleSkillAutocomplete } from '../commands/skill.js';
 import {
   applyMessageControlDirectives,
+  getAvailableBackendCapabilities,
   persistState,
   preprocessConversationMessage,
 } from '@agent-im-relay/core';
@@ -160,6 +174,7 @@ describe('handleDiscordMessageCreate', () => {
     }));
     vi.mocked(applyMessageControlDirectives).mockReset();
     vi.mocked(applyMessageControlDirectives).mockReturnValue([]);
+    vi.mocked(getAvailableBackendCapabilities).mockClear();
     vi.mocked(persistState).mockClear();
   });
 
@@ -358,5 +373,99 @@ describe('handleDiscordMessageCreate', () => {
     expect(message.channel.send).not.toHaveBeenCalledWith(expect.objectContaining({
       content: expect.stringContaining('Please include a prompt'),
     }));
+  });
+
+  it('still prompts setup when the backend is preset but the thread has no model yet', async () => {
+    const message = createBaseMessage();
+    message.content = '<@relay-bot> <set-backend>claude</set-backend>\nship it';
+
+    const { conversationBackend, conversationModels } = await import('@agent-im-relay/core');
+    conversationBackend.set('thread-model-setup-1', 'claude');
+    conversationModels.delete('thread-model-setup-1');
+
+    const thread = {
+      id: 'thread-model-setup-1',
+      send: vi.fn(async () => undefined),
+    } as any;
+    const ensureMentionThread = vi.fn(async () => thread);
+    const promptThreadSetup = vi.fn(async () => ({ backend: 'claude', model: 'sonnet', cwd: null }));
+    const applySetupResult = vi.fn(async () => {});
+    const runThreadConversation = vi.fn(async () => true);
+
+    vi.mocked(preprocessConversationMessage).mockReturnValue({
+      prompt: 'ship it',
+      directives: [{ type: 'backend', value: 'claude' }],
+    });
+    vi.mocked(applyMessageControlDirectives).mockReturnValue([
+      {
+        kind: 'backend',
+        conversationId: 'thread-model-setup-1',
+        stateChanged: false,
+        persist: false,
+        clearContinuation: false,
+        requiresConfirmation: false,
+        summaryKey: 'backend.updated',
+        backend: 'claude',
+      },
+    ]);
+
+    await handleDiscordMessageCreate(message, {
+      botUser: { id: 'relay-bot' },
+      hasOpenStickyThreadSession: () => false,
+      runThreadConversation,
+      ensureMentionThread,
+      promptThreadSetup,
+      applySetupResult,
+    });
+
+    expect(promptThreadSetup).toHaveBeenCalledWith(thread, 'ship it', {
+      presetBackend: 'claude',
+    });
+    expect(applySetupResult).toHaveBeenCalledWith('thread-model-setup-1', {
+      backend: 'claude',
+      model: 'sonnet',
+      cwd: null,
+    });
+    expect(runThreadConversation).toHaveBeenCalledWith(thread, 'ship it', message, {
+      mentionUserId: 'other-bot',
+    });
+  });
+
+  it('skips capability lookup when backend and model are already configured', async () => {
+    const message = createBaseMessage();
+    message.content = '<@relay-bot> ship it';
+
+    const { conversationBackend, conversationModels } = await import('@agent-im-relay/core');
+    conversationBackend.set('thread-model-ready-1', 'claude');
+    conversationModels.set('thread-model-ready-1', 'sonnet');
+
+    const thread = {
+      id: 'thread-model-ready-1',
+      send: vi.fn(async () => undefined),
+    } as any;
+
+    const ensureMentionThread = vi.fn(async () => thread);
+    const runThreadConversation = vi.fn(async () => true);
+    const promptThreadSetup = vi.fn();
+
+    vi.mocked(preprocessConversationMessage).mockReturnValue({
+      prompt: 'ship it',
+      directives: [],
+    });
+
+    await handleDiscordMessageCreate(message, {
+      botUser: { id: 'relay-bot' },
+      hasOpenStickyThreadSession: () => false,
+      runThreadConversation,
+      ensureMentionThread,
+      promptThreadSetup,
+      applySetupResult: vi.fn(),
+    });
+
+    expect(getAvailableBackendCapabilities).not.toHaveBeenCalled();
+    expect(promptThreadSetup).not.toHaveBeenCalled();
+    expect(runThreadConversation).toHaveBeenCalledWith(thread, 'ship it', message, {
+      mentionUserId: 'other-bot',
+    });
   });
 });

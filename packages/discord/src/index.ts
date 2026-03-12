@@ -13,7 +13,9 @@ import { fileURLToPath } from 'node:url';
 import {
   applyMessageControlDirectives,
   conversationBackend,
+  conversationModels,
   activeConversations,
+  getAvailableBackendCapabilities,
   processedMessages,
   pendingConversationCreation,
   persistState,
@@ -233,9 +235,22 @@ export async function handleDiscordMessageCreate(
         return;
       }
 
-      // Show backend setup only if backend not yet chosen
-      if (!conversationBackend.has(thread.id)) {
-        const result = await (dependencies.promptThreadSetup ?? promptThreadSetup)(thread, prompt);
+      const configuredBackend = conversationBackend.get(thread.id);
+      const hasModel = conversationModels.has(thread.id);
+      let requiresModelSetup = false;
+
+      if (configuredBackend && !hasModel) {
+        const capabilities = await getAvailableBackendCapabilities();
+        const backendCapability = capabilities.find(backend => backend.name === configuredBackend);
+        requiresModelSetup = Boolean(backendCapability && backendCapability.models.length > 0);
+      }
+
+      if (!configuredBackend || requiresModelSetup) {
+        const result = await (dependencies.promptThreadSetup ?? promptThreadSetup)(
+          thread,
+          prompt,
+          configuredBackend ? { presetBackend: configuredBackend } : undefined,
+        );
         if (!result) {
           return;
         }

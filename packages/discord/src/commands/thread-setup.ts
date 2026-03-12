@@ -11,6 +11,7 @@ import {
   conversationModels,
   getAvailableBackendCapabilities,
   persistState,
+  resolveBackendModelId,
   type AgentBackendCapability,
   type BackendModel,
   type BackendName,
@@ -23,6 +24,10 @@ export type SetupResult = {
   backend: BackendName;
   model: string | null;
   cwd: string | null;
+};
+
+export type ThreadSetupOptions = {
+  presetBackend?: BackendName;
 };
 
 function describeBackend(backend: BackendName): { label: string; description: string } {
@@ -81,9 +86,80 @@ function buildModelMenu(models: BackendModel[]): ActionRowBuilder<StringSelectMe
 
 const SETUP_TIMEOUT_MS = 60_000;
 
+function resolveFallbackModel(
+  threadId: string,
+  backend: BackendName,
+  models: BackendModel[],
+): string | null {
+  const savedModel = conversationModels.get(threadId);
+  const normalizedModel = savedModel
+    ? resolveBackendModelId(backend, savedModel)
+    : undefined;
+
+  return normalizedModel ?? models[0]?.id ?? null;
+}
+
+async function promptThreadModelSetup(options: {
+  thread: AnyThreadChannel;
+  threadId: string;
+  message: Awaited<ReturnType<AnyThreadChannel['send']>>;
+  backend: BackendName;
+  models: BackendModel[];
+  finish: (result: SetupResult | null) => void;
+  initialRender?: boolean;
+}): Promise<void> {
+  if (options.initialRender) {
+    await options.message.edit({
+      content: `**选择 Model**\nBackend: **${options.backend}**`,
+      components: [buildModelMenu(options.models)],
+    });
+  }
+
+  const modelCollector = options.message.createMessageComponentCollector({
+    componentType: ComponentType.StringSelect,
+    max: 1,
+    filter: candidate => candidate.customId === MODEL_SELECT_ID,
+    time: SETUP_TIMEOUT_MS,
+  });
+
+  modelCollector.on('collect', async (modelInteraction) => {
+    await modelInteraction.deferUpdate();
+    const selectedModel = modelInteraction.values[0] ?? null;
+    modelCollector.stop('selected');
+    await options.message.edit({
+      content: `✅ Backend: **${options.backend}**\n✅ Model: **${selectedModel}**`,
+      components: [],
+    });
+    options.finish({ backend: options.backend, model: selectedModel, cwd: null });
+  });
+
+  modelCollector.on('end', async (_interactions, reason) => {
+    if (reason !== 'time') {
+      return;
+    }
+
+    const fallbackModel = resolveFallbackModel(options.threadId, options.backend, options.models);
+    if (!fallbackModel) {
+      await options.message.edit({
+        content: '⏰ Model 选择超时，请重新开始 setup。',
+        components: [],
+      });
+      options.finish(null);
+      return;
+    }
+
+    await options.message.edit({
+      content: `⏰ Model 选择超时，使用默认 Model：**${fallbackModel}**。`,
+      components: [],
+    });
+    options.finish({ backend: options.backend, model: fallbackModel, cwd: null });
+  });
+}
+
 export async function promptThreadSetup(
   thread: AnyThreadChannel,
   prompt: string,
+  options: ThreadSetupOptions = {},
 ): Promise<SetupResult | null> {
   const availableBackends = await getAvailableBackendCapabilities();
   const fallbackBackend = availableBackends[0];
@@ -91,13 +167,29 @@ export async function promptThreadSetup(
     throw new Error('No available backends detected.');
   }
 
+  const presetCapability = options.presetBackend
+    ? availableBackends.find(backend => backend.name === options.presetBackend)
+    : undefined;
+  if (presetCapability && presetCapability.models.length === 0) {
+    return {
+      backend: presetCapability.name,
+      model: null,
+      cwd: null,
+    };
+  }
+
   const msg = await thread.send({
-    content: `**选择 AI Backend**\n> ${prompt.slice(0, 200)}`,
-    components: [buildBackendMenu(availableBackends)],
+    content: presetCapability
+      ? `**选择 Model**\nBackend: **${presetCapability.name}**`
+      : `**选择 AI Backend**\n> ${prompt.slice(0, 200)}`,
+    components: presetCapability
+      ? [buildModelMenu(presetCapability.models)]
+      : [buildBackendMenu(availableBackends)],
   });
 
   return new Promise((resolve) => {
     let settled = false;
+    let backendTimer: ReturnType<typeof setTimeout> | undefined;
     const fallbackResult: SetupResult = {
       backend: fallbackBackend.name,
       model: null,
@@ -109,11 +201,25 @@ export async function promptThreadSetup(
       }
 
       settled = true;
-      clearTimeout(backendTimer);
+      if (backendTimer) {
+        clearTimeout(backendTimer);
+      }
       resolve(result);
     };
 
-    const backendTimer = setTimeout(() => {
+    if (presetCapability) {
+      void promptThreadModelSetup({
+        thread,
+        threadId: thread.id,
+        message: msg,
+        backend: presetCapability.name,
+        models: presetCapability.models,
+        finish,
+      });
+      return;
+    }
+
+    backendTimer = setTimeout(() => {
       if (fallbackBackend.models.length > 0) {
         void msg.edit({ content: '⏰ 超时，请重新选择 Backend 和 Model。', components: [] });
         finish(null);
@@ -148,39 +254,14 @@ export async function promptThreadSetup(
         return;
       }
 
-      await msg.edit({
-        content: `**选择 Model**\nBackend: **${selectedBackend}**`,
-        components: [buildModelMenu(models)],
-      });
-
-      const modelCollector = msg.createMessageComponentCollector({
-        componentType: ComponentType.StringSelect,
-        max: 1,
-        filter: candidate => candidate.customId === MODEL_SELECT_ID,
-        time: SETUP_TIMEOUT_MS,
-      });
-
-      modelCollector.on('collect', async (modelInteraction) => {
-        await modelInteraction.deferUpdate();
-        const selectedModel = modelInteraction.values[0] ?? null;
-        modelCollector.stop('selected');
-        await msg.edit({
-          content: `✅ Backend: **${selectedBackend}**\n✅ Model: **${selectedModel}**`,
-          components: [],
-        });
-        finish({ backend: selectedBackend, model: selectedModel, cwd: null });
-      });
-
-      modelCollector.on('end', async (_interactions, reason) => {
-        if (reason !== 'time' || settled) {
-          return;
-        }
-
-        await msg.edit({
-          content: '⏰ Model 选择超时，请重新开始 setup。',
-          components: [],
-        });
-        finish(null);
+      void promptThreadModelSetup({
+        thread,
+        threadId: thread.id,
+        message: msg,
+        backend: selectedBackend,
+        models,
+        finish,
+        initialRender: true,
       });
     });
   });
