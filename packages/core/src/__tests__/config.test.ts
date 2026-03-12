@@ -76,4 +76,24 @@ describe('core config', () => {
     expect(config.stateFile).toBe(join(initCwd, '.agent-inbox', 'state', 'sessions.json'));
     expect(config.artifactsBaseDir).toBe(join(initCwd, '.agent-inbox', 'artifacts'));
   });
+
+  it('resolves platform-specific state directories for Slack', async () => {
+    const baseDir = await mkdtemp('/tmp/agent-inbox-platform-state-');
+    const { resolveRelayPlatformStateDir } = await import('../paths.js');
+
+    expect(resolveRelayPlatformStateDir('slack', baseDir)).toBe(
+      join(baseDir, '.agent-inbox', 'state', 'slack'),
+    );
+  });
+});
+
+describe('relay platform inference', () => {
+  it('recognizes Slack thread timestamps as Slack conversations', async () => {
+    const { inferRelayPlatformFromConversationId, relayPlatforms } = await import('../relay-platform.js');
+
+    expect(relayPlatforms).toContain('slack');
+    expect(inferRelayPlatformFromConversationId('1741766400.123456')).toBe('slack');
+    expect(inferRelayPlatformFromConversationId('123456789012345678')).toBe('discord');
+    expect(inferRelayPlatformFromConversationId('oc_platform_only')).toBe('feishu');
+  });
 });

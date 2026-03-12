@@ -1,6 +1,7 @@
 import { accessSync, constants } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { RelayPlatform } from './relay-platform.js';
 
 export interface RelayPaths {
   homeDir: string;
@@ -55,4 +56,11 @@ export function resolveRelayPaths(baseDir: string = resolveDefaultRelayBaseDir()
     logsDir: join(homeDir, 'logs'),
     pidsDir: join(homeDir, 'pids'),
   };
+}
+
+export function resolveRelayPlatformStateDir(
+  platform: RelayPlatform,
+  baseDir: string = resolveDefaultRelayBaseDir(),
+): string {
+  return join(resolveRelayPaths(baseDir).stateDir, platform);
 }
