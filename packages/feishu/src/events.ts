@@ -490,16 +490,18 @@ export function createFeishuEventRouter(
   const readFileImpl = dependencies.readFileImpl ?? readFile;
   const transport = createTransport(client, readFileImpl);
   const ingressDeduplicator = createFeishuIngressDeduplicator();
-  let initialized = false;
+  let initPromise: Promise<void> | null = null;
 
   async function ensureInitialized(): Promise<void> {
-    if (initialized) {
-      return;
+    if (!initPromise) {
+      initPromise = initState('feishu')
+        .then(() => initializeFeishuSessionChats(config.stateFile))
+        .catch((err) => {
+          initPromise = null;
+          throw err;
+        });
     }
-
-    await initState('feishu');
-    await initializeFeishuSessionChats(config.stateFile);
-    initialized = true;
+    return initPromise;
   }
 
   async function persistFeishuState(): Promise<void> {
