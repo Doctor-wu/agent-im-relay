@@ -45,6 +45,12 @@ import {
 } from './commands/skill.js';
 import { promptThreadSetup, applySetupResult } from './commands/thread-setup.js';
 
+function isChannelAllowed(channelId: string, parentId: string | null): boolean {
+  if (config.allowedChannelIds.length === 0) return true;
+  return config.allowedChannelIds.includes(channelId)
+    || (parentId !== null && config.allowedChannelIds.includes(parentId));
+}
+
 type CommandHandler = (interaction: ChatInputCommandInteraction) => Promise<void>;
 type AutocompleteHandler = (interaction: AutocompleteInteraction) => Promise<void>;
 
@@ -163,6 +169,11 @@ export async function handleDiscordMessageCreate(
 ): Promise<void> {
   const botUser = dependencies.botUser ?? client.user;
   if (!botUser) return;
+
+  // Channel allowlist filter
+  const channelId = message.channel.id;
+  const parentId = message.channel.isThread() ? message.channel.parentId : null;
+  if (!isChannelAllowed(channelId, parentId)) return;
 
   const isActiveThread = message.channel.isThread()
     && (dependencies.hasOpenStickyThreadSession ?? hasOpenStickyThreadSession)(message.channel.id);
@@ -302,6 +313,13 @@ client.on(Events.Error, (error) => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
+    // Channel allowlist filter
+    if (interaction.channel) {
+      const channelId = interaction.channel.id;
+      const parentId = interaction.channel.isThread() ? interaction.channel.parentId : null;
+      if (!isChannelAllowed(channelId, parentId)) return;
+    }
+
     if (interaction.isChatInputCommand()) {
       const handler = commandHandlers.get(interaction.commandName);
       if (!handler) return;

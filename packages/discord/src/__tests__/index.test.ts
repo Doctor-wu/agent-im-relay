@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { clientMock, restMock } = vi.hoisted(() => ({
   clientMock: {
@@ -127,6 +127,7 @@ vi.mock('../commands/thread-setup.js', () => ({
 
 import { handleDiscordMessageCreate } from '../index.js';
 import { handleSkillAutocomplete } from '../commands/skill.js';
+import { config as discordConfig } from '../config.js';
 import {
   applyMessageControlDirectives,
   getAvailableBackendCapabilities,
@@ -467,5 +468,121 @@ describe('handleDiscordMessageCreate', () => {
     expect(runThreadConversation).toHaveBeenCalledWith(thread, 'ship it', message, {
       mentionUserId: 'other-bot',
     });
+  });
+});
+
+describe('allowedChannelIds filter', () => {
+  afterEach(() => {
+    discordConfig.allowedChannelIds = [];
+  });
+
+  it('drops messages from channels not in the allowlist', async () => {
+    discordConfig.allowedChannelIds = ['allowed-channel'];
+
+    const message = createBaseMessage();
+    message.channel.id = 'other-channel';
+
+    await handleDiscordMessageCreate(message, {
+      botUser: { id: 'relay-bot' },
+      hasOpenStickyThreadSession: () => false,
+      runThreadConversation: vi.fn(),
+      ensureMentionThread: vi.fn(),
+      promptThreadSetup: vi.fn(),
+      applySetupResult: vi.fn(),
+    });
+
+    expect(message.react).not.toHaveBeenCalled();
+  });
+
+  it('accepts messages from allowed channels', async () => {
+    discordConfig.allowedChannelIds = ['allowed-channel'];
+
+    const message = createBaseMessage();
+    message.channel.id = 'allowed-channel';
+
+    const ensureMentionThread = vi.fn(async () => ({
+      id: 'thread-1',
+      send: vi.fn(async () => undefined),
+    }));
+
+    await handleDiscordMessageCreate(message, {
+      botUser: { id: 'relay-bot' },
+      hasOpenStickyThreadSession: () => false,
+      runThreadConversation: vi.fn(async () => true),
+      ensureMentionThread,
+      promptThreadSetup: vi.fn(async () => ({ kind: 'skip' })),
+      applySetupResult: vi.fn(),
+    });
+
+    expect(message.react).toHaveBeenCalled();
+  });
+
+  it('accepts thread messages whose parent is in the allowlist', async () => {
+    discordConfig.allowedChannelIds = ['allowed-channel'];
+
+    const message = createBaseMessage();
+    message.channel = {
+      id: 'thread-in-allowed',
+      parentId: 'allowed-channel',
+      isThread: () => true,
+      send: vi.fn(async () => undefined),
+    };
+
+    await handleDiscordMessageCreate(message, {
+      botUser: { id: 'relay-bot' },
+      hasOpenStickyThreadSession: () => true,
+      runThreadConversation: vi.fn(async () => true),
+      ensureMentionThread: vi.fn(),
+      promptThreadSetup: vi.fn(),
+      applySetupResult: vi.fn(),
+    });
+
+    expect(message.react).toHaveBeenCalled();
+  });
+
+  it('drops thread messages whose parent is not in the allowlist', async () => {
+    discordConfig.allowedChannelIds = ['allowed-channel'];
+
+    const message = createBaseMessage();
+    message.channel = {
+      id: 'thread-in-other',
+      parentId: 'other-channel',
+      isThread: () => true,
+      send: vi.fn(async () => undefined),
+    };
+
+    await handleDiscordMessageCreate(message, {
+      botUser: { id: 'relay-bot' },
+      hasOpenStickyThreadSession: () => true,
+      runThreadConversation: vi.fn(),
+      ensureMentionThread: vi.fn(),
+      promptThreadSetup: vi.fn(),
+      applySetupResult: vi.fn(),
+    });
+
+    expect(message.react).not.toHaveBeenCalled();
+  });
+
+  it('allows all channels when allowedChannelIds is empty', async () => {
+    discordConfig.allowedChannelIds = [];
+
+    const message = createBaseMessage();
+    message.channel.id = 'any-channel';
+
+    const ensureMentionThread = vi.fn(async () => ({
+      id: 'thread-1',
+      send: vi.fn(async () => undefined),
+    }));
+
+    await handleDiscordMessageCreate(message, {
+      botUser: { id: 'relay-bot' },
+      hasOpenStickyThreadSession: () => false,
+      runThreadConversation: vi.fn(async () => true),
+      ensureMentionThread,
+      promptThreadSetup: vi.fn(async () => ({ kind: 'skip' })),
+      applySetupResult: vi.fn(),
+    });
+
+    expect(message.react).toHaveBeenCalled();
   });
 });

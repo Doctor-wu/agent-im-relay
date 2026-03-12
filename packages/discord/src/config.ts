@@ -29,6 +29,9 @@ export const config = {
   guildIds: process.env['GUILD_IDS']
     ? process.env['GUILD_IDS'].split(',').map((id) => id.trim()).filter(Boolean)
     : [],
+  allowedChannelIds: process.env['ALLOWED_CHANNEL_IDS']
+    ? process.env['ALLOWED_CHANNEL_IDS'].split(',').map((id) => id.trim()).filter(Boolean)
+    : [],
   streamUpdateIntervalMs: numberEnv('STREAM_UPDATE_INTERVAL_MS', 1000),
   discordMessageCharLimit: numberEnv('DISCORD_MESSAGE_CHAR_LIMIT', 1900),
   maxAttachmentSizeBytes: coreConfig.artifactMaxSizeBytes,

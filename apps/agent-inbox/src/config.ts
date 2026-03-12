@@ -13,6 +13,7 @@ export type DiscordImConfig = {
   token?: string;
   clientId?: string;
   guildIds?: string[];
+  allowedChannelIds?: string[];
 };
 
 export type FeishuImConfig = {
@@ -57,7 +58,7 @@ export type AvailableIm =
   | {
     id: 'discord';
     note?: string;
-    config: Required<Pick<DiscordImConfig, 'token' | 'clientId'>> & Pick<DiscordImConfig, 'guildIds'>;
+    config: Required<Pick<DiscordImConfig, 'token' | 'clientId'>> & Pick<DiscordImConfig, 'guildIds' | 'allowedChannelIds'>;
   }
   | {
     id: 'feishu';
@@ -151,6 +152,7 @@ function normalizeDiscordImRecord(value: Record<string, unknown>): DiscordImReco
       token: asString(config.token),
       clientId: asString(config.clientId),
       guildIds: asStringList(config.guildIds),
+      allowedChannelIds: asStringList(config.allowedChannelIds),
     },
   };
 }
@@ -292,6 +294,7 @@ export function resolveAvailableIms(records: AppConfigRecord[]): AvailableIm[] {
           token: record.config.token,
           clientId: record.config.clientId,
           guildIds: record.config.guildIds,
+          allowedChannelIds: record.config.allowedChannelIds,
         },
       }];
     }

@@ -35,6 +35,7 @@ export function applyRuntimeEnvironment(
   delete process.env['DISCORD_TOKEN'];
   delete process.env['DISCORD_CLIENT_ID'];
   delete process.env['GUILD_IDS'];
+  delete process.env['ALLOWED_CHANNEL_IDS'];
   delete process.env['FEISHU_APP_ID'];
   delete process.env['FEISHU_APP_SECRET'];
   delete process.env['FEISHU_VERIFICATION_TOKEN'];
@@ -46,6 +47,7 @@ export function applyRuntimeEnvironment(
     process.env['DISCORD_TOKEN'] = selectedIm.config.token;
     process.env['DISCORD_CLIENT_ID'] = selectedIm.config.clientId;
     setOptionalEnv('GUILD_IDS', selectedIm.config.guildIds?.join(','));
+    setOptionalEnv('ALLOWED_CHANNEL_IDS', selectedIm.config.allowedChannelIds?.join(','));
     return;
   }
 
