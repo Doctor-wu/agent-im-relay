@@ -125,6 +125,11 @@ vi.mock('../commands/thread-setup.js', () => ({
   applySetupResult: vi.fn(async () => {}),
 }));
 
+vi.mock('../commands/status.js', () => ({
+  statusCommand: { toJSON: () => ({}) },
+  handleStatusCommand: vi.fn(),
+}));
+
 import { handleDiscordMessageCreate } from '../index.js';
 import { handleSkillAutocomplete } from '../commands/skill.js';
 import {

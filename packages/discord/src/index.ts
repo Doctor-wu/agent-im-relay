@@ -37,6 +37,7 @@ import { askCommand, handleAskCommand } from './commands/ask.js';
 import { codeCommand, handleCodeCommand } from './commands/code.js';
 import { doneCommand, handleDoneCommand } from './commands/done.js';
 import { interruptCommand, handleInterruptCommand } from './commands/interrupt.js';
+import { statusCommand, handleStatusCommand } from './commands/status.js';
 import { agentControlCommandHandlers, agentControlCommands } from './commands/agent-control.js';
 import {
   handleSkillAutocomplete,
@@ -55,6 +56,7 @@ const commandHandlers = new Map<string, CommandHandler>([
   ['interrupt', handleInterruptCommand],
   ['skill', handleSkillCommand],
   ['done', handleDoneCommand],
+  ['status', handleStatusCommand],
   ...agentControlCommandHandlers.entries(),
 ]);
 
@@ -68,6 +70,7 @@ const commandDefinitions = [
   interruptCommand,
   skillCommand,
   doneCommand,
+  statusCommand,
   ...agentControlCommands,
 ];
 
