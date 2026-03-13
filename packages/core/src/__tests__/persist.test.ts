@@ -8,12 +8,20 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+async function setupRelayHome(baseDir: string): Promise<string> {
+  const relayDir = join(baseDir, '.agent-inbox');
+  const stateFile = join(relayDir, 'state', 'sessions.json');
+  vi.stubEnv('HOME', baseDir);
+  vi.stubEnv('INIT_CWD', '');
+  await mkdir(join(relayDir, 'state'), { recursive: true });
+  await writeFile(join(relayDir, 'config.jsonl'), `${JSON.stringify({ type: 'meta', version: 1 })}\n`, 'utf-8');
+  return stateFile;
+}
+
 describe('persist state loading', () => {
   it('quarantines malformed state files instead of retrying to parse them forever', async () => {
     const tempDir = await mkdtemp('/tmp/agent-inbox-persist-');
-    const stateFile = join(tempDir, 'state', 'sessions.json');
-    vi.stubEnv('STATE_FILE', stateFile);
-    await mkdir(join(tempDir, 'state'), { recursive: true });
+    const stateFile = await setupRelayHome(tempDir);
     await writeFile(stateFile, '{"sessions":{}}\n}broken', 'utf-8');
 
     const sessions = new Map<string, string>();
@@ -44,9 +52,7 @@ describe('persist state loading', () => {
 
   it('loads only the requested platform state from a shared state file', async () => {
     const tempDir = await mkdtemp('/tmp/agent-inbox-persist-');
-    const stateFile = join(tempDir, 'state', 'sessions.json');
-    vi.stubEnv('STATE_FILE', stateFile);
-    await mkdir(join(tempDir, 'state'), { recursive: true });
+    const stateFile = await setupRelayHome(tempDir);
     await writeFile(stateFile, JSON.stringify({
       sessions: {
         'discord:123456789012345678': 'discord-session',
@@ -170,9 +176,7 @@ describe('persist state loading', () => {
 
   it('loads only Slack platform state from a shared state file', async () => {
     const tempDir = await mkdtemp('/tmp/agent-inbox-persist-');
-    const stateFile = join(tempDir, 'state', 'sessions.json');
-    vi.stubEnv('STATE_FILE', stateFile);
-    await mkdir(join(tempDir, 'state'), { recursive: true });
+    const stateFile = await setupRelayHome(tempDir);
     await writeFile(stateFile, JSON.stringify({
       sessions: {
         'discord:123456789012345678': 'discord-session',
@@ -296,9 +300,7 @@ describe('persist state loading', () => {
 
   it('preserves other platform state when saving scoped runtime data', async () => {
     const tempDir = await mkdtemp('/tmp/agent-inbox-persist-');
-    const stateFile = join(tempDir, 'state', 'sessions.json');
-    vi.stubEnv('STATE_FILE', stateFile);
-    await mkdir(join(tempDir, 'state'), { recursive: true });
+    const stateFile = await setupRelayHome(tempDir);
     await writeFile(stateFile, JSON.stringify({
       sessions: {
         'feishu:oc_platform_only': 'feishu-session',

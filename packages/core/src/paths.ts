@@ -23,7 +23,7 @@ function canWriteDirectory(path: string): boolean {
 }
 
 function resolveDefaultRelayBaseDir(): string {
-  const homeDir = homedir();
+  const homeDir = process.env['HOME']?.trim() || homedir();
   if (homeDir && canWriteDirectory(homeDir)) {
     return homeDir;
   }

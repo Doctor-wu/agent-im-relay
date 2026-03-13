@@ -193,7 +193,7 @@ describe('Slack runtime', () => {
     expect(app.start).toHaveBeenCalledOnce();
   });
 
-  it('throws on start when no Slack config is provided from options or env', async () => {
+  it('throws on start when no Slack config is provided from options or ~/.agent-inbox/config.jsonl', async () => {
     const { createSlackRuntime } = await import('../runtime.js');
     const transport = createMockTransport();
     const app = {
@@ -209,7 +209,9 @@ describe('Slack runtime', () => {
       createApp: () => app as any,
     });
 
-    await expect(runtime.start()).rejects.toThrow('Missing required environment variable: SLACK_BOT_TOKEN');
+    await expect(runtime.start()).rejects.toThrow(
+      'Missing required slack configuration in ~/.agent-inbox/config.jsonl',
+    );
   });
 
   it('always creates a fresh thread for /code and starts the run there', async () => {

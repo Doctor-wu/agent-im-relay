@@ -19,8 +19,7 @@
   },
   "dependencies": {
     "@agent-im-relay/core": "workspace:*",
-    "@slack/bolt": "^4.6.0",
-    "dotenv": "^16.4.7"
+    "@slack/bolt": "^4.6.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

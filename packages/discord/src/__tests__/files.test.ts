@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +11,30 @@ async function createTempArtifactsDir(): Promise<string> {
   return dir;
 }
 
+async function setupDiscordRelayHome(
+  baseDir: string,
+  runtime: Record<string, unknown> = {},
+): Promise<string> {
+  const relayDir = path.join(baseDir, '.agent-inbox');
+  vi.stubEnv('HOME', baseDir);
+  vi.stubEnv('INIT_CWD', '');
+  await mkdir(relayDir, { recursive: true });
+  await writeFile(path.join(relayDir, 'config.jsonl'), [
+    JSON.stringify({ type: 'meta', version: 1 }),
+    JSON.stringify({ type: 'runtime', config: runtime }),
+    JSON.stringify({
+      type: 'im',
+      id: 'discord',
+      enabled: true,
+      config: {
+        token: 'test-token',
+        clientId: 'test-client-id',
+      },
+    }),
+  ].join('\n'), 'utf-8');
+  return path.join(relayDir, 'artifacts');
+}
+
 afterEach(async () => {
   vi.unstubAllEnvs();
   vi.resetModules();
@@ -21,8 +45,8 @@ afterEach(async () => {
 
 describe('attachment downloads', () => {
   it('downloads Discord attachments into the conversation incoming directory and persists metadata', async () => {
-    const artifactsBaseDir = await createTempArtifactsDir();
-    vi.stubEnv('ARTIFACTS_BASE_DIR', artifactsBaseDir);
+    const tempRoot = await createTempArtifactsDir();
+    const artifactsBaseDir = await setupDiscordRelayHome(tempRoot);
 
     const { downloadAttachments } = await import('../files.js');
     const { getConversationArtifactMetadata } = await import('@agent-im-relay/core');
@@ -72,8 +96,8 @@ describe('attachment downloads', () => {
   });
 
   it('prepends local attachment context to the prompt when files were downloaded', async () => {
-    const artifactsBaseDir = await createTempArtifactsDir();
-    vi.stubEnv('ARTIFACTS_BASE_DIR', artifactsBaseDir);
+    const tempRoot = await createTempArtifactsDir();
+    const artifactsBaseDir = await setupDiscordRelayHome(tempRoot);
 
     const { prepareAttachmentPrompt } = await import('../files.js');
     const fetchImpl = vi.fn(async () => new Response('alpha\nbeta\ngamma\n', { status: 200 }));
@@ -103,9 +127,10 @@ describe('attachment downloads', () => {
   });
 
   it('rejects oversized downloads before writing them to disk', async () => {
-    const artifactsBaseDir = await createTempArtifactsDir();
-    vi.stubEnv('ARTIFACTS_BASE_DIR', artifactsBaseDir);
-    vi.stubEnv('ARTIFACT_MAX_SIZE_BYTES', '8');
+    const tempRoot = await createTempArtifactsDir();
+    await setupDiscordRelayHome(tempRoot, {
+      artifactMaxSizeBytes: 8,
+    });
 
     const { downloadAttachments } = await import('../files.js');
 

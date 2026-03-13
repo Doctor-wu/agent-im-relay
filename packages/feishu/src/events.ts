@@ -661,6 +661,7 @@ export function createFeishuEventRouter(
               ...inlineAttachments,
             ],
             persistState: persistFeishuState,
+            modelSelectionTimeoutMs: config.feishuModelSelectionTimeoutMs,
           });
         } catch (error) {
           await transport.sendText(target, describeError(error));
@@ -696,6 +697,7 @@ export function createFeishuEventRouter(
             ...inlineAttachments,
           ],
           persistState: persistFeishuState,
+          modelSelectionTimeoutMs: config.feishuModelSelectionTimeoutMs,
         });
       } catch (error) {
         await transport.sendText(target, describeError(error)).catch(() => {});
@@ -784,6 +786,7 @@ export function createFeishuEventRouter(
             transport,
             defaultCwd: config.claudeCwd,
             persistState: persistFeishuState,
+            modelSelectionTimeoutMs: config.feishuModelSelectionTimeoutMs,
             fallback: typeof action.prompt === 'string' && action.prompt.trim()
               ? {
                 target,
