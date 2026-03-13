@@ -62,11 +62,48 @@ function createMockTransport() {
     })),
     sendMessage: vi.fn(async () => ({ ts: '1741766401.000001' })),
     updateMessage: vi.fn(async () => undefined),
+    addReaction: vi.fn(async () => undefined),
+    removeReaction: vi.fn(async () => undefined),
     showSelectMenu: vi.fn(async () => undefined),
     sendText: vi.fn(async () => undefined),
     sendBlocks: vi.fn(async () => '1741766402.000001'),
     updateBlocks: vi.fn(async () => undefined),
     sendCommandResponse: vi.fn(async () => undefined),
+  };
+}
+
+function createRuntimeConfig() {
+  return {
+    agentTimeoutMs: 1_000,
+    claudeCwd: process.cwd(),
+    stateFile: '/tmp/slack-runtime-state.json',
+    artifactsBaseDir: '/tmp/slack-runtime-artifacts',
+    artifactRetentionDays: 14,
+    artifactMaxSizeBytes: 8 * 1024 * 1024,
+    claudeBin: 'claude',
+    codexBin: 'codex',
+    opencodeBin: 'opencode',
+    slackBotToken: 'xoxb-test',
+    slackAppToken: 'xapp-test',
+    slackSigningSecret: 'signing-secret',
+    slackSocketMode: true,
+  } as const;
+}
+
+function createMockApp() {
+  const commandHandlers = new Map<string, (args: any) => Promise<void>>();
+  const eventHandlers = new Map<string, (args: any) => Promise<void>>();
+  return {
+    command: vi.fn((name: string, handler: (args: any) => Promise<void>) => {
+      commandHandlers.set(name, handler);
+    }),
+    action: vi.fn(),
+    event: vi.fn((name: string, handler: (args: any) => Promise<void>) => {
+      eventHandlers.set(name, handler);
+    }),
+    start: vi.fn(async () => undefined),
+    commandHandlers,
+    eventHandlers,
   };
 }
 
@@ -153,29 +190,10 @@ describe('Slack runtime', () => {
   it('registers Socket Mode handlers for commands, actions, and messages', async () => {
     const { createSlackRuntime } = await import('../runtime.js');
     const transport = createMockTransport();
-    const app = {
-      command: vi.fn(),
-      action: vi.fn(),
-      event: vi.fn(),
-      start: vi.fn(async () => undefined),
-    };
+    const app = createMockApp();
 
     const runtime = createSlackRuntime({
-      config: {
-        agentTimeoutMs: 1_000,
-        claudeCwd: process.cwd(),
-        stateFile: '/tmp/slack-runtime-state.json',
-        artifactsBaseDir: '/tmp/slack-runtime-artifacts',
-        artifactRetentionDays: 14,
-        artifactMaxSizeBytes: 8 * 1024 * 1024,
-        claudeBin: 'claude',
-        codexBin: 'codex',
-        opencodeBin: 'opencode',
-        slackBotToken: 'xoxb-test',
-        slackAppToken: 'xapp-test',
-        slackSigningSecret: 'signing-secret',
-        slackSocketMode: true,
-      },
+      config: createRuntimeConfig(),
       transport,
       defaultCwd: process.cwd(),
       createApp: () => app as any,
@@ -189,8 +207,109 @@ describe('Slack runtime', () => {
     expect(app.command).toHaveBeenCalledWith('/done', expect.any(Function));
     expect(app.command).toHaveBeenCalledWith('/skill', expect.any(Function));
     expect(app.action).toHaveBeenCalled();
+    expect(app.event).toHaveBeenCalledWith('app_mention', expect.any(Function));
     expect(app.event).toHaveBeenCalledWith('message', expect.any(Function));
     expect(app.start).toHaveBeenCalledOnce();
+  });
+
+  it('sets Slack presence to auto when the runtime starts', async () => {
+    const { createSlackRuntime } = await import('../runtime.js');
+    const transport = createMockTransport();
+    const app = createMockApp();
+    (app as any).client = {
+      users: {
+        setPresence: vi.fn(async () => undefined),
+      },
+    };
+
+    const runtime = createSlackRuntime({
+      config: createRuntimeConfig(),
+      transport,
+      defaultCwd: process.cwd(),
+      createApp: () => app as any,
+    });
+
+    await runtime.start();
+
+    expect((app as any).client.users.setPresence).toHaveBeenCalledWith({ presence: 'auto' });
+  });
+
+  it('starts a new conversation from a channel root app mention without creating a seed thread', async () => {
+    const { createSlackRuntime } = await import('../runtime.js');
+    const { getSlackConversation } = await import('../state.js');
+    const transport = createMockTransport();
+    const app = createMockApp();
+    const runtime = createSlackRuntime({
+      transport,
+      defaultCwd: process.cwd(),
+      config: createRuntimeConfig(),
+      createApp: () => app as any,
+    });
+
+    await runtime.start();
+    const handler = app.eventHandlers.get('app_mention');
+
+    await handler?.({
+      event: {
+        channel: 'C123',
+        ts: '1741766500.000001',
+        user: 'U123',
+        text: '<@U999> ship it',
+      },
+    });
+
+    expect(transport.createThread).not.toHaveBeenCalled();
+    expect(getSlackConversation('1741766500.000001')).toMatchObject({
+      channelId: 'C123',
+      threadTs: '1741766500.000001',
+      rootMessageTs: '1741766500.000001',
+    });
+    expect(coreMocks.runPlatformConversation).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: '1741766500.000001',
+      prompt: 'ship it',
+    }));
+  });
+
+  it('routes app mentions inside a mapped thread back into the existing conversation', async () => {
+    const { createSlackRuntime } = await import('../runtime.js');
+    const { rememberSlackConversation } = await import('../state.js');
+    const transport = createMockTransport();
+    const app = createMockApp();
+    const runtime = createSlackRuntime({
+      transport,
+      defaultCwd: process.cwd(),
+      config: createRuntimeConfig(),
+      createApp: () => app as any,
+    });
+
+    rememberSlackConversation({
+      conversationId: '1741766400.123456',
+      channelId: 'C123',
+      threadTs: '1741766400.123456',
+      rootMessageTs: '1741766400.123456',
+    });
+    conversationBackend.set('1741766400.123456', 'opencode');
+    conversationMode.set('1741766400.123456', 'ask');
+
+    await runtime.start();
+    const handler = app.eventHandlers.get('app_mention');
+
+    await handler?.({
+      event: {
+        channel: 'C123',
+        ts: '1741766501.000001',
+        thread_ts: '1741766400.123456',
+        user: 'U123',
+        text: '<@U999> continue this thread',
+      },
+    });
+
+    expect(transport.createThread).not.toHaveBeenCalled();
+    expect(coreMocks.runPlatformConversation).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: '1741766400.123456',
+      prompt: 'continue this thread',
+      mode: 'ask',
+    }));
   });
 
   it('throws on start when no Slack config is provided from options or ~/.agent-inbox/config.jsonl', async () => {
@@ -247,6 +366,40 @@ describe('Slack runtime', () => {
       conversationId: '1741766400.123456',
       prompt: 'ship it',
       mode: 'code',
+    }));
+  });
+
+  it('uses a DM root message instead of createThread for /code in direct messages', async () => {
+    const { createSlackRuntime } = await import('../runtime.js');
+    const transport = createMockTransport();
+    const runtime = createSlackRuntime({
+      transport,
+      defaultCwd: process.cwd(),
+    });
+
+    const result = await runtime.handleCommand({
+      command: '/code',
+      text: 'ship it from dm',
+      channel_id: 'D123',
+      user_id: 'U123',
+      user_name: 'Alice',
+      trigger_id: 'trigger-dm-1',
+      command_ts: 'cmd-dm-1',
+    });
+
+    expect(result).toEqual({
+      kind: 'started',
+      conversationId: '1741766401.000001',
+      mode: 'code',
+    });
+    expect(transport.createThread).not.toHaveBeenCalled();
+    expect(transport.sendMessage).toHaveBeenCalledWith({
+      channelId: 'D123',
+      text: expect.stringContaining('ship it from dm'),
+    });
+    expect(coreMocks.runPlatformConversation).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: '1741766401.000001',
+      prompt: 'ship it from dm',
     }));
   });
 
@@ -467,6 +620,39 @@ describe('Slack runtime', () => {
       conversationId: '1741766400.123456',
       prompt: 'continue this thread',
       mode: 'ask',
+    }));
+  });
+
+  it('starts a DM conversation from the first direct message without creating a thread', async () => {
+    const { createSlackRuntime } = await import('../runtime.js');
+    const { getSlackConversation } = await import('../state.js');
+    const transport = createMockTransport();
+    const runtime = createSlackRuntime({
+      transport,
+      defaultCwd: process.cwd(),
+    });
+
+    await expect(runtime.handleMessage({
+      channel: 'D123',
+      channel_type: 'im',
+      ts: '1741766510.000001',
+      user: 'U123',
+      text: 'help me from dm',
+    })).resolves.toEqual({
+      kind: 'started',
+      conversationId: '1741766510.000001',
+      mode: 'code',
+    });
+
+    expect(transport.createThread).not.toHaveBeenCalled();
+    expect(getSlackConversation('1741766510.000001')).toMatchObject({
+      channelId: 'D123',
+      threadTs: '1741766510.000001',
+      rootMessageTs: '1741766510.000001',
+    });
+    expect(coreMocks.runPlatformConversation).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: '1741766510.000001',
+      prompt: 'help me from dm',
     }));
   });
 });

@@ -22,13 +22,21 @@ import { parseSlackCodeCommand } from './commands/code.js';
 import { resolveSlackDoneTarget } from './commands/done.js';
 import { resolveSlackInterruptTarget } from './commands/interrupt.js';
 import { parseSlackSkillCommand } from './commands/skill.js';
-import { buildSlackConversationId, resolveSlackConversationIdForMessage, shouldProcessSlackMessage, type SlackMessageEvent } from './conversation.js';
+import {
+  buildSlackConversationId,
+  isSlackDirectMessage,
+  resolveSlackConversationIdForMessage,
+  shouldProcessSlackMessage,
+  type SlackMessageEvent,
+} from './conversation.js';
 import { readSlackConfig, type SlackConfig } from './config.js';
+import { applySlackReaction, type SlackReactionPhase, type SlackReactionTarget } from './presentation.js';
 import {
   findSlackConversationByThreadTs,
   rememberSlackConversation,
   type SlackConversationRecord,
 } from './state.js';
+import { streamSlackMessages } from './stream.js';
 
 export interface SlackCommandPayload {
   command: '/code' | '/ask' | '/interrupt' | '/done' | '/skill';
@@ -63,6 +71,8 @@ export interface SlackRuntimeTransport {
   }>;
   sendMessage(payload: { channelId: string; threadTs?: string; text: string; blocks?: unknown }): Promise<{ ts: string }>;
   updateMessage(payload: { channelId: string; ts: string; text: string; blocks?: unknown }): Promise<void>;
+  addReaction?(reaction: string, target: SlackReactionTarget): Promise<void>;
+  removeReaction?(reaction: string, target: SlackReactionTarget): Promise<void>;
   showSelectMenu(payload: {
     conversationId: string;
     channelId: string;
@@ -96,6 +106,7 @@ type SlackPendingRun = {
   target: { channelId: string; threadTs: string };
   prompt: string;
   mode: AgentMode;
+  source?: 'slash-command' | 'app_mention' | 'dm-message' | 'thread-message';
   sourceMessageId?: string;
   cardMessageTs?: string;
   backend?: BackendName;
@@ -130,6 +141,7 @@ function buildRuntimeConversationRecord(created: {
   channelId: string;
   threadTs: string;
   rootMessageTs: string;
+  containerType?: 'channel-thread' | 'dm';
 }): SlackConversationRecord {
   const conversationId = buildSlackConversationId(created.threadTs);
   return {
@@ -137,7 +149,51 @@ function buildRuntimeConversationRecord(created: {
     channelId: created.channelId,
     threadTs: created.threadTs,
     rootMessageTs: created.rootMessageTs,
+    containerType: created.containerType,
   };
+}
+
+function normalizeSlackPrompt(text: string | undefined): string {
+  return (text ?? '').replace(/<@[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function resolveReactionTarget(pendingRun: SlackPendingRun): SlackReactionTarget | undefined {
+  if (!pendingRun.sourceMessageId) {
+    return undefined;
+  }
+
+  return {
+    channelId: pendingRun.target.channelId,
+    messageTs: pendingRun.sourceMessageId,
+  };
+}
+
+function mapConversationPhaseToReaction(phase: 'thinking' | 'tools' | 'done' | 'error'): SlackReactionPhase {
+  if (phase === 'tools') {
+    return 'tool_running';
+  }
+
+  return phase;
+}
+
+async function maybeMarkSlackMessageReceived(
+  transport: SlackRuntimeTransport,
+  target: SlackReactionTarget | undefined,
+): Promise<void> {
+  if (!target || !transport.addReaction || !transport.removeReaction) {
+    return;
+  }
+
+  await applySlackReaction(transport, target, 'received');
+}
+
+function buildRootConversationRecord(message: SlackMessageEvent, containerType: 'channel-thread' | 'dm'): SlackConversationRecord {
+  return buildRuntimeConversationRecord({
+    channelId: message.channel,
+    threadTs: message.ts,
+    rootMessageTs: message.ts,
+    containerType,
+  });
 }
 
 function parseActionValue(action: SlackActionPayload['actions'][number]): Record<string, unknown> | null {
@@ -199,6 +255,20 @@ export function createSlackBoltTransport(app: App): SlackRuntimeTransport {
         ts,
         text,
         ...(Array.isArray(blocks) ? { blocks: blocks as any[] } : {}),
+      });
+    },
+    async addReaction(reaction, target) {
+      await app.client.reactions.add({
+        channel: target.channelId,
+        timestamp: target.messageTs,
+        name: reaction,
+      });
+    },
+    async removeReaction(reaction, target) {
+      await app.client.reactions.remove({
+        channel: target.channelId,
+        timestamp: target.messageTs,
+        name: reaction,
       });
     },
     async showSelectMenu({ channelId, threadTs, placeholder, options, conversationId }) {
@@ -265,30 +335,6 @@ export function createSlackBoltTransport(app: App): SlackRuntimeTransport {
       });
     },
   };
-}
-
-async function renderSlackEvents(
-  transport: SlackRuntimeTransport,
-  target: { channelId: string; threadTs: string },
-  events: AsyncIterable<AgentStreamEvent>,
-): Promise<void> {
-  let finalText = '';
-
-  for await (const event of events) {
-    if (event.type === 'done') {
-      finalText = event.result;
-      continue;
-    }
-
-    if (event.type === 'error') {
-      await transport.sendText(target, `Error: ${event.error}`);
-      return;
-    }
-  }
-
-  if (finalText) {
-    await transport.sendText(target, finalText);
-  }
 }
 
 async function resolveModelSelection(conversationId: string, backend: BackendName | undefined): Promise<{
@@ -416,15 +462,35 @@ async function continuePendingRun(
 
   clearPendingTimer(pendingRun.conversationId);
   pendingRuns.delete(pendingRun.conversationId);
+  const reactionTarget = resolveReactionTarget(pendingRun);
+  if (reactionTarget && options.transport.addReaction && options.transport.removeReaction) {
+    await applySlackReaction(options.transport, reactionTarget, 'thinking', 'received');
+  }
   const started = await runPlatformConversation({
     conversationId: pendingRun.conversationId,
     target: pendingRun.target,
     prompt: pendingRun.prompt,
     mode: pendingRun.mode,
+    trigger: reactionTarget,
     sourceMessageId: pendingRun.sourceMessageId,
     backend: resolvedBackend,
     defaultCwd: options.defaultCwd,
-    render: ({ target }, events) => renderSlackEvents(options.transport, target as { channelId: string; threadTs: string }, events),
+    render: ({ target }, events) => streamSlackMessages({
+      transport: options.transport,
+      target: target as { channelId: string; threadTs: string },
+      updateIntervalMs: options.config?.streamUpdateIntervalMs ?? 1_000,
+    }, events),
+    onPhaseChange: async (phase, previousPhase, trigger) => {
+      if (!trigger || !options.transport.addReaction || !options.transport.removeReaction) {
+        return;
+      }
+
+      const nextPhase = mapConversationPhaseToReaction(phase);
+      const previousReactionPhase = previousPhase
+        ? mapConversationPhaseToReaction(previousPhase)
+        : 'thinking';
+      await applySlackReaction(options.transport, trigger, nextPhase, previousReactionPhase);
+    },
   });
 
   return started
@@ -491,11 +557,24 @@ export function createSlackRuntime(options: SlackRuntimeOptions): SlackRuntime {
         };
       }
 
-      const created = await options.transport.createThread({
-        channelId: command.channel_id,
-        authorName: command.user_name ?? command.user_id,
-        prompt,
-      });
+      const created = await (command.channel_id.startsWith('D')
+        ? (() => options.transport.sendMessage({
+          channelId: command.channel_id,
+          text: `*${command.user_name ?? command.user_id}:* ${prompt}`,
+        }).then(result => ({
+          channelId: command.channel_id,
+          threadTs: result.ts,
+          rootMessageTs: result.ts,
+          containerType: 'dm' as const,
+        })))()
+        : options.transport.createThread({
+          channelId: command.channel_id,
+          authorName: command.user_name ?? command.user_id,
+          prompt,
+        }).then(result => ({
+          ...result,
+          containerType: 'channel-thread' as const,
+        })));
       const record = buildRuntimeConversationRecord(created);
       rememberSlackConversation(record);
       conversationMode.set(record.conversationId, command.command === '/code' ? 'code' : 'ask');
@@ -508,6 +587,7 @@ export function createSlackRuntime(options: SlackRuntimeOptions): SlackRuntime {
         },
         prompt,
         mode: command.command === '/code' ? 'code' : 'ask',
+        source: 'slash-command',
         sourceMessageId: command.command_ts,
       });
     }
@@ -560,6 +640,7 @@ export function createSlackRuntime(options: SlackRuntimeOptions): SlackRuntime {
           },
           prompt: `/${matched.name} ${parsed.prompt}`,
           mode: 'code',
+          source: 'slash-command',
           sourceMessageId: command.command_ts,
         });
       }
@@ -630,9 +711,30 @@ export function createSlackRuntime(options: SlackRuntimeOptions): SlackRuntime {
 
     const conversationId = resolveSlackConversationIdForMessage(message);
     if (!conversationId) {
-      return {
-        kind: 'ignored' as const,
-      };
+      if (!isSlackDirectMessage(message)) {
+        return {
+          kind: 'ignored' as const,
+        };
+      }
+
+      const record = buildRootConversationRecord(message, 'dm');
+      rememberSlackConversation(record);
+      conversationMode.set(record.conversationId, 'code');
+      await maybeMarkSlackMessageReceived(options.transport, {
+        channelId: record.channelId,
+        messageTs: message.ts,
+      });
+      return continuePendingRun(options, {
+        conversationId: record.conversationId,
+        target: {
+          channelId: record.channelId,
+          threadTs: record.threadTs,
+        },
+        prompt: normalizeSlackPrompt(message.text),
+        mode: 'code',
+        source: 'dm-message',
+        sourceMessageId: message.ts,
+      });
     }
 
     const conversation = findSlackConversationByThreadTs(conversationId);
@@ -648,8 +750,41 @@ export function createSlackRuntime(options: SlackRuntimeOptions): SlackRuntime {
         channelId: conversation.channelId,
         threadTs: conversation.threadTs,
       },
-      prompt: message.text?.trim() ?? '',
+      prompt: normalizeSlackPrompt(message.text),
       mode: conversationMode.get(conversationId) ?? 'code',
+      source: 'thread-message',
+      sourceMessageId: message.ts,
+    });
+  }
+
+  async function handleAppMention(message: SlackMessageEvent) {
+    if (!message.user || message.bot_id || message.subtype === 'bot_message') {
+      return {
+        kind: 'ignored' as const,
+      };
+    }
+
+    if (message.thread_ts) {
+      return handleMessage(message);
+    }
+
+    const record = buildRootConversationRecord(message, 'channel-thread');
+    rememberSlackConversation(record);
+    conversationMode.set(record.conversationId, 'code');
+    await maybeMarkSlackMessageReceived(options.transport, {
+      channelId: record.channelId,
+      messageTs: message.ts,
+    });
+
+    return continuePendingRun(options, {
+      conversationId: record.conversationId,
+      target: {
+        channelId: record.channelId,
+        threadTs: record.threadTs,
+      },
+      prompt: normalizeSlackPrompt(message.text),
+      mode: 'code',
+      source: 'app_mention',
       sourceMessageId: message.ts,
     });
   }
@@ -657,6 +792,7 @@ export function createSlackRuntime(options: SlackRuntimeOptions): SlackRuntime {
   async function start(): Promise<void> {
     const config = options.config ?? readSlackConfig();
     const app = createApp(config);
+    await (app as any).client?.users?.setPresence?.({ presence: 'auto' }).catch?.(() => {});
     app.command('/code', async ({ command, ack }: any) => {
       await ack();
       await handleCommand(command as SlackCommandPayload);
@@ -688,6 +824,9 @@ export function createSlackRuntime(options: SlackRuntimeOptions): SlackRuntime {
         actions: [action],
         user: { id: body.user.id },
       });
+    });
+    app.event('app_mention', async ({ event }: any) => {
+      await handleAppMention(event as SlackMessageEvent);
     });
     app.event('message', async ({ event }: any) => {
       await handleMessage(event as SlackMessageEvent);

@@ -6,6 +6,7 @@ export interface SlackConversationRecord {
   channelId: string;
   threadTs: string;
   rootMessageTs: string;
+  containerType?: 'channel-thread' | 'dm';
   statusMessageTs?: string;
 }
 
@@ -103,6 +104,7 @@ export async function persistSlackConversationState(stateFile: string): Promise<
           channelId: record.channelId,
           threadTs: record.threadTs,
           rootMessageTs: record.rootMessageTs,
+          ...(record.containerType ? { containerType: record.containerType } : {}),
           ...(record.statusMessageTs ? { statusMessageTs: record.statusMessageTs } : {}),
         },
       ]),
@@ -132,6 +134,7 @@ export async function loadSlackConversationState(stateFile: string): Promise<voi
       channelId: record.channelId,
       threadTs: record.threadTs,
       rootMessageTs: record.rootMessageTs,
+      containerType: record.containerType === 'dm' ? 'dm' : record.containerType === 'channel-thread' ? 'channel-thread' : undefined,
       statusMessageTs: typeof record.statusMessageTs === 'string' ? record.statusMessageTs : undefined,
     });
   }

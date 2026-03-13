@@ -53,6 +53,14 @@ describe('Slack conversation helpers', () => {
       bot_id: 'B123',
       text: 'bot reply',
     })).toBe(false);
+
+    expect(shouldProcessSlackMessage({
+      channel: 'D123',
+      channel_type: 'im',
+      ts: '1741766404.000001',
+      user: 'U123',
+      text: 'start dm session',
+    })).toBe(true);
   });
 
   it('persists and reloads Slack conversation mappings', async () => {
