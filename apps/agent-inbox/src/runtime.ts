@@ -7,6 +7,10 @@ type RuntimeLoaders = {
   slack?: () => Promise<{ startSlackRuntime: () => Promise<unknown> }>;
 };
 
+function importRuntimeModule<T>(specifier: string): Promise<T> {
+  return Function('modulePath', 'return import(modulePath)')(specifier) as Promise<T>;
+}
+
 function setOptionalEnv(key: string, value: string | undefined): void {
   if (value) {
     process.env[key] = value;
@@ -83,20 +87,20 @@ export async function startSelectedIm(
   applyRuntimeEnvironment(selectedIm, runtime, paths);
 
   if (selectedIm.id === 'discord') {
-    const loadDiscord = loaders.discord ?? (() => import('@agent-im-relay/discord'));
+    const loadDiscord = loaders.discord ?? (() => importRuntimeModule<{ startDiscordRuntime: () => Promise<unknown> }>('@agent-im-relay/discord'));
     const discord = await loadDiscord();
     await discord.startDiscordRuntime();
     return;
   }
 
   if (selectedIm.id === 'feishu') {
-    const loadFeishu = loaders.feishu ?? (() => import('@agent-im-relay/feishu'));
+    const loadFeishu = loaders.feishu ?? (() => importRuntimeModule<{ startFeishuRuntime: () => Promise<unknown> }>('@agent-im-relay/feishu'));
     const feishu = await loadFeishu();
     await feishu.startFeishuRuntime();
     return;
   }
 
-  const loadSlack = loaders.slack ?? (() => import('@agent-im-relay/slack'));
+  const loadSlack = loaders.slack ?? (() => importRuntimeModule<{ startSlackRuntime: () => Promise<unknown> }>('@agent-im-relay/slack'));
   const slack = await loadSlack();
   await slack.startSlackRuntime();
 }

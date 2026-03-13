@@ -2,6 +2,7 @@ import { findSlackConversationByThreadTs } from './state.js';
 
 export interface SlackMessageEvent {
   channel: string;
+  channel_type?: 'im' | 'channel' | 'group' | string;
   ts: string;
   thread_ts?: string;
   user?: string;
@@ -22,12 +23,24 @@ export function resolveSlackConversationIdForMessage(message: SlackMessageEvent)
   return findSlackConversationByThreadTs(message.thread_ts)?.conversationId ?? null;
 }
 
+export function isSlackDirectMessage(message: SlackMessageEvent): boolean {
+  return message.channel_type === 'im' || message.channel.startsWith('D');
+}
+
 export function shouldProcessSlackMessage(message: SlackMessageEvent): boolean {
   if (message.bot_id || message.subtype === 'bot_message') {
     return false;
   }
 
-  if (!message.user || !message.thread_ts) {
+  if (!message.user) {
+    return false;
+  }
+
+  if (isSlackDirectMessage(message)) {
+    return true;
+  }
+
+  if (!message.thread_ts) {
     return false;
   }
 
