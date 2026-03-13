@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -12,8 +12,13 @@ async function createTempRoot(): Promise<string> {
 }
 
 async function loadThreadSessionModules(tempRootDir: string) {
-  vi.stubEnv('STATE_FILE', path.join(tempRootDir, 'state', 'sessions.json'));
-  vi.stubEnv('ARTIFACTS_BASE_DIR', path.join(tempRootDir, 'artifacts'));
+  const relayDir = path.join(tempRootDir, '.agent-inbox');
+  vi.stubEnv('HOME', tempRootDir);
+  vi.stubEnv('INIT_CWD', '');
+  await mkdir(relayDir, { recursive: true });
+  await writeFile(path.join(relayDir, 'config.jsonl'), [
+    JSON.stringify({ type: 'meta', version: 1 }),
+  ].join('\n'), 'utf-8');
 
   const [state, manager] = await Promise.all([
     import('../../state.js'),
@@ -132,7 +137,7 @@ describe('thread-session manager', () => {
     await state.persistState();
 
     const persistedState = JSON.parse(
-      await readFile(path.join(rootDir, 'state', 'sessions.json'), 'utf-8'),
+      await readFile(path.join(rootDir, '.agent-inbox', 'state', 'sessions.json'), 'utf-8'),
     ) as Record<string, unknown>;
     expect(persistedState).toMatchObject({
       threadSessionBindings: {

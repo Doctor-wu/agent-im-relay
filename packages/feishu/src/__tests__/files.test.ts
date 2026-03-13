@@ -11,6 +11,15 @@ async function createTempDir(prefix: string): Promise<string> {
   return dir;
 }
 
+async function writeRelayConfig(homeDir: string): Promise<void> {
+  const relayDir = path.join(homeDir, '.agent-inbox');
+  await mkdir(relayDir, { recursive: true });
+  await writeFile(path.join(relayDir, 'config.jsonl'), [
+    '{"type":"meta","version":1}',
+    '{"type":"im","id":"feishu","enabled":true,"config":{"appId":"test-app","appSecret":"test-secret"}}',
+  ].join('\n'), 'utf-8');
+}
+
 afterEach(async () => {
   vi.unstubAllEnvs();
   vi.resetModules();
@@ -21,8 +30,9 @@ afterEach(async () => {
 
 describe('Feishu files adapter', () => {
   it('downloads inbound Feishu files into conversation storage', async () => {
-    const artifactsBaseDir = await createTempDir('feishu-files-');
-    vi.stubEnv('ARTIFACTS_BASE_DIR', artifactsBaseDir);
+    const homeDir = await createTempDir('feishu-files-');
+    vi.stubEnv('HOME', homeDir);
+    await writeRelayConfig(homeDir);
 
     const { ingestFeishuFiles } = await import('../files.js');
 
@@ -51,10 +61,11 @@ describe('Feishu files adapter', () => {
 
   it('prepares Feishu outbound artifact uploads and surfaces warnings', async () => {
     const tempRoot = await createTempDir('feishu-upload-');
-    const artifactsBaseDir = path.join(tempRoot, 'artifacts');
+    const artifactsBaseDir = path.join(tempRoot, '.agent-inbox', 'artifacts');
     const cwd = path.join(tempRoot, 'workspace');
     const generatedFile = path.join(cwd, 'reports', 'summary.md');
-    vi.stubEnv('ARTIFACTS_BASE_DIR', artifactsBaseDir);
+    vi.stubEnv('HOME', tempRoot);
+    await writeRelayConfig(tempRoot);
 
     await mkdir(path.dirname(generatedFile), { recursive: true });
     await writeFile(generatedFile, '# Summary\n', 'utf-8');

@@ -11,6 +11,17 @@ async function createTempDir(prefix: string): Promise<string> {
   return dir;
 }
 
+async function setupRelayHome(baseDir: string): Promise<string> {
+  const relayDir = path.join(baseDir, '.agent-inbox');
+  vi.stubEnv('HOME', baseDir);
+  vi.stubEnv('INIT_CWD', '');
+  await mkdir(relayDir, { recursive: true });
+  await writeFile(path.join(relayDir, 'config.jsonl'), [
+    JSON.stringify({ type: 'meta', version: 1 }),
+  ].join('\n'), 'utf-8');
+  return path.join(relayDir, 'artifacts');
+}
+
 afterEach(async () => {
   vi.unstubAllEnvs();
   vi.resetModules();
@@ -21,8 +32,8 @@ afterEach(async () => {
 
 describe('shared runtime files', () => {
   it('builds a shared attachment prompt after downloading inbound files', async () => {
-    const artifactsBaseDir = await createTempDir('core-files-');
-    vi.stubEnv('ARTIFACTS_BASE_DIR', artifactsBaseDir);
+    const tempRoot = await createTempDir('core-files-');
+    const artifactsBaseDir = await setupRelayHome(tempRoot);
 
     const { prepareAttachmentPrompt } = await import('../files.js');
 
@@ -51,10 +62,9 @@ describe('shared runtime files', () => {
 
   it('stages outgoing artifacts from the manifest and returns warnings for invalid paths', async () => {
     const tempRoot = await createTempDir('core-stage-');
-    const artifactsBaseDir = path.join(tempRoot, 'artifacts');
+    const artifactsBaseDir = await setupRelayHome(tempRoot);
     const cwd = path.join(tempRoot, 'workspace');
     const generatedFile = path.join(cwd, 'reports', 'summary.md');
-    vi.stubEnv('ARTIFACTS_BASE_DIR', artifactsBaseDir);
 
     await mkdir(path.dirname(generatedFile), { recursive: true });
     await writeFile(generatedFile, '# Summary\n', 'utf-8');

@@ -1,3 +1,5 @@
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -11,48 +13,54 @@ afterEach(() => {
 });
 
 describe('readFeishuConfig', () => {
-  it('parses required Feishu environment variables and defaults without callback fields', () => {
-    const config = readFeishuConfig({
-      ...process.env,
-      FEISHU_APP_ID: 'cli_test_app_id',
-      FEISHU_APP_SECRET: 'test-secret',
-      FEISHU_BASE_URL: 'https://example.invalid',
-    });
+  it('reads required Feishu fields from ~/.agent-inbox/config.jsonl', async () => {
+    const homeDir = await mkdtemp('/tmp/agent-inbox-feishu-home-');
+    const configDir = join(homeDir, '.agent-inbox');
+    vi.stubEnv('HOME', homeDir);
+
+    await mkdir(configDir, { recursive: true });
+    await writeFile(join(configDir, 'config.jsonl'), [
+      '{"type":"meta","version":1}',
+      '{"type":"im","id":"feishu","enabled":true,"config":{"appId":"cli_test_app_id","appSecret":"test-secret","baseUrl":"https://example.invalid"}}',
+    ].join('\n'), 'utf-8');
+
+    const config = readFeishuConfig();
 
     expect(config.feishuAppId).toBe('cli_test_app_id');
     expect(config.feishuAppSecret).toBe('test-secret');
     expect(config.feishuBaseUrl).toBe('https://example.invalid');
     expect(config.feishuModelSelectionTimeoutMs).toBe(10_000);
-    expect('feishuPort' in config).toBe(false);
+    expect(config.feishuPort).toBeUndefined();
     expect(config.agentTimeoutMs).toBeGreaterThan(0);
   });
 
-  it('allows overriding the model auto-selection timeout', () => {
-    const config = readFeishuConfig({
-      ...process.env,
-      FEISHU_APP_ID: 'cli_test_app_id',
-      FEISHU_APP_SECRET: 'test-secret',
-      FEISHU_MODEL_SELECTION_TIMEOUT_MS: '2500',
-    });
+  it('allows overriding the model auto-selection timeout from shared config', async () => {
+    const homeDir = await mkdtemp('/tmp/agent-inbox-feishu-home-');
+    const configDir = join(homeDir, '.agent-inbox');
+    vi.stubEnv('HOME', homeDir);
+
+    await mkdir(configDir, { recursive: true });
+    await writeFile(join(configDir, 'config.jsonl'), [
+      '{"type":"meta","version":1}',
+      '{"type":"im","id":"feishu","enabled":true,"config":{"appId":"cli_test_app_id","appSecret":"test-secret","modelSelectionTimeoutMs":2500}}',
+    ].join('\n'), 'utf-8');
+
+    const config = readFeishuConfig();
 
     expect(config.feishuModelSelectionTimeoutMs).toBe(2_500);
   });
 
-  it('rejects dirty model auto-selection timeout input', () => {
-    expect(() => readFeishuConfig({
-      ...process.env,
-      FEISHU_APP_ID: 'cli_test_app_id',
-      FEISHU_APP_SECRET: 'test-secret',
-      FEISHU_MODEL_SELECTION_TIMEOUT_MS: '10s',
-    })).toThrow('Invalid numeric environment variable: FEISHU_MODEL_SELECTION_TIMEOUT_MS');
-  });
+  it('throws when required Feishu config is missing from the shared file', async () => {
+    const homeDir = await mkdtemp('/tmp/agent-inbox-feishu-home-');
+    const configDir = join(homeDir, '.agent-inbox');
+    vi.stubEnv('HOME', homeDir);
 
-  it('throws when required Feishu environment variables are missing', () => {
-    expect(() => readFeishuConfig({
-      ...process.env,
-      FEISHU_APP_ID: '',
-      FEISHU_APP_SECRET: '',
-    })).toThrow('Missing required environment variable: FEISHU_APP_ID');
+    await mkdir(configDir, { recursive: true });
+    await writeFile(join(configDir, 'config.jsonl'), '{"type":"meta","version":1}\n', 'utf-8');
+
+    expect(() => readFeishuConfig()).toThrow(
+      'Missing required feishu configuration in ~/.agent-inbox/config.jsonl',
+    );
   });
 
   it('applies explicit core runtime settings when building a runtime', () => {

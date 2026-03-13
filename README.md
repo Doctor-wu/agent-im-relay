@@ -41,8 +41,11 @@ Configuration is stored in `~/.agent-inbox/config.jsonl`. Example:
 {"type":"meta","version":1}
 {"type":"im","id":"discord","enabled":true,"config":{"token":"your-bot-token","clientId":"your-client-id"}}
 {"type":"im","id":"feishu","enabled":false,"config":{"appId":"","appSecret":""}}
-{"type":"runtime","config":{"agentTimeoutMs":600000}}
+{"type":"im","id":"slack","enabled":false,"config":{"botToken":"","appToken":"","signingSecret":"","socketMode":true}}
+{"type":"runtime","config":{"agentTimeoutMs":600000,"claudeBin":"claude","codexBin":"codex","opencodeBin":"opencode"}}
 ```
+
+Standalone adapter runs use the same `~/.agent-inbox/config.jsonl` file. There is no repo-local `.env` bootstrap path.
 
 ### Step 3: Start
 
@@ -139,9 +142,10 @@ pnpm start
 # Development mode (run adapters independently)
 pnpm dev:discord
 pnpm dev:feishu
+pnpm dev:slack
 ```
 
-Use the repo root `.env` file for local environment variables during development. See `.env.example` for reference.
+All adapter development commands load configuration from `~/.agent-inbox/config.jsonl`.
 
 ### Build Outputs
 

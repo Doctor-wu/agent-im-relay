@@ -4,6 +4,7 @@ import type { AvailableIm, RuntimeConfig } from './config.js';
 type RuntimeLoaders = {
   discord?: () => Promise<{ startDiscordRuntime: () => Promise<unknown> }>;
   feishu?: () => Promise<{ startFeishuRuntime: () => Promise<unknown> }>;
+  slack?: () => Promise<{ startSlackRuntime: () => Promise<unknown> }>;
 };
 
 function setOptionalEnv(key: string, value: string | undefined): void {
@@ -42,6 +43,11 @@ export function applyRuntimeEnvironment(
   delete process.env['FEISHU_ENCRYPT_KEY'];
   delete process.env['FEISHU_BASE_URL'];
   delete process.env['FEISHU_PORT'];
+  delete process.env['FEISHU_MODEL_SELECTION_TIMEOUT_MS'];
+  delete process.env['SLACK_BOT_TOKEN'];
+  delete process.env['SLACK_APP_TOKEN'];
+  delete process.env['SLACK_SIGNING_SECRET'];
+  delete process.env['SLACK_SOCKET_MODE'];
 
   if (selectedIm.id === 'discord') {
     process.env['DISCORD_TOKEN'] = selectedIm.config.token;
@@ -51,12 +57,21 @@ export function applyRuntimeEnvironment(
     return;
   }
 
-  process.env['FEISHU_APP_ID'] = selectedIm.config.appId;
-  process.env['FEISHU_APP_SECRET'] = selectedIm.config.appSecret;
-  setOptionalEnv('FEISHU_VERIFICATION_TOKEN', selectedIm.config.verificationToken);
-  setOptionalEnv('FEISHU_ENCRYPT_KEY', selectedIm.config.encryptKey);
-  setOptionalEnv('FEISHU_BASE_URL', selectedIm.config.baseUrl);
-  setNumericEnv('FEISHU_PORT', selectedIm.config.port);
+  if (selectedIm.id === 'feishu') {
+    process.env['FEISHU_APP_ID'] = selectedIm.config.appId;
+    process.env['FEISHU_APP_SECRET'] = selectedIm.config.appSecret;
+    setOptionalEnv('FEISHU_VERIFICATION_TOKEN', selectedIm.config.verificationToken);
+    setOptionalEnv('FEISHU_ENCRYPT_KEY', selectedIm.config.encryptKey);
+    setOptionalEnv('FEISHU_BASE_URL', selectedIm.config.baseUrl);
+    setNumericEnv('FEISHU_PORT', selectedIm.config.port);
+    setNumericEnv('FEISHU_MODEL_SELECTION_TIMEOUT_MS', selectedIm.config.modelSelectionTimeoutMs);
+    return;
+  }
+
+  process.env['SLACK_BOT_TOKEN'] = selectedIm.config.botToken;
+  process.env['SLACK_APP_TOKEN'] = selectedIm.config.appToken;
+  process.env['SLACK_SIGNING_SECRET'] = selectedIm.config.signingSecret;
+  setOptionalEnv('SLACK_SOCKET_MODE', String(selectedIm.config.socketMode ?? true));
 }
 
 export async function startSelectedIm(
@@ -74,7 +89,14 @@ export async function startSelectedIm(
     return;
   }
 
-  const loadFeishu = loaders.feishu ?? (() => import('@agent-im-relay/feishu'));
-  const feishu = await loadFeishu();
-  await feishu.startFeishuRuntime();
+  if (selectedIm.id === 'feishu') {
+    const loadFeishu = loaders.feishu ?? (() => import('@agent-im-relay/feishu'));
+    const feishu = await loadFeishu();
+    await feishu.startFeishuRuntime();
+    return;
+  }
+
+  const loadSlack = loaders.slack ?? (() => import('@agent-im-relay/slack'));
+  const slack = await loadSlack();
+  await slack.startSlackRuntime();
 }

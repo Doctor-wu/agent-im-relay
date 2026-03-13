@@ -5,16 +5,18 @@ import type {
   AvailableIm,
   DiscordImRecord,
   FeishuImRecord,
+  SlackImRecord,
   LoadedAppConfig,
 } from './config.js';
 import { loadAppConfig, saveAppConfig, upsertRecord } from './config.js';
 
-const ALL_PLATFORM_IDS = ['discord', 'feishu'] as const;
+const ALL_PLATFORM_IDS = ['discord', 'feishu', 'slack'] as const;
 type PlatformId = (typeof ALL_PLATFORM_IDS)[number];
 
 const PLATFORM_LABELS: Record<PlatformId, string> = {
   discord: 'Discord (Recommended)',
   feishu: 'Feishu (飞书)',
+  slack: 'Slack',
 };
 
 const PLATFORM_HINTS: Partial<Record<PlatformId, string>> = {
@@ -124,6 +126,55 @@ async function buildFeishuRecord(): Promise<FeishuImRecord> {
   };
 }
 
+async function buildSlackRecord(): Promise<SlackImRecord> {
+  const result = await p.group(
+    {
+      botToken: () =>
+        p.password({
+          message: 'Slack bot token',
+          validate: v => (v.length === 0 ? 'Required' : undefined),
+        }),
+      appToken: () =>
+        p.password({
+          message: 'Slack app token',
+          validate: v => (v.length === 0 ? 'Required' : undefined),
+        }),
+      signingSecret: () =>
+        p.password({
+          message: 'Slack signing secret',
+          validate: v => (v.length === 0 ? 'Required' : undefined),
+        }),
+      socketMode: () =>
+        p.select({
+          message: 'Use Socket Mode?',
+          options: [
+            { value: true, label: 'Yes' },
+            { value: false, label: 'No' },
+          ],
+        }),
+    },
+    {
+      onCancel: () => {
+        p.cancel('Setup cancelled.');
+        process.exit(0);
+      },
+    },
+  );
+
+  return {
+    type: 'im',
+    id: 'slack',
+    enabled: true,
+    note: 'Slack app',
+    config: {
+      botToken: result.botToken,
+      appToken: result.appToken,
+      signingSecret: result.signingSecret,
+      socketMode: result.socketMode,
+    },
+  };
+}
+
 export async function runSetup(
   paths: RelayPaths,
   unconfiguredPlatforms: PlatformId[],
@@ -155,7 +206,9 @@ export async function runSetup(
   const nextRecord =
     platformId === 'discord'
       ? await buildDiscordRecord()
-      : await buildFeishuRecord();
+      : platformId === 'feishu'
+        ? await buildFeishuRecord()
+        : await buildSlackRecord();
 
   const nextRecords = upsertRecord(
     current.records as AppConfigRecord[],

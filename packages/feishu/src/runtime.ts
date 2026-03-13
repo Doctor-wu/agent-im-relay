@@ -30,7 +30,6 @@ import {
   type ModelSelectionCard,
 } from './cards.js';
 import { parseAskCommand } from './commands/ask.js';
-import { resolveFeishuModelSelectionTimeoutMs } from './config.js';
 import { getFeishuSessionChat } from './session-chat.js';
 
 export type FeishuTarget = {
@@ -60,11 +59,7 @@ const pendingRuns = new Map<string, PendingFeishuRun>();
 const pendingModelSelectionTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function readModelSelectionTimeoutMs(timeoutMs?: number): number {
-  if (timeoutMs !== undefined) {
-    return timeoutMs;
-  }
-
-  return resolveFeishuModelSelectionTimeoutMs();
+  return timeoutMs ?? 10_000;
 }
 
 function maybeUnrefTimer(timer: ReturnType<typeof setTimeout>): void {

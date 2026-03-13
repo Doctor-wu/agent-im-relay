@@ -27,4 +27,31 @@ describe('runtime dispatch', () => {
     expect(process.env['DISCORD_TOKEN']).toBe('discord-token');
     expect(process.env['AGENT_TIMEOUT_MS']).toBe('1234');
   });
+
+  it('dispatches to the Slack runtime and applies Slack env vars', async () => {
+    const startSlackRuntime = vi.fn(async () => {});
+    const selectedIm: AvailableIm = {
+      id: 'slack',
+      config: {
+        botToken: 'xoxb-test-token',
+        appToken: 'xapp-test-token',
+        signingSecret: 'test-signing-secret',
+        socketMode: false,
+      },
+    };
+
+    await startSelectedIm(
+      selectedIm,
+      { agentTimeoutMs: 4321 },
+      resolveRelayPaths('/tmp/runtime-dispatch-slack'),
+      {
+        slack: async () => ({ startSlackRuntime }),
+      },
+    );
+
+    expect(startSlackRuntime).toHaveBeenCalledOnce();
+    expect(process.env['SLACK_BOT_TOKEN']).toBe('xoxb-test-token');
+    expect(process.env['SLACK_SOCKET_MODE']).toBe('false');
+    expect(process.env['AGENT_TIMEOUT_MS']).toBe('4321');
+  });
 });

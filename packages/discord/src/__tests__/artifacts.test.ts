@@ -11,6 +11,30 @@ async function createTempDir(): Promise<string> {
   return dir;
 }
 
+async function setupDiscordRelayHome(
+  baseDir: string,
+  runtime: Record<string, unknown> = {},
+): Promise<string> {
+  const relayDir = path.join(baseDir, '.agent-inbox');
+  vi.stubEnv('HOME', baseDir);
+  vi.stubEnv('INIT_CWD', '');
+  await mkdir(relayDir, { recursive: true });
+  await writeFile(path.join(relayDir, 'config.jsonl'), [
+    JSON.stringify({ type: 'meta', version: 1 }),
+    JSON.stringify({ type: 'runtime', config: runtime }),
+    JSON.stringify({
+      type: 'im',
+      id: 'discord',
+      enabled: true,
+      config: {
+        token: 'test-token',
+        clientId: 'test-client-id',
+      },
+    }),
+  ].join('\n'), 'utf-8');
+  return path.join(relayDir, 'artifacts');
+}
+
 afterEach(async () => {
   vi.unstubAllEnvs();
   vi.resetModules();
@@ -23,9 +47,8 @@ describe('publishConversationArtifacts', () => {
   it('uploads valid artifact files and records outgoing metadata', async () => {
     const tempRoot = await createTempDir();
     const cwd = path.join(tempRoot, 'workspace');
-    const artifactsBaseDir = path.join(tempRoot, 'artifacts');
+    const artifactsBaseDir = await setupDiscordRelayHome(tempRoot);
     const generatedFile = path.join(cwd, 'reports', 'summary.md');
-    vi.stubEnv('ARTIFACTS_BASE_DIR', artifactsBaseDir);
 
     await mkdir(path.dirname(generatedFile), { recursive: true });
     await writeFile(generatedFile, '# Summary\n', 'utf-8');
@@ -64,9 +87,8 @@ describe('publishConversationArtifacts', () => {
   it('mentions the triggering bot on artifact uploads', async () => {
     const tempRoot = await createTempDir();
     const cwd = path.join(tempRoot, 'workspace');
-    const artifactsBaseDir = path.join(tempRoot, 'artifacts');
+    const artifactsBaseDir = await setupDiscordRelayHome(tempRoot);
     const generatedFile = path.join(cwd, 'reports', 'summary.md');
-    vi.stubEnv('ARTIFACTS_BASE_DIR', artifactsBaseDir);
 
     await mkdir(path.dirname(generatedFile), { recursive: true });
     await writeFile(generatedFile, '# Summary\n', 'utf-8');
@@ -97,8 +119,7 @@ describe('publishConversationArtifacts', () => {
   it('ignores invalid artifact paths and reports a warning', async () => {
     const tempRoot = await createTempDir();
     const cwd = path.join(tempRoot, 'workspace');
-    const artifactsBaseDir = path.join(tempRoot, 'artifacts');
-    vi.stubEnv('ARTIFACTS_BASE_DIR', artifactsBaseDir);
+    await setupDiscordRelayHome(tempRoot);
 
     await mkdir(cwd, { recursive: true });
 
@@ -124,8 +145,7 @@ describe('publishConversationArtifacts', () => {
   it('mentions warning follow-ups for bot-triggered runs', async () => {
     const tempRoot = await createTempDir();
     const cwd = path.join(tempRoot, 'workspace');
-    const artifactsBaseDir = path.join(tempRoot, 'artifacts');
-    vi.stubEnv('ARTIFACTS_BASE_DIR', artifactsBaseDir);
+    await setupDiscordRelayHome(tempRoot);
 
     await mkdir(cwd, { recursive: true });
 
@@ -154,9 +174,8 @@ describe('publishConversationArtifacts', () => {
   it('reports upload failures without dropping the saved artifact copy', async () => {
     const tempRoot = await createTempDir();
     const cwd = path.join(tempRoot, 'workspace');
-    const artifactsBaseDir = path.join(tempRoot, 'artifacts');
+    await setupDiscordRelayHome(tempRoot);
     const generatedFile = path.join(cwd, 'reports', 'summary.md');
-    vi.stubEnv('ARTIFACTS_BASE_DIR', artifactsBaseDir);
 
     await mkdir(path.dirname(generatedFile), { recursive: true });
     await writeFile(generatedFile, '# Summary\n', 'utf-8');
@@ -193,10 +212,10 @@ describe('publishConversationArtifacts', () => {
   it('skips oversized artifact uploads and reports the limit hit', async () => {
     const tempRoot = await createTempDir();
     const cwd = path.join(tempRoot, 'workspace');
-    const artifactsBaseDir = path.join(tempRoot, 'artifacts');
+    await setupDiscordRelayHome(tempRoot, {
+      artifactMaxSizeBytes: 4,
+    });
     const generatedFile = path.join(cwd, 'reports', 'summary.md');
-    vi.stubEnv('ARTIFACTS_BASE_DIR', artifactsBaseDir);
-    vi.stubEnv('ARTIFACT_MAX_SIZE_BYTES', '4');
 
     await mkdir(path.dirname(generatedFile), { recursive: true });
     await writeFile(generatedFile, '# Summary\n', 'utf-8');
