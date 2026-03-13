@@ -511,9 +511,6 @@ export function readRelayConfig(baseDir?: string): LoadedRelayConfig {
 
   try {
     const raw = readFileSync(paths.configFile, 'utf-8');
-    if (typeof raw !== 'string') {
-      return emptyLoadedRelayConfig();
-    }
     return parseConfigJsonl(raw);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -551,10 +548,7 @@ export function upsertRecord(
   return ensureDefaultRecords([...normalized, nextRecord]);
 }
 
-function resolveRuntimeDefaults(baseDir?: string): CoreConfig {
-  const paths = resolveRelayPaths(baseDir);
-  const loaded = readRelayConfig(baseDir);
-
+function toCoreConfig(paths: RelayPaths, loaded: LoadedRelayConfig): CoreConfig {
   return {
     agentTimeoutMs: loaded.runtime.agentTimeoutMs ?? DEFAULT_RUNTIME_RECORD.config.agentTimeoutMs!,
     claudeCwd: loaded.runtime.claudeCwd ?? process.cwd(),
@@ -569,10 +563,9 @@ function resolveRuntimeDefaults(baseDir?: string): CoreConfig {
 }
 
 function requireAvailableIm(
+  loaded: LoadedRelayConfig,
   id: AvailableIm['id'],
-  baseDir?: string,
 ): AvailableIm {
-  const loaded = readRelayConfig(baseDir);
   const selected = loaded.availableIms.find(im => im.id === id);
 
   if (!selected) {
@@ -583,13 +576,16 @@ function requireAvailableIm(
 }
 
 export function readCoreConfig(baseDir?: string): CoreConfig {
-  return resolveRuntimeDefaults(baseDir);
+  const paths = resolveRelayPaths(baseDir);
+  const loaded = readRelayConfig(baseDir);
+  return toCoreConfig(paths, loaded);
 }
 
 export function readDiscordRelayConfig(baseDir?: string): DiscordRelayConfig {
-  const coreConfig = readCoreConfig(baseDir);
-  const selected = requireAvailableIm('discord', baseDir);
-  const runtime = readRelayConfig(baseDir).runtime;
+  const paths = resolveRelayPaths(baseDir);
+  const loaded = readRelayConfig(baseDir);
+  const coreConfig = toCoreConfig(paths, loaded);
+  const selected = requireAvailableIm(loaded, 'discord');
 
   if (selected.id !== 'discord') {
     throw new Error('Unexpected IM selection when reading Discord config.');
@@ -601,15 +597,17 @@ export function readDiscordRelayConfig(baseDir?: string): DiscordRelayConfig {
     discordClientId: selected.config.clientId,
     guildIds: selected.config.guildIds ?? [],
     allowedChannelIds: selected.config.allowedChannelIds ?? [],
-    streamUpdateIntervalMs: runtime.streamUpdateIntervalMs ?? DEFAULT_RUNTIME_RECORD.config.streamUpdateIntervalMs!,
-    discordMessageCharLimit: runtime.discordMessageCharLimit ?? DEFAULT_RUNTIME_RECORD.config.discordMessageCharLimit!,
+    streamUpdateIntervalMs: loaded.runtime.streamUpdateIntervalMs ?? DEFAULT_RUNTIME_RECORD.config.streamUpdateIntervalMs!,
+    discordMessageCharLimit: loaded.runtime.discordMessageCharLimit ?? DEFAULT_RUNTIME_RECORD.config.discordMessageCharLimit!,
     maxAttachmentSizeBytes: coreConfig.artifactMaxSizeBytes,
   };
 }
 
 export function readFeishuRelayConfig(baseDir?: string): FeishuRelayConfig {
-  const coreConfig = readCoreConfig(baseDir);
-  const selected = requireAvailableIm('feishu', baseDir);
+  const paths = resolveRelayPaths(baseDir);
+  const loaded = readRelayConfig(baseDir);
+  const coreConfig = toCoreConfig(paths, loaded);
+  const selected = requireAvailableIm(loaded, 'feishu');
 
   if (selected.id !== 'feishu') {
     throw new Error('Unexpected IM selection when reading Feishu config.');
@@ -628,8 +626,10 @@ export function readFeishuRelayConfig(baseDir?: string): FeishuRelayConfig {
 }
 
 export function readSlackRelayConfig(baseDir?: string): SlackRelayConfig {
-  const coreConfig = readCoreConfig(baseDir);
-  const selected = requireAvailableIm('slack', baseDir);
+  const paths = resolveRelayPaths(baseDir);
+  const loaded = readRelayConfig(baseDir);
+  const coreConfig = toCoreConfig(paths, loaded);
+  const selected = requireAvailableIm(loaded, 'slack');
 
   if (selected.id !== 'slack') {
     throw new Error('Unexpected IM selection when reading Slack config.');
