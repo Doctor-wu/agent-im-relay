@@ -26,6 +26,9 @@ importers:
       '@agent-im-relay/feishu':
         specifier: workspace:*
         version: link:../../packages/feishu
+      '@agent-im-relay/slack':
+        specifier: workspace:*
+        version: link:../../packages/slack
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.13

@@ -30,6 +30,7 @@
     "@agent-im-relay/core": "workspace:*",
     "@agent-im-relay/discord": "workspace:*",
     "@agent-im-relay/feishu": "workspace:*",
+    "@agent-im-relay/slack": "workspace:*",
     "@types/node": "^22.10.0",
     "postject": "1.0.0-alpha.6",
     "tsdown": "^0.21.0",
