@@ -56,6 +56,27 @@ export type FeishuRuntimeTransport = {
 
 const pendingAttachments = new Map<string, RemoteAttachmentLike[]>();
 const pendingRuns = new Map<string, PendingFeishuRun>();
+const pendingModelSelectionTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function readModelSelectionTimeoutMs(timeoutMs?: number): number {
+  return timeoutMs ?? 10_000;
+}
+
+function maybeUnrefTimer(timer: ReturnType<typeof setTimeout>): void {
+  if (typeof (timer as { unref?: () => void }).unref === 'function') {
+    (timer as { unref: () => void }).unref();
+  }
+}
+
+function clearPendingModelSelectionTimer(conversationId: string): void {
+  const timer = pendingModelSelectionTimers.get(conversationId);
+  if (!timer) {
+    return;
+  }
+
+  clearTimeout(timer);
+  pendingModelSelectionTimers.delete(conversationId);
+}
 
 async function resolveFeishuCapabilities(
   conversationId: string,
@@ -73,12 +94,22 @@ async function getBackendModels(backend: BackendName): Promise<BackendModel[]> {
   return capabilities.find(capability => capability.name === backend)?.models ?? [];
 }
 
-async function getRequiredModelSelectionCard(
+async function resolveRequiredModelSelection(
   conversationId: string,
   backend: BackendName | undefined,
-): Promise<ModelSelectionCard | null> {
+): Promise<{
+    backend: BackendName | undefined;
+    models: BackendModel[];
+    normalizedModel: string | undefined;
+    requiresSelection: boolean;
+  }> {
   if (!backend) {
-    return null;
+    return {
+      backend,
+      models: [],
+      normalizedModel: undefined,
+      requiresSelection: false,
+    };
   }
 
   const models = await getBackendModels(backend);
@@ -91,10 +122,22 @@ async function getRequiredModelSelectionCard(
     conversationModels.set(conversationId, normalizedModel);
   }
 
-  const requiresModelSelection = models.length > 0 && !normalizedModel;
+  return {
+    backend,
+    models,
+    normalizedModel,
+    requiresSelection: models.length > 0 && !normalizedModel,
+  };
+}
 
-  return requiresModelSelection
-    ? buildModelSelectionCard(conversationId, backend, models)
+async function getRequiredModelSelectionCard(
+  conversationId: string,
+  backend: BackendName | undefined,
+): Promise<ModelSelectionCard | null> {
+  const selection = await resolveRequiredModelSelection(conversationId, backend);
+
+  return selection.requiresSelection && selection.backend
+    ? buildModelSelectionCard(conversationId, selection.backend, selection.models)
     : null;
 }
 
@@ -302,9 +345,96 @@ function storePendingFeishuRun(run: PendingFeishuRun): void {
 }
 
 function takePendingFeishuRun(conversationId: string): PendingFeishuRun | undefined {
+  clearPendingModelSelectionTimer(conversationId);
   const pendingRun = pendingRuns.get(conversationId);
   pendingRuns.delete(conversationId);
   return pendingRun;
+}
+
+export type ModelSelectionTimeoutOptions = {
+  conversationId: string;
+  transport: FeishuRuntimeTransport;
+  defaultCwd: string;
+  previousModel?: string;
+  timeoutMs?: number;
+  persistState?: () => Promise<void>;
+  lifecycle?: FeishuConversationLifecycle;
+  modelSelectionTimeoutMs?: number;
+};
+
+async function autoSelectModelForPendingRun(options: {
+  conversationId: string;
+  transport: FeishuRuntimeTransport;
+  defaultCwd: string;
+  previousModel?: string;
+  persistState?: () => Promise<void>;
+  lifecycle?: FeishuConversationLifecycle;
+  modelSelectionTimeoutMs?: number;
+}): Promise<void> {
+  if (!pendingRuns.has(options.conversationId)) {
+    return;
+  }
+
+  const backend = conversationBackend.get(options.conversationId);
+  const selection = await resolveRequiredModelSelection(options.conversationId, backend);
+
+  if (selection.requiresSelection) {
+    const requestedPreviousModel = options.previousModel ?? conversationModels.get(options.conversationId);
+    const fallbackModel = requestedPreviousModel && selection.backend
+      ? resolveBackendModelId(selection.backend, requestedPreviousModel) ?? selection.models[0]?.id
+      : selection.models[0]?.id;
+    if (!fallbackModel) {
+      return;
+    }
+
+    conversationModels.set(options.conversationId, fallbackModel);
+    await options.persistState?.();
+  }
+
+  await resumePendingFeishuRun({
+    conversationId: options.conversationId,
+    transport: options.transport,
+    defaultCwd: options.defaultCwd,
+    persistState: options.persistState,
+    lifecycle: options.lifecycle,
+    modelSelectionTimeoutMs: options.modelSelectionTimeoutMs,
+  });
+}
+
+function schedulePendingModelSelectionTimeout(options: {
+  conversationId: string;
+  transport: FeishuRuntimeTransport;
+  defaultCwd: string;
+  previousModel?: string;
+  persistState?: () => Promise<void>;
+  lifecycle?: FeishuConversationLifecycle;
+  modelSelectionTimeoutMs?: number;
+}): void {
+  const timeoutMs = readModelSelectionTimeoutMs(options.modelSelectionTimeoutMs);
+  clearPendingModelSelectionTimer(options.conversationId);
+
+  const timer = setTimeout(() => {
+    pendingModelSelectionTimers.delete(options.conversationId);
+    void autoSelectModelForPendingRun(options);
+  }, timeoutMs);
+  maybeUnrefTimer(timer);
+  pendingModelSelectionTimers.set(options.conversationId, timer);
+}
+
+export function scheduleModelSelectionTimeout(options: ModelSelectionTimeoutOptions): () => void {
+  schedulePendingModelSelectionTimeout({
+    conversationId: options.conversationId,
+    transport: options.transport,
+    defaultCwd: options.defaultCwd,
+    previousModel: options.previousModel,
+    persistState: options.persistState,
+    lifecycle: options.lifecycle,
+    modelSelectionTimeoutMs: options.timeoutMs ?? options.modelSelectionTimeoutMs,
+  });
+
+  return () => {
+    clearPendingModelSelectionTimer(options.conversationId);
+  };
 }
 
 function formatEnvironmentSummary(event: Extract<AgentStreamEvent, { type: 'environment' }>): string {
@@ -381,6 +511,7 @@ export async function runFeishuConversation(options: {
   attachmentFetchImpl?: typeof fetch;
   persistState?: () => Promise<void>;
   lifecycle?: FeishuConversationLifecycle;
+  modelSelectionTimeoutMs?: number;
 }): Promise<{ kind: 'blocked' | 'started' | 'busy' | 'error' }> {
   const gate = await beginFeishuConversationRun({
     conversationId: options.conversationId,
@@ -393,6 +524,7 @@ export async function runFeishuConversation(options: {
   ];
 
   if (gate.kind === 'unavailable') {
+    clearPendingModelSelectionTimer(options.conversationId);
     pendingRuns.delete(options.conversationId);
     await options.transport.sendText(options.target, gate.message);
     return { kind: 'error' };
@@ -418,9 +550,24 @@ export async function runFeishuConversation(options: {
         ? buildFeishuBackendSelectionCardPayload(gate.card, context)
         : buildFeishuModelSelectionCardPayload(gate.card, context),
     );
+    if (gate.reason === 'model-selection') {
+      schedulePendingModelSelectionTimeout({
+        conversationId: options.conversationId,
+        transport: options.transport,
+        defaultCwd: options.defaultCwd,
+        previousModel: conversationModels.get(options.conversationId),
+        persistState: options.persistState,
+        lifecycle: options.lifecycle,
+        modelSelectionTimeoutMs: options.modelSelectionTimeoutMs,
+      });
+    } else {
+      clearPendingModelSelectionTimer(options.conversationId);
+    }
+
     return { kind: 'blocked' };
   }
 
+  clearPendingModelSelectionTimer(options.conversationId);
   pendingRuns.delete(options.conversationId);
   rememberFeishuConversationMode(options.conversationId, options.mode);
 
@@ -461,6 +608,7 @@ export async function resumePendingFeishuRun(options: {
   fallback?: Omit<PendingFeishuRun, 'conversationId'>;
   persistState?: () => Promise<void>;
   lifecycle?: FeishuConversationLifecycle;
+  modelSelectionTimeoutMs?: number;
 }): Promise<{ kind: 'none' | 'blocked' | 'started' | 'busy' | 'error' }> {
   const pending = takePendingFeishuRun(options.conversationId);
   const run = pending ?? (options.fallback
@@ -488,9 +636,19 @@ export async function resumePendingFeishuRun(options: {
         }),
       ),
     );
+    schedulePendingModelSelectionTimeout({
+      conversationId: options.conversationId,
+      transport: options.transport,
+      defaultCwd: options.defaultCwd,
+      previousModel: conversationModels.get(options.conversationId),
+      persistState: options.persistState,
+      lifecycle: options.lifecycle,
+      modelSelectionTimeoutMs: options.modelSelectionTimeoutMs,
+    });
     return { kind: 'blocked' };
   }
 
+  clearPendingModelSelectionTimer(options.conversationId);
   return runFeishuConversation({
     conversationId: run.conversationId,
     target: run.target,
@@ -503,6 +661,7 @@ export async function resumePendingFeishuRun(options: {
     attachmentFetchImpl: run.attachmentFetchImpl,
     persistState: options.persistState,
     lifecycle: options.lifecycle,
+    modelSelectionTimeoutMs: options.modelSelectionTimeoutMs,
   });
 }
 
@@ -516,6 +675,10 @@ export async function handleFeishuControlAction(options: {
   | { kind: 'backend-confirmation'; card: BackendConfirmationCard }
 > {
   const result = dispatchFeishuCardAction(options.action);
+
+  if (options.action.type === 'model' || options.action.type === 'backend' || options.action.type === 'confirm-backend') {
+    clearPendingModelSelectionTimer(options.action.conversationId);
+  }
 
   if (result.requiresConfirmation && result.kind === 'backend') {
     return {
@@ -577,6 +740,10 @@ export async function handleFeishuControlAction(options: {
 }
 
 export function resetFeishuRuntimeForTests(): void {
+  for (const timer of pendingModelSelectionTimers.values()) {
+    clearTimeout(timer);
+  }
+  pendingModelSelectionTimers.clear();
   pendingAttachments.clear();
   pendingRuns.clear();
 }

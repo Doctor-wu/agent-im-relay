@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     pidsDir: '/tmp/agent-inbox-cli/.agent-inbox/pids',
   })),
   loadAppConfig: vi.fn(),
+  saveAppConfig: vi.fn(),
   runSetup: vi.fn(),
   getUnconfiguredPlatforms: vi.fn(() => []),
   startSelectedIm: vi.fn(),
@@ -33,6 +34,7 @@ vi.mock('../config.js', async (importOriginal) => {
   return {
     ...actual,
     loadAppConfig: mocks.loadAppConfig,
+    saveAppConfig: mocks.saveAppConfig,
   };
 });
 
@@ -93,6 +95,123 @@ describe('cli', () => {
       im,
       {},
       expect.objectContaining({ pidsDir: expect.any(String) }),
+    );
+  });
+
+  it('shows Discord first by default when no last used platform is saved', async () => {
+    mocks.loadAppConfig.mockResolvedValue({
+      records: [],
+      runtime: {},
+      errors: [],
+      lastUsedPlatform: undefined,
+      availableIms: [
+        {
+          id: 'feishu' as const,
+          config: { appId: 'feishu-app', appSecret: 'feishu-secret' },
+        },
+        {
+          id: 'discord' as const,
+          config: { token: 'discord-token', clientId: 'discord-client' },
+        },
+      ],
+    });
+
+    mocks.clackSelect.mockResolvedValue('discord');
+
+    await runCli();
+
+    expect(mocks.clackSelect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Select a platform to start',
+        options: [
+          expect.objectContaining({ value: 'discord', label: 'Discord (Recommended)' }),
+          expect.objectContaining({ value: 'feishu', label: 'Feishu (飞书)' }),
+        ],
+      }),
+    );
+  });
+
+  it('moves the last used platform to the top and labels it in the startup list', async () => {
+    mocks.loadAppConfig.mockResolvedValue({
+      records: [],
+      runtime: {},
+      errors: [],
+      lastUsedPlatform: 'feishu',
+      availableIms: [
+        {
+          id: 'discord' as const,
+          config: { token: 'discord-token', clientId: 'discord-client' },
+        },
+        {
+          id: 'feishu' as const,
+          config: { appId: 'feishu-app', appSecret: 'feishu-secret' },
+        },
+      ],
+    });
+
+    mocks.clackSelect.mockResolvedValue('feishu');
+
+    await runCli();
+
+    expect(mocks.clackSelect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: [
+          expect.objectContaining({ value: 'feishu', hint: 'Last used' }),
+          expect.objectContaining({ value: 'discord', label: 'Discord (Recommended)' }),
+        ],
+      }),
+    );
+  });
+
+  it('overwrites the saved platform after a new manual selection', async () => {
+    const discordRecord = {
+      type: 'im' as const,
+      id: 'discord' as const,
+      enabled: true,
+      config: { token: 'discord-token', clientId: 'discord-client' },
+    };
+    const feishuRecord = {
+      type: 'im' as const,
+      id: 'feishu' as const,
+      enabled: true,
+      config: { appId: 'feishu-app', appSecret: 'feishu-secret' },
+    };
+
+    mocks.loadAppConfig.mockResolvedValue({
+      records: [
+        { type: 'meta' as const, version: 1 },
+        { type: 'local-preferences' as const, lastUsedPlatform: 'discord' as const },
+        discordRecord,
+        feishuRecord,
+        { type: 'runtime' as const, config: {} },
+      ],
+      runtime: {},
+      errors: [],
+      lastUsedPlatform: 'discord',
+      availableIms: [
+        {
+          id: 'discord' as const,
+          config: { token: 'discord-token', clientId: 'discord-client' },
+        },
+        {
+          id: 'feishu' as const,
+          config: { appId: 'feishu-app', appSecret: 'feishu-secret' },
+        },
+      ],
+    });
+
+    mocks.clackSelect.mockResolvedValue('feishu');
+
+    await runCli();
+
+    expect(mocks.saveAppConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ configFile: expect.any(String) }),
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'local-preferences',
+          lastUsedPlatform: 'feishu',
+        }),
+      ]),
     );
   });
 

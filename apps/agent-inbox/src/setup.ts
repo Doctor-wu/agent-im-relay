@@ -5,17 +5,19 @@ import type {
   AvailableIm,
   DiscordImRecord,
   FeishuImRecord,
-  TelegramImRecord,
+  SlackImRecord,
   LoadedAppConfig,
 } from './config.js';
+import type { TelegramImRecord } from './config.js';
 import { loadAppConfig, saveAppConfig, upsertRecord } from './config.js';
 
-const ALL_PLATFORM_IDS = ['discord', 'feishu', 'telegram'] as const;
+const ALL_PLATFORM_IDS = ['discord', 'feishu', 'slack', 'telegram'] as const;
 type PlatformId = (typeof ALL_PLATFORM_IDS)[number];
 
 const PLATFORM_LABELS: Record<PlatformId, string> = {
   discord: 'Discord (Recommended)',
   feishu: 'Feishu (飞书)',
+  slack: 'Slack',
   telegram: 'Telegram',
 };
 
@@ -126,6 +128,55 @@ async function buildFeishuRecord(): Promise<FeishuImRecord> {
   };
 }
 
+async function buildSlackRecord(): Promise<SlackImRecord> {
+  const result = await p.group(
+    {
+      botToken: () =>
+        p.password({
+          message: 'Slack bot token',
+          validate: v => (v.length === 0 ? 'Required' : undefined),
+        }),
+      appToken: () =>
+        p.password({
+          message: 'Slack app token',
+          validate: v => (v.length === 0 ? 'Required' : undefined),
+        }),
+      signingSecret: () =>
+        p.password({
+          message: 'Slack signing secret',
+          validate: v => (v.length === 0 ? 'Required' : undefined),
+        }),
+      socketMode: () =>
+        p.select({
+          message: 'Use Socket Mode?',
+          options: [
+            { value: true, label: 'Yes' },
+            { value: false, label: 'No' },
+          ],
+        }),
+    },
+    {
+      onCancel: () => {
+        p.cancel('Setup cancelled.');
+        process.exit(0);
+      },
+    },
+  );
+
+  return {
+    type: 'im',
+    id: 'slack',
+    enabled: true,
+    note: 'Slack app',
+    config: {
+      botToken: result.botToken,
+      appToken: result.appToken,
+      signingSecret: result.signingSecret,
+      socketMode: result.socketMode,
+    },
+  };
+}
+
 async function buildTelegramRecord(): Promise<TelegramImRecord> {
   const result = await p.group(
     {
@@ -196,13 +247,15 @@ export async function runSetup(
   const nextRecord =
     platformId === 'discord'
       ? await buildDiscordRecord()
-      : platformId === 'telegram'
-        ? await buildTelegramRecord()
-        : await buildFeishuRecord();
+      : platformId === 'feishu'
+        ? await buildFeishuRecord()
+        : platformId === 'slack'
+          ? await buildSlackRecord()
+          : await buildTelegramRecord();
 
   const nextRecords = upsertRecord(
     current.records as AppConfigRecord[],
-    nextRecord,
+    nextRecord as AppConfigRecord,
   );
   await saveAppConfig(paths, nextRecords);
 

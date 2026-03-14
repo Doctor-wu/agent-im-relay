@@ -123,4 +123,28 @@ describe('setup flow', () => {
       expect.objectContaining({ message: 'Encrypt key (optional)' }),
     );
   });
+
+  it('writes a slack IM record through the interactive setup flow', async () => {
+    const tempHome = await mkdtemp(join('/tmp', 'agent-inbox-setup-'));
+    const paths = resolveRelayPaths(tempHome);
+
+    (prompts as any).__setResponses([
+      'slack',
+      'xoxb-test-token',
+      'xapp-test-token',
+      'test-signing-secret',
+      true,
+    ]);
+
+    const loaded = await runSetup(paths, ['discord', 'feishu', 'slack']);
+
+    expect(loaded.availableIms).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'slack' }),
+      ]),
+    );
+
+    const saved = await readFile(paths.configFile, 'utf-8');
+    expect(saved).toContain('"id":"slack"');
+  });
 });

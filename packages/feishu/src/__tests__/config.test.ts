@@ -1,3 +1,5 @@
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -11,27 +13,54 @@ afterEach(() => {
 });
 
 describe('readFeishuConfig', () => {
-  it('parses required Feishu environment variables and defaults without callback fields', () => {
-    const config = readFeishuConfig({
-      ...process.env,
-      FEISHU_APP_ID: 'cli_test_app_id',
-      FEISHU_APP_SECRET: 'test-secret',
-      FEISHU_BASE_URL: 'https://example.invalid',
-    });
+  it('reads required Feishu fields from ~/.agent-inbox/config.jsonl', async () => {
+    const homeDir = await mkdtemp('/tmp/agent-inbox-feishu-home-');
+    const configDir = join(homeDir, '.agent-inbox');
+    vi.stubEnv('HOME', homeDir);
+
+    await mkdir(configDir, { recursive: true });
+    await writeFile(join(configDir, 'config.jsonl'), [
+      '{"type":"meta","version":1}',
+      '{"type":"im","id":"feishu","enabled":true,"config":{"appId":"cli_test_app_id","appSecret":"test-secret","baseUrl":"https://example.invalid"}}',
+    ].join('\n'), 'utf-8');
+
+    const config = readFeishuConfig();
 
     expect(config.feishuAppId).toBe('cli_test_app_id');
     expect(config.feishuAppSecret).toBe('test-secret');
     expect(config.feishuBaseUrl).toBe('https://example.invalid');
-    expect('feishuPort' in config).toBe(false);
+    expect(config.feishuModelSelectionTimeoutMs).toBe(10_000);
+    expect(config.feishuPort).toBeUndefined();
     expect(config.agentTimeoutMs).toBeGreaterThan(0);
   });
 
-  it('throws when required Feishu environment variables are missing', () => {
-    expect(() => readFeishuConfig({
-      ...process.env,
-      FEISHU_APP_ID: '',
-      FEISHU_APP_SECRET: '',
-    })).toThrow('Missing required environment variable: FEISHU_APP_ID');
+  it('allows overriding the model auto-selection timeout from shared config', async () => {
+    const homeDir = await mkdtemp('/tmp/agent-inbox-feishu-home-');
+    const configDir = join(homeDir, '.agent-inbox');
+    vi.stubEnv('HOME', homeDir);
+
+    await mkdir(configDir, { recursive: true });
+    await writeFile(join(configDir, 'config.jsonl'), [
+      '{"type":"meta","version":1}',
+      '{"type":"im","id":"feishu","enabled":true,"config":{"appId":"cli_test_app_id","appSecret":"test-secret","modelSelectionTimeoutMs":2500}}',
+    ].join('\n'), 'utf-8');
+
+    const config = readFeishuConfig();
+
+    expect(config.feishuModelSelectionTimeoutMs).toBe(2_500);
+  });
+
+  it('throws when required Feishu config is missing from the shared file', async () => {
+    const homeDir = await mkdtemp('/tmp/agent-inbox-feishu-home-');
+    const configDir = join(homeDir, '.agent-inbox');
+    vi.stubEnv('HOME', homeDir);
+
+    await mkdir(configDir, { recursive: true });
+    await writeFile(join(configDir, 'config.jsonl'), '{"type":"meta","version":1}\n', 'utf-8');
+
+    expect(() => readFeishuConfig()).toThrow(
+      'Missing required feishu configuration in ~/.agent-inbox/config.jsonl',
+    );
   });
 
   it('applies explicit core runtime settings when building a runtime', () => {
@@ -47,6 +76,8 @@ describe('readFeishuConfig', () => {
       artifactMaxSizeBytes: 123_456,
       claudeBin: '/tmp/bin/claude',
       codexBin: '/tmp/bin/codex',
+      opencodeBin: '/tmp/bin/opencode',
+      feishuModelSelectionTimeoutMs: 2_345,
       feishuAppId: 'test-app-id',
       feishuAppSecret: 'test-secret',
       feishuBaseUrl: 'https://open.feishu.cn',
@@ -62,6 +93,8 @@ describe('readFeishuConfig', () => {
     expect(process.env['CLAUDE_CWD']).toBe('/tmp/feishu-workspace');
     expect(process.env['CLAUDE_BIN']).toBe('/tmp/bin/claude');
     expect(process.env['CODEX_BIN']).toBe('/tmp/bin/codex');
+    expect(process.env['OPENCODE_BIN']).toBe('/tmp/bin/opencode');
+    expect(process.env['FEISHU_MODEL_SELECTION_TIMEOUT_MS']).toBe('2345');
   });
 });
 
@@ -76,6 +109,8 @@ describe('startup entry', () => {
       artifactMaxSizeBytes: 8 * 1024 * 1024,
       claudeBin: '/opt/homebrew/bin/claude',
       codexBin: '/opt/homebrew/bin/codex',
+      opencodeBin: '/opt/homebrew/bin/opencode',
+      feishuModelSelectionTimeoutMs: 10_000,
       feishuAppId: 'test-app-id',
       feishuAppSecret: 'test-secret',
       feishuBaseUrl: 'https://open.feishu.cn',
@@ -104,6 +139,8 @@ describe('startup entry', () => {
       artifactMaxSizeBytes: 8 * 1024 * 1024,
       claudeBin: '/opt/homebrew/bin/claude',
       codexBin: '/opt/homebrew/bin/codex',
+      opencodeBin: '/opt/homebrew/bin/opencode',
+      feishuModelSelectionTimeoutMs: 10_000,
       feishuAppId: 'test-app-id',
       feishuAppSecret: 'test-secret',
       feishuBaseUrl: 'https://open.feishu.cn',

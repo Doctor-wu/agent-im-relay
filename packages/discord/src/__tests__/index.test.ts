@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { clientMock, restMock } = vi.hoisted(() => ({
   clientMock: {
@@ -44,12 +44,43 @@ vi.mock('@agent-im-relay/core', () => ({
     claudeCwd: '/tmp/project',
     artifactMaxSizeBytes: 1024,
   },
+  readDiscordRelayConfig: vi.fn(() => ({
+    agentTimeoutMs: 1_000,
+    claudeCwd: '/tmp/project',
+    stateFile: '/tmp/state.json',
+    artifactsBaseDir: '/tmp/artifacts',
+    artifactRetentionDays: 14,
+    artifactMaxSizeBytes: 1024,
+    claudeBin: 'claude',
+    codexBin: 'codex',
+    opencodeBin: 'opencode',
+    discordToken: 'test-token',
+    discordClientId: 'test-client-id',
+    guildIds: [],
+    allowedChannelIds: [],
+    streamUpdateIntervalMs: 1000,
+    discordMessageCharLimit: 1900,
+    maxAttachmentSizeBytes: 1024,
+  })),
   preprocessConversationMessage: vi.fn((content: string) => ({
     prompt: content.trim(),
     directives: [],
   })),
   applyMessageControlDirectives: vi.fn(() => []),
+  getAvailableBackendCapabilities: vi.fn(async () => [
+    {
+      name: 'claude',
+      models: [
+        { id: 'sonnet', label: 'Sonnet' },
+      ],
+    },
+    {
+      name: 'codex',
+      models: [],
+    },
+  ]),
   conversationBackend: new Map(),
+  conversationModels: new Map(),
   activeConversations: new Set(),
   processedMessages: new Set(),
   pendingConversationCreation: new Set(),
@@ -114,8 +145,10 @@ vi.mock('../commands/thread-setup.js', () => ({
 
 import { handleDiscordMessageCreate } from '../index.js';
 import { handleSkillAutocomplete } from '../commands/skill.js';
+import { config as discordConfig } from '../config.js';
 import {
   applyMessageControlDirectives,
+  getAvailableBackendCapabilities,
   persistState,
   preprocessConversationMessage,
 } from '@agent-im-relay/core';
@@ -160,6 +193,7 @@ describe('handleDiscordMessageCreate', () => {
     }));
     vi.mocked(applyMessageControlDirectives).mockReset();
     vi.mocked(applyMessageControlDirectives).mockReturnValue([]);
+    vi.mocked(getAvailableBackendCapabilities).mockClear();
     vi.mocked(persistState).mockClear();
   });
 
@@ -358,5 +392,215 @@ describe('handleDiscordMessageCreate', () => {
     expect(message.channel.send).not.toHaveBeenCalledWith(expect.objectContaining({
       content: expect.stringContaining('Please include a prompt'),
     }));
+  });
+
+  it('still prompts setup when the backend is preset but the thread has no model yet', async () => {
+    const message = createBaseMessage();
+    message.content = '<@relay-bot> <set-backend>claude</set-backend>\nship it';
+
+    const { conversationBackend, conversationModels } = await import('@agent-im-relay/core');
+    conversationBackend.set('thread-model-setup-1', 'claude');
+    conversationModels.delete('thread-model-setup-1');
+
+    const thread = {
+      id: 'thread-model-setup-1',
+      send: vi.fn(async () => undefined),
+    } as any;
+    const ensureMentionThread = vi.fn(async () => thread);
+    const promptThreadSetup = vi.fn(async () => ({ backend: 'claude', model: 'sonnet', cwd: null }));
+    const applySetupResult = vi.fn(async () => {});
+    const runThreadConversation = vi.fn(async () => true);
+
+    vi.mocked(preprocessConversationMessage).mockReturnValue({
+      prompt: 'ship it',
+      directives: [{ type: 'backend', value: 'claude' }],
+    });
+    vi.mocked(applyMessageControlDirectives).mockReturnValue([
+      {
+        kind: 'backend',
+        conversationId: 'thread-model-setup-1',
+        stateChanged: false,
+        persist: false,
+        clearContinuation: false,
+        requiresConfirmation: false,
+        summaryKey: 'backend.updated',
+        backend: 'claude',
+      },
+    ]);
+
+    await handleDiscordMessageCreate(message, {
+      botUser: { id: 'relay-bot' },
+      hasOpenStickyThreadSession: () => false,
+      runThreadConversation,
+      ensureMentionThread,
+      promptThreadSetup,
+      applySetupResult,
+    });
+
+    expect(promptThreadSetup).toHaveBeenCalledWith(thread, 'ship it', {
+      presetBackend: 'claude',
+    });
+    expect(applySetupResult).toHaveBeenCalledWith('thread-model-setup-1', {
+      backend: 'claude',
+      model: 'sonnet',
+      cwd: null,
+    });
+    expect(runThreadConversation).toHaveBeenCalledWith(thread, 'ship it', message, {
+      mentionUserId: 'other-bot',
+    });
+  });
+
+  it('skips capability lookup when backend and model are already configured', async () => {
+    const message = createBaseMessage();
+    message.content = '<@relay-bot> ship it';
+
+    const { conversationBackend, conversationModels } = await import('@agent-im-relay/core');
+    conversationBackend.set('thread-model-ready-1', 'claude');
+    conversationModels.set('thread-model-ready-1', 'sonnet');
+
+    const thread = {
+      id: 'thread-model-ready-1',
+      send: vi.fn(async () => undefined),
+    } as any;
+
+    const ensureMentionThread = vi.fn(async () => thread);
+    const runThreadConversation = vi.fn(async () => true);
+    const promptThreadSetup = vi.fn();
+
+    vi.mocked(preprocessConversationMessage).mockReturnValue({
+      prompt: 'ship it',
+      directives: [],
+    });
+
+    await handleDiscordMessageCreate(message, {
+      botUser: { id: 'relay-bot' },
+      hasOpenStickyThreadSession: () => false,
+      runThreadConversation,
+      ensureMentionThread,
+      promptThreadSetup,
+      applySetupResult: vi.fn(),
+    });
+
+    expect(getAvailableBackendCapabilities).not.toHaveBeenCalled();
+    expect(promptThreadSetup).not.toHaveBeenCalled();
+    expect(runThreadConversation).toHaveBeenCalledWith(thread, 'ship it', message, {
+      mentionUserId: 'other-bot',
+    });
+  });
+});
+
+describe('allowedChannelIds filter', () => {
+  afterEach(() => {
+    discordConfig.allowedChannelIds = [];
+  });
+
+  it('drops messages from channels not in the allowlist', async () => {
+    discordConfig.allowedChannelIds = ['allowed-channel'];
+
+    const message = createBaseMessage();
+    message.channel.id = 'other-channel';
+
+    await handleDiscordMessageCreate(message, {
+      botUser: { id: 'relay-bot' },
+      hasOpenStickyThreadSession: () => false,
+      runThreadConversation: vi.fn(),
+      ensureMentionThread: vi.fn(),
+      promptThreadSetup: vi.fn(),
+      applySetupResult: vi.fn(),
+    });
+
+    expect(message.react).not.toHaveBeenCalled();
+  });
+
+  it('accepts messages from allowed channels', async () => {
+    discordConfig.allowedChannelIds = ['allowed-channel'];
+
+    const message = createBaseMessage();
+    message.channel.id = 'allowed-channel';
+
+    const ensureMentionThread = vi.fn(async () => ({
+      id: 'thread-1',
+      send: vi.fn(async () => undefined),
+    }));
+
+    await handleDiscordMessageCreate(message, {
+      botUser: { id: 'relay-bot' },
+      hasOpenStickyThreadSession: () => false,
+      runThreadConversation: vi.fn(async () => true),
+      ensureMentionThread,
+      promptThreadSetup: vi.fn(async () => ({ kind: 'skip' })),
+      applySetupResult: vi.fn(),
+    });
+
+    expect(message.react).toHaveBeenCalled();
+  });
+
+  it('accepts thread messages whose parent is in the allowlist', async () => {
+    discordConfig.allowedChannelIds = ['allowed-channel'];
+
+    const message = createBaseMessage();
+    message.channel = {
+      id: 'thread-in-allowed',
+      parentId: 'allowed-channel',
+      isThread: () => true,
+      send: vi.fn(async () => undefined),
+    };
+
+    await handleDiscordMessageCreate(message, {
+      botUser: { id: 'relay-bot' },
+      hasOpenStickyThreadSession: () => true,
+      runThreadConversation: vi.fn(async () => true),
+      ensureMentionThread: vi.fn(),
+      promptThreadSetup: vi.fn(),
+      applySetupResult: vi.fn(),
+    });
+
+    expect(message.react).toHaveBeenCalled();
+  });
+
+  it('drops thread messages whose parent is not in the allowlist', async () => {
+    discordConfig.allowedChannelIds = ['allowed-channel'];
+
+    const message = createBaseMessage();
+    message.channel = {
+      id: 'thread-in-other',
+      parentId: 'other-channel',
+      isThread: () => true,
+      send: vi.fn(async () => undefined),
+    };
+
+    await handleDiscordMessageCreate(message, {
+      botUser: { id: 'relay-bot' },
+      hasOpenStickyThreadSession: () => true,
+      runThreadConversation: vi.fn(),
+      ensureMentionThread: vi.fn(),
+      promptThreadSetup: vi.fn(),
+      applySetupResult: vi.fn(),
+    });
+
+    expect(message.react).not.toHaveBeenCalled();
+  });
+
+  it('allows all channels when allowedChannelIds is empty', async () => {
+    discordConfig.allowedChannelIds = [];
+
+    const message = createBaseMessage();
+    message.channel.id = 'any-channel';
+
+    const ensureMentionThread = vi.fn(async () => ({
+      id: 'thread-1',
+      send: vi.fn(async () => undefined),
+    }));
+
+    await handleDiscordMessageCreate(message, {
+      botUser: { id: 'relay-bot' },
+      hasOpenStickyThreadSession: () => false,
+      runThreadConversation: vi.fn(async () => true),
+      ensureMentionThread,
+      promptThreadSetup: vi.fn(async () => ({ kind: 'skip' })),
+      applySetupResult: vi.fn(),
+    });
+
+    expect(message.react).toHaveBeenCalled();
   });
 });

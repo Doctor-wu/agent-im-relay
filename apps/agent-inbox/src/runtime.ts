@@ -4,8 +4,13 @@ import type { AvailableIm, RuntimeConfig } from './config.js';
 type RuntimeLoaders = {
   discord?: () => Promise<{ startDiscordRuntime: () => Promise<unknown> }>;
   feishu?: () => Promise<{ startFeishuRuntime: () => Promise<unknown> }>;
+  slack?: () => Promise<{ startSlackRuntime: () => Promise<unknown> }>;
   telegram?: () => Promise<{ startTelegramRuntime: () => Promise<unknown> }>;
 };
+
+function importRuntimeModule<T>(specifier: string): Promise<T> {
+  return Function('modulePath', 'return import(modulePath)')(specifier) as Promise<T>;
+}
 
 function setOptionalEnv(key: string, value: string | undefined): void {
   if (value) {
@@ -36,12 +41,18 @@ export function applyRuntimeEnvironment(
   delete process.env['DISCORD_TOKEN'];
   delete process.env['DISCORD_CLIENT_ID'];
   delete process.env['GUILD_IDS'];
+  delete process.env['ALLOWED_CHANNEL_IDS'];
   delete process.env['FEISHU_APP_ID'];
   delete process.env['FEISHU_APP_SECRET'];
   delete process.env['FEISHU_VERIFICATION_TOKEN'];
   delete process.env['FEISHU_ENCRYPT_KEY'];
   delete process.env['FEISHU_BASE_URL'];
   delete process.env['FEISHU_PORT'];
+  delete process.env['FEISHU_MODEL_SELECTION_TIMEOUT_MS'];
+  delete process.env['SLACK_BOT_TOKEN'];
+  delete process.env['SLACK_APP_TOKEN'];
+  delete process.env['SLACK_SIGNING_SECRET'];
+  delete process.env['SLACK_SOCKET_MODE'];
   delete process.env['TELEGRAM_BOT_TOKEN'];
   delete process.env['TELEGRAM_ALLOWED_USER_IDS'];
 
@@ -49,6 +60,7 @@ export function applyRuntimeEnvironment(
     process.env['DISCORD_TOKEN'] = selectedIm.config.token;
     process.env['DISCORD_CLIENT_ID'] = selectedIm.config.clientId;
     setOptionalEnv('GUILD_IDS', selectedIm.config.guildIds?.join(','));
+    setOptionalEnv('ALLOWED_CHANNEL_IDS', selectedIm.config.allowedChannelIds?.join(','));
     return;
   }
 
@@ -59,11 +71,22 @@ export function applyRuntimeEnvironment(
     setOptionalEnv('FEISHU_ENCRYPT_KEY', selectedIm.config.encryptKey);
     setOptionalEnv('FEISHU_BASE_URL', selectedIm.config.baseUrl);
     setNumericEnv('FEISHU_PORT', selectedIm.config.port);
+    setNumericEnv('FEISHU_MODEL_SELECTION_TIMEOUT_MS', selectedIm.config.modelSelectionTimeoutMs);
     return;
   }
 
-  process.env['TELEGRAM_BOT_TOKEN'] = selectedIm.config.botToken;
-  setOptionalEnv('TELEGRAM_ALLOWED_USER_IDS', selectedIm.config.allowedUserIds?.join(','));
+  if (selectedIm.id === 'slack') {
+    process.env['SLACK_BOT_TOKEN'] = selectedIm.config.botToken;
+    process.env['SLACK_APP_TOKEN'] = selectedIm.config.appToken;
+    process.env['SLACK_SIGNING_SECRET'] = selectedIm.config.signingSecret;
+    setOptionalEnv('SLACK_SOCKET_MODE', String(selectedIm.config.socketMode ?? true));
+    return;
+  }
+
+  if (selectedIm.id === 'telegram') {
+    process.env['TELEGRAM_BOT_TOKEN'] = selectedIm.config.botToken;
+    setOptionalEnv('TELEGRAM_ALLOWED_USER_IDS', selectedIm.config.allowedUserIds?.join(','));
+  }
 }
 
 export async function startSelectedIm(
@@ -75,20 +98,27 @@ export async function startSelectedIm(
   applyRuntimeEnvironment(selectedIm, runtime, paths);
 
   if (selectedIm.id === 'discord') {
-    const loadDiscord = loaders.discord ?? (() => import('@agent-im-relay/discord'));
+    const loadDiscord = loaders.discord ?? (() => importRuntimeModule<{ startDiscordRuntime: () => Promise<unknown> }>('@agent-im-relay/discord'));
     const discord = await loadDiscord();
     await discord.startDiscordRuntime();
     return;
   }
 
   if (selectedIm.id === 'feishu') {
-    const loadFeishu = loaders.feishu ?? (() => import('@agent-im-relay/feishu'));
+    const loadFeishu = loaders.feishu ?? (() => importRuntimeModule<{ startFeishuRuntime: () => Promise<unknown> }>('@agent-im-relay/feishu'));
     const feishu = await loadFeishu();
     await feishu.startFeishuRuntime();
     return;
   }
 
-  const loadTelegram = loaders.telegram ?? (() => import('@agent-im-relay/telegram'));
+  if (selectedIm.id === 'slack') {
+    const loadSlack = loaders.slack ?? (() => importRuntimeModule<{ startSlackRuntime: () => Promise<unknown> }>('@agent-im-relay/slack'));
+    const slack = await loadSlack();
+    await slack.startSlackRuntime();
+    return;
+  }
+
+  const loadTelegram = loaders.telegram ?? (() => importRuntimeModule<{ startTelegramRuntime: () => Promise<unknown> }>('@agent-im-relay/telegram'));
   const telegram = await loadTelegram();
   await telegram.startTelegramRuntime();
 }

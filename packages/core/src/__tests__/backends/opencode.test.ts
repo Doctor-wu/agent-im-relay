@@ -51,6 +51,7 @@ describe('opencode backend', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     readFileSyncMock.mockReset();
+    readFileSyncMock.mockReturnValue('{"type":"meta","version":1}\n' as any);
   });
 
   it('lists configured models as provider/modelKey values', async () => {

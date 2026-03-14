@@ -56,9 +56,11 @@ import {
   resetFeishuRuntimeForTests,
   resumePendingFeishuRun,
   runFeishuConversation,
+  scheduleModelSelectionTimeout,
 } from '../runtime.js';
 
 afterEach(() => {
+  vi.useRealTimers();
   resetFeishuRuntimeForTests();
 });
 
@@ -326,6 +328,78 @@ describe('Feishu runtime', () => {
       .map((button: Record<string, any>) => button.text.content);
 
     expect(buttonTexts).toEqual(['Sonnet']);
+  });
+
+  it('auto-selects the first available model after timeout and resumes the pending run', async () => {
+    vi.useFakeTimers();
+    coreMocks.applySessionControlCommand.mockImplementation(({ conversationId, type, value }: any) => {
+      if (type !== 'model') {
+        throw new Error(`Unexpected control command: ${type}`);
+      }
+
+      conversationModels.set(conversationId, String(value));
+      return {
+        kind: 'model',
+        conversationId,
+        value: String(value),
+        stateChanged: true,
+        persist: true,
+        clearContinuation: false,
+        requiresConfirmation: false,
+        summaryKey: 'model.updated',
+      };
+    });
+    coreMocks.evaluateConversationRunRequest.mockReturnValueOnce({
+      kind: 'ready',
+      conversationId: 'conv-model-timeout',
+      backend: 'claude',
+    });
+    coreMocks.getAvailableBackendCapabilities.mockResolvedValueOnce([
+      {
+        name: 'claude',
+        models: [
+          { id: 'sonnet', label: 'Sonnet' },
+          { id: 'opus', label: 'Opus' },
+        ],
+      },
+      {
+        name: 'opencode',
+        models: [],
+      },
+    ]);
+    conversationBackend.set('conv-model-timeout', 'claude');
+
+    const transport = {
+      sendText: vi.fn(async () => undefined),
+      sendCard: vi.fn(async () => undefined),
+      updateCard: vi.fn(async () => undefined),
+      uploadFile: vi.fn(async () => undefined),
+    };
+
+    await expect(runFeishuConversation({
+      conversationId: 'conv-model-timeout',
+      target: {
+        chatId: 'chat-1',
+      },
+      prompt: 'ship it',
+      mode: 'code',
+      transport,
+      defaultCwd: process.cwd(),
+      modelSelectionTimeoutMs: 10_000,
+    })).resolves.toEqual({ kind: 'blocked' });
+
+    expect(coreMocks.runPlatformConversation).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(coreMocks.runPlatformConversation).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(conversationModels.get('conv-model-timeout')).toBe('sonnet');
+    expect(coreMocks.runPlatformConversation).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 'conv-model-timeout',
+      backend: 'claude',
+      prompt: 'ship it',
+    }));
   });
 
   it('does not re-block legacy OpenCode models that can be normalized to provider/modelKey', async () => {
@@ -702,5 +776,131 @@ describe('Feishu runtime', () => {
 
     expect(transport.updateCard).not.toHaveBeenCalled();
     expect(transport.sendCard).not.toHaveBeenCalled();
+  });
+});
+
+describe('Feishu model selection timeout', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    conversationBackend.clear();
+    conversationModels.clear();
+    conversationMode.clear();
+    coreMocks.evaluateConversationRunRequest.mockReset();
+    coreMocks.getAvailableBackendCapabilities.mockResolvedValue([
+      {
+        name: 'claude',
+        models: [
+          { id: 'sonnet', label: 'Sonnet' },
+          { id: 'haiku', label: 'Haiku' },
+        ],
+      },
+    ]);
+    coreMocks.resolveBackendModelId.mockReset();
+    coreMocks.resolveBackendModelId.mockImplementation((backend: string, model: string) => {
+      if (backend === 'claude' && (model === 'sonnet' || model === 'haiku')) {
+        return model;
+      }
+      return undefined;
+    });
+    coreMocks.runPlatformConversation.mockReset();
+    coreMocks.runPlatformConversation.mockResolvedValue(true);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('auto-selects the first model after timeout for preset backends', async () => {
+    coreMocks.evaluateConversationRunRequest
+      .mockReturnValueOnce({
+        kind: 'ready',
+        conversationId: 'conv-timeout',
+        backend: 'claude',
+      })
+      .mockReturnValue({
+        kind: 'ready',
+        conversationId: 'conv-timeout',
+        backend: 'claude',
+      });
+
+    conversationBackend.set('conv-timeout', 'claude');
+
+    const transport = {
+      sendText: vi.fn(async () => undefined),
+      sendCard: vi.fn(async () => undefined),
+      updateCard: vi.fn(async () => undefined),
+      uploadFile: vi.fn(async () => undefined),
+    };
+
+    await expect(runFeishuConversation({
+      conversationId: 'conv-timeout',
+      target: { chatId: 'chat-1' },
+      prompt: 'ship it',
+      mode: 'code',
+      transport,
+      defaultCwd: process.cwd(),
+    })).resolves.toEqual({ kind: 'blocked' });
+
+    scheduleModelSelectionTimeout({
+      conversationId: 'conv-timeout',
+      transport,
+      defaultCwd: process.cwd(),
+    });
+
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(conversationModels.get('conv-timeout')).toBe('sonnet');
+    expect(coreMocks.runPlatformConversation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 'conv-timeout',
+        prompt: 'ship it',
+      }),
+    );
+  });
+
+  it('cancels the timeout fallback when a model is selected manually first', async () => {
+    coreMocks.evaluateConversationRunRequest
+      .mockReturnValueOnce({
+        kind: 'ready',
+        conversationId: 'conv-cancel-timeout',
+        backend: 'claude',
+      })
+      .mockReturnValue({
+        kind: 'ready',
+        conversationId: 'conv-cancel-timeout',
+        backend: 'claude',
+      });
+
+    conversationBackend.set('conv-cancel-timeout', 'claude');
+
+    const transport = {
+      sendText: vi.fn(async () => undefined),
+      sendCard: vi.fn(async () => undefined),
+      updateCard: vi.fn(async () => undefined),
+      uploadFile: vi.fn(async () => undefined),
+    };
+
+    await expect(runFeishuConversation({
+      conversationId: 'conv-cancel-timeout',
+      target: { chatId: 'chat-1' },
+      prompt: 'ship it',
+      mode: 'code',
+      transport,
+      defaultCwd: process.cwd(),
+    })).resolves.toEqual({ kind: 'blocked' });
+
+    const cancel = scheduleModelSelectionTimeout({
+      conversationId: 'conv-cancel-timeout',
+      transport,
+      defaultCwd: process.cwd(),
+    });
+
+    conversationModels.set('conv-cancel-timeout', 'haiku');
+    cancel();
+
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(coreMocks.runPlatformConversation).not.toHaveBeenCalled();
+    expect(conversationModels.get('conv-cancel-timeout')).toBe('haiku');
   });
 });

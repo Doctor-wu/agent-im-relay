@@ -1,0 +1,30 @@
+{
+  "name": "@agent-im-relay/slack",
+  "version": "1.1.1",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "types": "dist/index.d.mts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "types": "./dist/index.d.mts"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@agent-im-relay/core": "workspace:*",
+    "@slack/bolt": "^4.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsdown": "^0.21.0",
+    "tsx": "^4.19.2",
+    "vitest": "^3.2.4"
+  }
+}

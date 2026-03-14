@@ -1,6 +1,6 @@
 {
   "name": "@doctorwu/agent-inbox",
-  "version": "1.1.2",
+  "version": "1.2.1",
   "type": "module",
   "main": "dist/index.mjs",
   "types": "dist/index.d.mts",
@@ -30,6 +30,7 @@
     "@agent-im-relay/core": "workspace:*",
     "@agent-im-relay/discord": "workspace:*",
     "@agent-im-relay/feishu": "workspace:*",
+    "@agent-im-relay/slack": "workspace:*",
     "@agent-im-relay/telegram": "workspace:*",
     "@types/node": "^22.10.0",
     "postject": "1.0.0-alpha.6",

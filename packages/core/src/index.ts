@@ -164,8 +164,41 @@ export type { SkillInfo } from './skills.js';
 export { config } from './config.js';
 export { readCoreConfig } from './config.js';
 export { applyCoreConfigEnvironment } from './config.js';
-export type { CoreConfig } from './config.js';
-export { resolveRelayHomeDir, resolveRelayPaths } from './paths.js';
+export {
+  ensureDefaultRecords,
+  loadRelayConfig,
+  parseConfigJsonl,
+  readDiscordRelayConfig,
+  readFeishuRelayConfig,
+  readRelayConfig,
+  readSlackRelayConfig,
+  resolveAvailableIms,
+  resolveLastUsedPlatform,
+  resolveRuntimeConfig,
+  saveRelayConfig,
+  serializeConfigRecords,
+  upsertRecord,
+} from './config.js';
+export type {
+  AvailableIm,
+  CoreConfig,
+  DiscordImConfig,
+  DiscordImRecord,
+  DiscordRelayConfig,
+  FeishuImConfig,
+  FeishuImRecord,
+  FeishuRelayConfig,
+  LocalPreferencesRecord,
+  MetaRecord,
+  RelayConfigRecord,
+  LoadedRelayConfig,
+  RuntimeConfig,
+  RuntimeRecord,
+  SlackImConfig,
+  SlackImRecord,
+  SlackRelayConfig,
+} from './config.js';
+export { resolveRelayHomeDir, resolveRelayPaths, resolveRelayPlatformStateDir } from './paths.js';
 export type { RelayPaths } from './paths.js';
 export { relayPlatforms, isRelayPlatform, inferRelayPlatformFromConversationId } from './relay-platform.js';
 export type { RelayPlatform } from './relay-platform.js';

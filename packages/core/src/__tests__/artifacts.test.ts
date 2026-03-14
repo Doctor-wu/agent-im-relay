@@ -11,6 +11,25 @@ async function createTempArtifactsDir(): Promise<string> {
   return dir;
 }
 
+async function setupRelayHome(
+  baseDir: string,
+  runtime: Record<string, unknown> = {},
+): Promise<{ artifactsBaseDir: string; stateFile: string }> {
+  const relayDir = path.join(baseDir, '.agent-inbox');
+  vi.stubEnv('HOME', baseDir);
+  vi.stubEnv('INIT_CWD', '');
+  await mkdir(relayDir, { recursive: true });
+  await writeFile(path.join(relayDir, 'config.jsonl'), [
+    JSON.stringify({ type: 'meta', version: 1 }),
+    JSON.stringify({ type: 'runtime', config: runtime }),
+  ].join('\n'), 'utf-8');
+
+  return {
+    artifactsBaseDir: path.join(relayDir, 'artifacts'),
+    stateFile: path.join(relayDir, 'state', 'sessions.json'),
+  };
+}
+
 afterEach(async () => {
   vi.unstubAllEnvs();
   vi.resetModules();
@@ -21,22 +40,22 @@ afterEach(async () => {
 
 describe('artifact store', () => {
   it('allocates per-conversation directories under the artifact root', async () => {
-    const artifactBaseDir = await createTempArtifactsDir();
-    vi.stubEnv('ARTIFACTS_BASE_DIR', artifactBaseDir);
+    const tempRootDir = await createTempArtifactsDir();
+    const { artifactsBaseDir } = await setupRelayHome(tempRootDir);
 
     const { ensureConversationArtifactPaths } = await import('../artifacts/store.js');
 
     const paths = await ensureConversationArtifactPaths('conv-123');
 
-    expect(paths.rootDir).toBe(path.join(artifactBaseDir, 'conv-123'));
-    expect(paths.incomingDir).toBe(path.join(artifactBaseDir, 'conv-123', 'incoming'));
-    expect(paths.outgoingDir).toBe(path.join(artifactBaseDir, 'conv-123', 'outgoing'));
-    expect(paths.metaFile).toBe(path.join(artifactBaseDir, 'conv-123', 'meta.json'));
+    expect(paths.rootDir).toBe(path.join(artifactsBaseDir, 'conv-123'));
+    expect(paths.incomingDir).toBe(path.join(artifactsBaseDir, 'conv-123', 'incoming'));
+    expect(paths.outgoingDir).toBe(path.join(artifactsBaseDir, 'conv-123', 'outgoing'));
+    expect(paths.metaFile).toBe(path.join(artifactsBaseDir, 'conv-123', 'meta.json'));
   });
 
   it('writes and reloads lightweight metadata from meta.json', async () => {
-    const artifactBaseDir = await createTempArtifactsDir();
-    vi.stubEnv('ARTIFACTS_BASE_DIR', artifactBaseDir);
+    const tempRootDir = await createTempArtifactsDir();
+    const { artifactsBaseDir } = await setupRelayHome(tempRootDir);
 
     const { ensureConversationArtifactPaths, readArtifactMetadata, writeArtifactMetadata } = await import('../artifacts/store.js');
 
@@ -66,10 +85,7 @@ describe('artifact store', () => {
 
   it('persists artifact metadata separately from session state', async () => {
     const tempRootDir = await createTempArtifactsDir();
-    const artifactBaseDir = path.join(tempRootDir, 'artifacts');
-    const stateFile = path.join(tempRootDir, 'state', 'sessions.json');
-    vi.stubEnv('ARTIFACTS_BASE_DIR', artifactBaseDir);
-    vi.stubEnv('STATE_FILE', stateFile);
+    const { artifactsBaseDir, stateFile } = await setupRelayHome(tempRootDir);
 
     const metadata = {
       incoming: [
@@ -113,11 +129,12 @@ describe('artifact store', () => {
   });
 
   it('removes expired artifact directories during lazy cleanup', async () => {
-    const artifactBaseDir = await createTempArtifactsDir();
-    vi.stubEnv('ARTIFACTS_BASE_DIR', artifactBaseDir);
-    vi.stubEnv('ARTIFACT_RETENTION_DAYS', '1');
+    const tempRootDir = await createTempArtifactsDir();
+    const { artifactsBaseDir } = await setupRelayHome(tempRootDir, {
+      artifactRetentionDays: 1,
+    });
 
-    const expiredDir = path.join(artifactBaseDir, 'expired-conversation');
+    const expiredDir = path.join(artifactsBaseDir, 'expired-conversation');
     await mkdir(expiredDir, { recursive: true });
 
     const expiredAt = new Date(Date.now() - (3 * 24 * 60 * 60 * 1000));
@@ -197,10 +214,7 @@ describe('artifact protocol', () => {
 describe('artifact state integration', () => {
   it('reloads persisted sessions when artifact directories or metadata files are missing', async () => {
     const tempRootDir = await createTempArtifactsDir();
-    const artifactBaseDir = path.join(tempRootDir, 'artifacts');
-    const stateFile = path.join(tempRootDir, 'state', 'sessions.json');
-    vi.stubEnv('ARTIFACTS_BASE_DIR', artifactBaseDir);
-    vi.stubEnv('STATE_FILE', stateFile);
+    const { artifactsBaseDir, stateFile } = await setupRelayHome(tempRootDir);
 
     await mkdir(path.dirname(stateFile), { recursive: true });
     await writeFile(stateFile, JSON.stringify({
@@ -220,6 +234,6 @@ describe('artifact state integration', () => {
       outgoing: [],
       lastUpdatedAt: null,
     });
-    await expect(access(path.join(artifactBaseDir, 'conv-missing'))).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(access(path.join(artifactsBaseDir, 'conv-missing'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });
