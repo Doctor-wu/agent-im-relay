@@ -6,8 +6,9 @@
 [![GitHub release](https://img.shields.io/github/v/release/Doctor-wu/agent-im-relay)](https://github.com/Doctor-wu/agent-im-relay/releases)
 ![Node >=20](https://img.shields.io/badge/node-%3E%3D20-339933)
 ![TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6)
-[![Discord](https://img.shields.io/badge/platform-Discord-5865F2)](https://discord.com)
-[![Feishu](https://img.shields.io/badge/platform-Feishu-00B96B)](https://open.feishu.cn)
+![Discord](https://img.shields.io/badge/platform-Discord-5865F2)
+![Feishu long connection](https://img.shields.io/badge/platform-Feishu-long_connection-00B96B)
+![Telegram](https://img.shields.io/badge/platform-Telegram-26A5E4)
 
 ---
 
@@ -115,14 +116,59 @@ apps/
   agent-inbox/        @doctorwu/agent-inbox   - End-user CLI entrypoint and interactive setup wizard
 
 packages/
-  core/               @agent-im-relay/core    - Shared runtime, session management, and backend abstractions
-  discord/            @agent-im-relay/discord - Discord adapter
-  feishu/             @agent-im-relay/feishu  - Feishu adapter
+  core/      @agent-im-relay/core     — Shared runtime, state, orchestration
+  discord/   @agent-im-relay/discord  — Discord adapter runtime
+  feishu/    @agent-im-relay/feishu   — Feishu adapter runtime
+  telegram/  @agent-im-relay/telegram — Telegram adapter runtime
 ```
 
 Architecture design document: [docs/agent-inbox-architecture.md](docs/agent-inbox-architecture.md)
 
----
+The Feishu adapter now stays inside `@agent-im-relay/feishu` and uses the official persistent connection flow directly:
+
+- Long-connection ingress through Feishu's event dispatcher and WebSocket client
+- Private-chat launchers that create dedicated session chats and return native shared-chat receipts
+- Session-group reference messages plus mirrored original prompts for readable context
+- One-shot interrupt cards for each user message inside a session chat
+- Sticky per-conversation session continuity until explicit teardown
+- Inbound file download and outbound artifact upload support
+- Optional event verification and decryption via `FEISHU_VERIFICATION_TOKEN` and `FEISHU_ENCRYPT_KEY`
+
+Typical startup flow:
+
+1. Enable persistent connection mode in the Feishu developer console.
+2. Configure `FEISHU_APP_ID` and `FEISHU_APP_SECRET`, plus `FEISHU_ENCRYPT_KEY` / `FEISHU_VERIFICATION_TOKEN` if your app uses them.
+3. Start `pnpm dev:feishu` on the machine that has the local agent CLI tools and workspace.
+4. Send the bot a private message to create a `Session · {promptPreview}` chat, then continue inside that session chat with the per-message interrupt card.
+
+## Telegram Runtime
+
+The Telegram adapter uses [grammY](https://grammy.dev/) and supports three conversation modes:
+
+- Private chat with the bot directly
+- Group chat via `@mention` — bot replies in a reply thread per conversation
+- Channel + Discussion Group — each channel post automatically triggers an agent session in its comment thread; replies in the thread continue the same session
+
+Typical startup flow:
+
+1. Create a bot via [@BotFather](https://t.me/BotFather), copy the token.
+2. Disable Privacy Mode: `/mybots` → Bot Settings → Group Privacy → Turn off.
+3. For channel mode: link a Discussion Group to your channel (channel Edit → Discussion), then add the bot as admin to both the channel and the discussion group.
+4. Configure `TELEGRAM_BOT_TOKEN` and optionally `TELEGRAM_ALLOWED_USER_IDS`.
+5. Start `pnpm dev:telegram`.
+
+## Install
+
+The primary distribution path is npm:
+
+```bash
+npm install -g @doctorwu/agent-inbox
+
+# Or run without a global install
+npx @doctorwu/agent-inbox
+```
+
+On first run, `agent-inbox` creates `~/.agent-inbox/` as needed and enters the interactive setup flow automatically when no IM is configured yet. Users do not need to create `config.jsonl` by hand before the first `npx` run.
 
 ## Development
 
@@ -143,6 +189,7 @@ pnpm start
 pnpm dev:discord
 pnpm dev:feishu
 pnpm dev:slack
+pnpm dev:telegram
 ```
 
 All adapter development commands load configuration from `~/.agent-inbox/config.jsonl`.

@@ -12,7 +12,6 @@ export {
 } from '@agent-im-relay/core';
 
 export type {
-  AvailableIm,
   DiscordImConfig,
   DiscordImRecord,
   FeishuImConfig,
@@ -26,3 +25,27 @@ export type {
   SlackImConfig,
   SlackImRecord,
 } from '@agent-im-relay/core';
+
+import type { AvailableIm as CoreAvailableIm } from '@agent-im-relay/core';
+
+export type TelegramImConfig = {
+  botToken?: string;
+  allowedUserIds?: number[];
+};
+
+export type TelegramImRecord = {
+  type: 'im';
+  id: 'telegram';
+  enabled: boolean;
+  note?: string;
+  config: TelegramImConfig;
+};
+
+export type TelegramAvailableIm = {
+  id: 'telegram';
+  note?: string;
+  config: Required<Pick<TelegramImConfig, 'botToken'>> & Pick<TelegramImConfig, 'allowedUserIds'>;
+};
+
+export type AvailableIm = CoreAvailableIm | TelegramAvailableIm;
+

@@ -8,15 +8,17 @@ import type {
   SlackImRecord,
   LoadedAppConfig,
 } from './config.js';
+import type { TelegramImRecord } from './config.js';
 import { loadAppConfig, saveAppConfig, upsertRecord } from './config.js';
 
-const ALL_PLATFORM_IDS = ['discord', 'feishu', 'slack'] as const;
+const ALL_PLATFORM_IDS = ['discord', 'feishu', 'slack', 'telegram'] as const;
 type PlatformId = (typeof ALL_PLATFORM_IDS)[number];
 
 const PLATFORM_LABELS: Record<PlatformId, string> = {
   discord: 'Discord (Recommended)',
   feishu: 'Feishu (飞书)',
   slack: 'Slack',
+  telegram: 'Telegram',
 };
 
 const PLATFORM_HINTS: Partial<Record<PlatformId, string>> = {
@@ -175,6 +177,45 @@ async function buildSlackRecord(): Promise<SlackImRecord> {
   };
 }
 
+async function buildTelegramRecord(): Promise<TelegramImRecord> {
+  const result = await p.group(
+    {
+      botToken: () =>
+        p.password({
+          message: 'Telegram bot token (from @BotFather)',
+          validate: v => (!v || v.length === 0 ? 'Required' : undefined),
+        }),
+      allowedUserIds: () =>
+        p.text({
+          message: 'Allowed user IDs (comma-separated, optional)',
+          placeholder: 'Leave empty to allow all users',
+        }),
+    },
+    {
+      onCancel: () => {
+        p.cancel('Setup cancelled.');
+        process.exit(0);
+      },
+    },
+  );
+
+  const rawIds = result.allowedUserIds?.trim();
+  const allowedUserIds = rawIds
+    ? rawIds.split(',').map(s => Number.parseInt(s.trim(), 10)).filter(n => Number.isFinite(n) && n > 0)
+    : undefined;
+
+  return {
+    type: 'im',
+    id: 'telegram',
+    enabled: true,
+    note: 'Telegram bot',
+    config: {
+      botToken: result.botToken,
+      allowedUserIds: allowedUserIds?.length ? allowedUserIds : undefined,
+    },
+  };
+}
+
 export async function runSetup(
   paths: RelayPaths,
   unconfiguredPlatforms: PlatformId[],
@@ -208,11 +249,13 @@ export async function runSetup(
       ? await buildDiscordRecord()
       : platformId === 'feishu'
         ? await buildFeishuRecord()
-        : await buildSlackRecord();
+        : platformId === 'slack'
+          ? await buildSlackRecord()
+          : await buildTelegramRecord();
 
   const nextRecords = upsertRecord(
     current.records as AppConfigRecord[],
-    nextRecord,
+    nextRecord as AppConfigRecord,
   );
   await saveAppConfig(paths, nextRecords);
 

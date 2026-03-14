@@ -10,7 +10,8 @@
     "start": "pnpm --filter ./apps/agent-inbox start",
     "dev:discord": "pnpm --filter @agent-im-relay/discord dev",
     "dev:feishu": "pnpm --filter @agent-im-relay/feishu dev",
-    "dev:slack": "pnpm --filter @agent-im-relay/slack dev"
+    "dev:slack": "pnpm --filter @agent-im-relay/slack dev",
+    "dev:telegram": "pnpm --filter @agent-im-relay/telegram dev"
   },
   "packageManager": "pnpm@10.13.1",
   "engines": {
