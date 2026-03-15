@@ -1,4 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('../config.js', () => ({
+  config: {
+    streamUpdateIntervalMs: 1000,
+    discordMessageCharLimit: 1900,
+  },
+}));
+
 import {
   chunkForDiscord,
   convertMarkdownForDiscord,
@@ -363,6 +371,48 @@ describe('streamAgentToDiscord', () => {
 
     expect(send).toHaveBeenCalledWith(expect.stringContaining('⏹️ 当前任务已中断。'));
     expect(send).not.toHaveBeenCalledWith(expect.stringContaining('❌ **Error:** Agent request aborted'));
+  });
+
+  it('renders permission prompts as button messages and updates them on resolution', async () => {
+    const permissionEdit = vi.fn().mockResolvedValue(undefined);
+    const permissionMessage = { edit: permissionEdit } as any;
+    const outputEdit = vi.fn().mockResolvedValue(undefined);
+    const outputMessage = { edit: outputEdit } as any;
+    const send = vi.fn()
+      .mockResolvedValueOnce(permissionMessage)
+      .mockResolvedValueOnce(outputMessage);
+
+    async function* events() {
+      yield {
+        type: 'permission-requested' as const,
+        requestId: 'perm-1',
+        backend: 'claude',
+        tool: 'Bash',
+        reason: 'Run rm -rf build',
+        expiresAt: '2026-03-15T00:00:00.000Z',
+      };
+      yield {
+        type: 'permission-resolved' as const,
+        requestId: 'perm-1',
+        backend: 'claude',
+        decision: 'approved',
+      };
+      yield { type: 'text' as const, delta: 'Done.' };
+      yield { type: 'done' as const, result: 'Done.' };
+    }
+
+    await streamAgentToDiscord(
+      { conversationId: 'thread-1', channel: { send } },
+      events(),
+    );
+
+    expect(send).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      content: expect.stringContaining('Permission required: Bash'),
+      components: expect.any(Array),
+    }));
+    expect(permissionEdit).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining('Status: approved'),
+    }));
   });
 
   it('removes artifacts fenced blocks from the rendered final message', async () => {

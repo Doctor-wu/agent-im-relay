@@ -70,6 +70,7 @@ export async function runMentionConversation(
     attachments: options.attachments ?? [],
     render: ({ target, showEnvironment }, events) =>
       (options.streamToDiscord ?? streamAgentToDiscord)({
+        conversationId: thread.id,
         channel: target,
         showEnvironment,
         replyContext: options.replyContext,

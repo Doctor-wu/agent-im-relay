@@ -6,12 +6,17 @@ import {
   preprocessConversationMessage,
   processedEventIds,
   processedMessages,
+  resolvePermissionRequest,
   type BackendName,
 } from '@agent-im-relay/core';
 import { createFeishuClient } from './api';
 import type { FeishuConfig } from './config';
 import {
   buildFeishuBackendConfirmationCardPayload,
+} from './cards';
+import { formatFeishuTextMessages } from './formatting';
+  buildFeishuPermissionCardPayload,
+  buildPermissionRequestCard,
 } from './cards';
 import { formatFeishuTextMessages } from './formatting';
 import {
@@ -744,6 +749,36 @@ export function createFeishuEventRouter(
           target,
           transport,
         });
+        succeeded = true;
+        return;
+      }
+
+      if (actionType === 'permission-approve' || actionType === 'permission-deny') {
+        const requestId = typeof action.requestId === 'string' ? action.requestId : undefined;
+        if (!requestId || !target.replyToMessageId) {
+          succeeded = true;
+          return;
+        }
+
+        const resolved = resolvePermissionRequest({
+          conversationId,
+          requestId,
+          decision: actionType === 'permission-approve' ? 'approved' : 'denied',
+        });
+        await transport.updateCard(
+          target,
+          target.replyToMessageId,
+          buildFeishuPermissionCardPayload(
+            buildPermissionRequestCard(
+              conversationId,
+              requestId,
+              typeof action.tool === 'string' ? action.tool : undefined,
+              typeof action.reason === 'string' ? action.reason : undefined,
+            ),
+            buildFeishuCardContext(conversationId, target),
+            resolved.decision,
+          ),
+        );
         succeeded = true;
         return;
       }

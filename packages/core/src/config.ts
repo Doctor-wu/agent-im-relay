@@ -9,6 +9,8 @@ export type RuntimeConfig = {
   artifactMaxSizeBytes?: number;
   streamUpdateIntervalMs?: number;
   discordMessageCharLimit?: number;
+  permissionMode?: 'auto' | 'safe';
+  permissionRequestTimeoutMs?: number;
   claudeCwd?: string;
   claudeBin?: string;
   codexBin?: string;
@@ -119,6 +121,8 @@ export interface CoreConfig {
   artifactsBaseDir: string;
   artifactRetentionDays: number;
   artifactMaxSizeBytes: number;
+  permissionMode: 'auto' | 'safe';
+  permissionRequestTimeoutMs: number;
   claudeBin: string;
   codexBin: string;
   opencodeBin: string;
@@ -166,6 +170,8 @@ const DEFAULT_RUNTIME_RECORD: RuntimeRecord = {
     artifactMaxSizeBytes: 8 * 1024 * 1024,
     streamUpdateIntervalMs: 1000,
     discordMessageCharLimit: 1900,
+    permissionMode: 'auto',
+    permissionRequestTimeoutMs: 120000,
     claudeBin: 'claude',
     codexBin: 'codex',
     opencodeBin: 'opencode',
@@ -196,6 +202,10 @@ function asStringList(value: unknown): string[] | undefined {
   return values.length > 0 ? values : undefined;
 }
 
+function asPermissionMode(value: unknown): RuntimeConfig['permissionMode'] {
+  return value === 'auto' || value === 'safe' ? value : undefined;
+}
+
 function asPositiveNumber(value: unknown): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
     return undefined;
@@ -222,6 +232,8 @@ function normalizeRuntimeRecord(value: Record<string, unknown>): RuntimeRecord {
       artifactMaxSizeBytes: asPositiveNumber(config.artifactMaxSizeBytes),
       streamUpdateIntervalMs: asPositiveNumber(config.streamUpdateIntervalMs),
       discordMessageCharLimit: asPositiveNumber(config.discordMessageCharLimit),
+      permissionMode: asPermissionMode(config.permissionMode),
+      permissionRequestTimeoutMs: asPositiveNumber(config.permissionRequestTimeoutMs),
       claudeCwd: asString(config.claudeCwd),
       claudeBin: asString(config.claudeBin),
       codexBin: asString(config.codexBin),
@@ -557,6 +569,8 @@ function toCoreConfig(paths: RelayPaths, loaded: LoadedRelayConfig): CoreConfig 
     artifactsBaseDir: paths.artifactsDir,
     artifactRetentionDays: loaded.runtime.artifactRetentionDays ?? DEFAULT_RUNTIME_RECORD.config.artifactRetentionDays!,
     artifactMaxSizeBytes: loaded.runtime.artifactMaxSizeBytes ?? DEFAULT_RUNTIME_RECORD.config.artifactMaxSizeBytes!,
+    permissionMode: loaded.runtime.permissionMode ?? DEFAULT_RUNTIME_RECORD.config.permissionMode!,
+    permissionRequestTimeoutMs: loaded.runtime.permissionRequestTimeoutMs ?? DEFAULT_RUNTIME_RECORD.config.permissionRequestTimeoutMs!,
     claudeBin: loaded.runtime.claudeBin ?? DEFAULT_RUNTIME_RECORD.config.claudeBin!,
     codexBin: loaded.runtime.codexBin ?? DEFAULT_RUNTIME_RECORD.config.codexBin!,
     opencodeBin: loaded.runtime.opencodeBin ?? DEFAULT_RUNTIME_RECORD.config.opencodeBin!,

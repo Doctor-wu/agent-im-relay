@@ -1,8 +1,12 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerBackend, type AgentBackend } from '../backend';
 import {
+  getPendingPermissionRequests,
   interruptConversationRun,
   isConversationRunning,
+  registerConversationPermissionResponder,
+  registerPermissionRequest,
+  resolvePermissionRequest,
   resetConversationRuntimeForTests,
   runConversationSession,
 } from '../runtime';
@@ -29,7 +33,12 @@ function createBackend(events: Array<unknown>): AgentBackend {
 }
 
 describe('conversation runtime', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
   afterEach(() => {
+    vi.useRealTimers();
     resetConversationRuntimeForTests();
   });
 
@@ -74,6 +83,71 @@ describe('conversation runtime', () => {
 
   it('returns false when interrupting an idle conversation', () => {
     expect(interruptConversationRun('idle')).toBe(false);
+  });
+
+  it('tracks and resolves pending permission requests', async () => {
+    const decisions: Array<{ requestId: string; decision: 'approved' | 'denied' }> = [];
+
+    registerConversationPermissionResponder('conv-perm', {
+      backend: 'claude',
+      respond(requestId, decision) {
+        decisions.push({ requestId, decision });
+      },
+    });
+
+    const request = registerPermissionRequest({
+      conversationId: 'conv-perm',
+      requestId: 'perm-1',
+      backend: 'claude',
+      tool: 'Bash',
+      reason: 'Run pwd',
+      timeoutMs: 120000,
+    });
+
+    expect(getPendingPermissionRequests('conv-perm')).toEqual([request]);
+
+    const resolved = resolvePermissionRequest({
+      conversationId: 'conv-perm',
+      requestId: 'perm-1',
+      decision: 'approved',
+    });
+
+    expect(resolved).toMatchObject({
+      requestId: 'perm-1',
+      backend: 'claude',
+      decision: 'approved',
+    });
+    expect(decisions).toEqual([{ requestId: 'perm-1', decision: 'approved' }]);
+    expect(getPendingPermissionRequests('conv-perm')).toEqual([]);
+  });
+
+  it('auto-denies timed out permission requests and rejects duplicate resolution', () => {
+    const decisions: Array<{ requestId: string; decision: 'approved' | 'denied' }> = [];
+
+    registerConversationPermissionResponder('conv-timeout', {
+      backend: 'codex',
+      respond(requestId, decision) {
+        decisions.push({ requestId, decision });
+      },
+    });
+
+    registerPermissionRequest({
+      conversationId: 'conv-timeout',
+      requestId: 'perm-timeout',
+      backend: 'codex',
+      reason: 'Request network access',
+      timeoutMs: 1000,
+    });
+
+    vi.advanceTimersByTime(1000);
+
+    expect(decisions).toEqual([{ requestId: 'perm-timeout', decision: 'denied' }]);
+    expect(getPendingPermissionRequests('conv-timeout')).toEqual([]);
+    expect(() => resolvePermissionRequest({
+      conversationId: 'conv-timeout',
+      requestId: 'perm-timeout',
+      decision: 'approved',
+    })).toThrow(/not pending/i);
   });
 
   it('appends the artifacts block contract for code-mode runs', async () => {
@@ -149,6 +223,36 @@ describe('conversation runtime', () => {
       { type: 'error', error: 'Backend not available: offline-test-backend' },
     ]);
     expect(isConversationRunning('conv-offline')).toBe(false);
+  });
+
+  it('clears pending permission requests when a run completes', async () => {
+    const events = runConversationSession('conv-clear', {
+      mode: 'ask',
+      prompt: 'hi',
+      backend: {
+        name: 'claude',
+        isAvailable: () => true,
+        async *stream() {
+          registerConversationPermissionResponder('conv-clear', {
+            backend: 'claude',
+            respond: () => undefined,
+          });
+          registerPermissionRequest({
+            conversationId: 'conv-clear',
+            requestId: 'perm-clear',
+            backend: 'claude',
+            timeoutMs: 120000,
+          });
+          yield { type: 'done', result: 'ok' } as const;
+        },
+      },
+    });
+
+    for await (const _event of events) {
+      // exhaust
+    }
+
+    expect(getPendingPermissionRequests('conv-clear')).toEqual([]);
   });
 });
 

@@ -12,7 +12,7 @@ import {
 } from '../backend';
 import { buildEnvironment } from '../environment';
 import type { AgentSessionOptions, AgentStreamEvent } from '../session';
-import { toolsForMode } from '../tools';
+import { toolsForMode, type PermissionMode } from '../tools';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -33,6 +33,72 @@ function safeJson(value: unknown): string {
 function formatToolSummary(name: string, input: unknown): string {
   const serialized = input === undefined ? '' : ` ${safeJson(input).slice(0, 600)}`;
   return `running ${name}${serialized}`;
+}
+
+type ExtractedPermissionRequest = {
+  requestId: string;
+  tool?: string;
+  reason?: string;
+};
+
+function findPermissionRequestInRecord(record: Record<string, unknown>): ExtractedPermissionRequest | undefined {
+  const requestId = asString(record.request_id) ?? asString(record.requestId) ?? asString(record.id);
+  if (!requestId) {
+    return undefined;
+  }
+
+  return {
+    requestId,
+    tool: asString(record.tool_name) ?? asString(record.toolName) ?? asString(record.name),
+    reason: asString(record.reason) ?? asString(record.message) ?? asString(record.description),
+  };
+}
+
+function formatClaudeUserMessage(text: string): string {
+  return `${JSON.stringify({
+    type: 'user',
+    message: {
+      role: 'user',
+      content: [{ type: 'text', text }],
+    },
+  })}\n`;
+}
+
+export function extractClaudePermissionRequest(payload: unknown): ExtractedPermissionRequest | undefined {
+  if (!isRecord(payload)) return undefined;
+
+  if (asString(payload.type) === 'permission_request') {
+    return findPermissionRequestInRecord(payload);
+  }
+
+  if (asString(payload.type) === 'stream_event' && isRecord(payload.event)) {
+    const eventType = asString(payload.event.type);
+    if (eventType === 'permission_request') {
+      return findPermissionRequestInRecord(payload.event);
+    }
+  }
+
+  if (asString(payload.type) === 'assistant' && isRecord(payload.message) && Array.isArray(payload.message.content)) {
+    for (const block of payload.message.content) {
+      if (!isRecord(block) || asString(block.type) !== 'permission_request') {
+        continue;
+      }
+      return findPermissionRequestInRecord(block);
+    }
+  }
+
+  return undefined;
+}
+
+export function formatClaudePermissionDecision(
+  requestId: string,
+  decision: 'approved' | 'denied',
+): string {
+  return formatClaudeUserMessage(
+    decision === 'approved'
+      ? `Permission request ${requestId} approved. Continue with the operation.`
+      : `Permission request ${requestId} denied. Skip that operation and continue.`,
+  );
 }
 
 function extractContentEvents(content: unknown): AgentStreamEvent[] {
@@ -178,8 +244,15 @@ export function extractEvents(
   return [];
 }
 
-export function createClaudeArgs(options: AgentSessionOptions): string[] {
+export function createClaudeArgs(
+  options: AgentSessionOptions,
+  permissionMode: PermissionMode = config.permissionMode,
+): string[] {
   const args = ['-p', '--output-format', 'stream-json', '--verbose'];
+
+  if (permissionMode === 'safe') {
+    args.push('--input-format', 'stream-json');
+  }
 
   if (options.model) {
     args.push('--model', options.model);
@@ -189,7 +262,7 @@ export function createClaudeArgs(options: AgentSessionOptions): string[] {
     args.push('--effort', options.effort);
   }
 
-  args.push(...toolsForMode(options.mode));
+  args.push(...toolsForMode(options.mode, permissionMode));
 
   if (options.resumeSessionId) {
     args.push('--resume', options.resumeSessionId);
@@ -197,7 +270,9 @@ export function createClaudeArgs(options: AgentSessionOptions): string[] {
     args.push('--session-id', options.sessionId);
   }
 
-  args.push(options.prompt);
+  if (permissionMode !== 'safe') {
+    args.push(options.prompt);
+  }
   return args;
 }
 
@@ -233,6 +308,7 @@ function getSupportedClaudeModels(): BackendModel[] {
 
 async function* streamClaude(options: AgentSessionOptions): AsyncGenerator<AgentStreamEvent, void> {
   const cwd = options.cwd ?? config.claudeCwd;
+  const permissionMode = config.permissionMode;
   yield {
     type: 'environment',
     environment: buildEnvironment(
@@ -244,11 +320,14 @@ async function* streamClaude(options: AgentSessionOptions): AsyncGenerator<Agent
     ),
   };
 
-  const child = spawn(config.claudeBin, createClaudeArgs(options), {
+  const child = spawn(config.claudeBin, createClaudeArgs(options, permissionMode), {
     cwd,
     env: process.env,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: permissionMode === 'safe' ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
   });
+  if (permissionMode === 'safe') {
+    child.stdin?.write(formatClaudeUserMessage(options.prompt));
+  }
   const closePromise = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
     child.once('error', reject);
     child.once('close', (code, signal) => resolve({ code, signal }));
@@ -288,6 +367,38 @@ async function* streamClaude(options: AgentSessionOptions): AsyncGenerator<Agent
       throw new Error('Claude CLI stdout is unavailable');
     }
 
+    let registerPermissionRequest:
+      | ((options: {
+        conversationId: string;
+        requestId: string;
+        backend: string;
+        tool?: string;
+        reason?: string;
+        timeoutMs: number;
+      }) => {
+        requestId: string;
+        backend: string;
+        tool?: string;
+        reason?: string;
+        expiresAt: string;
+      })
+      | undefined;
+
+    if (permissionMode === 'safe' && options.conversationId && child.stdin) {
+      const {
+        registerConversationPermissionResponder,
+        registerPermissionRequest: registerPermissionRequestWithRuntime,
+      } = await import('../runtime');
+
+      registerConversationPermissionResponder(options.conversationId, {
+        backend: 'claude',
+        respond(requestId, decision) {
+          child.stdin?.write(formatClaudePermissionDecision(requestId, decision));
+        },
+      });
+      registerPermissionRequest = registerPermissionRequestWithRuntime;
+    }
+
     for await (const rawLine of stdoutReader) {
       const line = rawLine.trim();
       if (!line) continue;
@@ -298,6 +409,29 @@ async function* streamClaude(options: AgentSessionOptions): AsyncGenerator<Agent
       } catch {
         yield { type: 'status', status: line };
         continue;
+      }
+
+      if (registerPermissionRequest && options.conversationId) {
+        const permissionRequest = extractClaudePermissionRequest(payload);
+        if (permissionRequest) {
+          const request = registerPermissionRequest({
+            conversationId: options.conversationId,
+            requestId: permissionRequest.requestId,
+            backend: 'claude',
+            tool: permissionRequest.tool,
+            reason: permissionRequest.reason,
+            timeoutMs: config.permissionRequestTimeoutMs,
+          });
+          yield {
+            type: 'permission-requested',
+            requestId: request.requestId,
+            backend: request.backend,
+            tool: request.tool,
+            reason: request.reason,
+            expiresAt: request.expiresAt,
+          };
+          continue;
+        }
       }
 
       const events = extractEvents(payload, { resumeSessionId: options.resumeSessionId });

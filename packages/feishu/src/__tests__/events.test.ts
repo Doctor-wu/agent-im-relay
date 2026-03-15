@@ -20,6 +20,12 @@ const coreMocks = vi.hoisted(() => ({
   getAvailableBackendNames: vi.fn(async () => ['claude', 'opencode']),
   initState: vi.fn(async () => undefined),
   persistState: vi.fn(async () => undefined),
+  resolvePermissionRequest: vi.fn(({ conversationId, requestId, decision }: any) => ({
+    conversationId,
+    requestId,
+    decision,
+    backend: 'claude',
+  })),
 }));
 
 const runtimeMocks = vi.hoisted(() => ({
@@ -37,6 +43,7 @@ vi.mock('@agent-im-relay/core', async (importOriginal) => {
     getAvailableBackendNames: coreMocks.getAvailableBackendNames,
     initState: coreMocks.initState,
     persistState: coreMocks.persistState,
+    resolvePermissionRequest: coreMocks.resolvePermissionRequest,
   };
 });
 
@@ -115,6 +122,7 @@ afterEach(async () => {
   ]);
   coreMocks.getAvailableBackendNames.mockResolvedValue(['claude', 'opencode']);
   coreMocks.persistState.mockClear();
+  coreMocks.resolvePermissionRequest.mockClear();
   runtimeMocks.handleFeishuControlAction.mockReset();
   runtimeMocks.queuePendingFeishuAttachments.mockReset();
   runtimeMocks.resumePendingFeishuRun.mockReset();
@@ -249,6 +257,51 @@ describe('Feishu long-connection events', () => {
       prompt: 'ship it',
       mode: 'code',
     }));
+  });
+
+  it('routes permission card actions through the shared core resolver', async () => {
+    const updateCardMessage = vi.fn(async () => undefined);
+    const router = createFeishuEventRouter(baseConfig, {
+      client: {
+        replyMessage: vi.fn(async () => undefined),
+        sendMessage: vi.fn(async () => undefined),
+        sendCard: vi.fn(async () => undefined),
+        updateCardMessage,
+        uploadFileContent: vi.fn(async () => 'file-key'),
+        sendFileMessage: vi.fn(async () => undefined),
+        downloadMessageResource: vi.fn(async () => new Response()),
+      } as never,
+    });
+
+    await router.handleCardActionEvent({
+      open_message_id: 'open-message-1',
+      action: {
+        value: {
+          conversationId: 'conv-1',
+          chatId: 'chat-1',
+          action: 'permission-approve',
+          requestId: 'perm-1',
+          tool: 'Bash',
+          reason: 'Run rm -rf build',
+        },
+      },
+    });
+
+    expect(coreMocks.resolvePermissionRequest).toHaveBeenCalledWith({
+      conversationId: 'conv-1',
+      requestId: 'perm-1',
+      decision: 'approved',
+    });
+    expect(updateCardMessage).toHaveBeenCalledWith(
+      'open-message-1',
+      expect.objectContaining({
+        body: expect.objectContaining({
+          elements: expect.arrayContaining([
+            expect.objectContaining({ content: 'Status: Approved' }),
+          ]),
+        }),
+      }),
+    );
   });
 
   it('applies standalone backend control tags without prompting for missing text', async () => {

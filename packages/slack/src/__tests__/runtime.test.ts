@@ -30,6 +30,12 @@ const coreMocks = vi.hoisted(() => ({
     }
     return undefined;
   }),
+  resolvePermissionRequest: vi.fn(({ conversationId, requestId, decision }: any) => ({
+    conversationId,
+    requestId,
+    decision,
+    backend: 'claude',
+  })),
   runPlatformConversation: vi.fn(async () => true),
 }));
 
@@ -43,6 +49,7 @@ vi.mock('@agent-im-relay/core', async (importOriginal) => {
     getAvailableBackendNames: coreMocks.getAvailableBackendNames,
     listSkills: coreMocks.listSkills,
     resolveBackendModelId: coreMocks.resolveBackendModelId,
+    resolvePermissionRequest: coreMocks.resolvePermissionRequest,
     runPlatformConversation: coreMocks.runPlatformConversation,
   };
 });
@@ -126,6 +133,7 @@ describe('Slack runtime', () => {
     coreMocks.getAvailableBackendNames.mockClear();
     coreMocks.listSkills.mockClear();
     coreMocks.resolveBackendModelId.mockClear();
+    coreMocks.resolvePermissionRequest.mockClear();
     coreMocks.runPlatformConversation.mockReset();
     coreMocks.runPlatformConversation.mockResolvedValue(true);
     coreMocks.evaluateConversationRunRequest.mockReturnValue({
@@ -330,6 +338,75 @@ describe('Slack runtime', () => {
 
     await expect(runtime.start()).rejects.toThrow(
       'Missing required slack configuration in ~/.agent-inbox/config.jsonl',
+    );
+  });
+
+  it('resolves permission button actions and updates the existing Slack card', async () => {
+    const { createSlackRuntime } = await import('../runtime.js');
+    const transport = createMockTransport();
+    coreMocks.runPlatformConversation.mockImplementationOnce(async (options: any) => {
+      const events = [
+        {
+          type: 'permission-requested',
+          requestId: 'perm-1',
+          backend: 'claude',
+          tool: 'Bash',
+          reason: 'Run rm -rf build',
+          expiresAt: '2026-03-15T00:00:00.000Z',
+        },
+        {
+          type: 'done',
+          result: 'Done.',
+        },
+      ];
+      await options.render({ target: options.target, showEnvironment: false }, (async function* () {
+        for (const event of events) {
+          yield event;
+        }
+      })());
+      return true;
+    });
+
+    const runtime = createSlackRuntime({
+      transport,
+      defaultCwd: process.cwd(),
+      config: createRuntimeConfig(),
+      createApp: () => createMockApp() as any,
+    });
+
+    await runtime.handleMessage({
+      channel: 'D123',
+      channel_type: 'im',
+      ts: '1741766502.000001',
+      text: 'ship it',
+      user: 'U123',
+      subtype: undefined,
+    } as any);
+
+    await runtime.handleAction({
+      channel: { id: 'D123' },
+      message: { ts: '1741766402.000001', thread_ts: '1741766502.000001' },
+      actions: [{
+        value: JSON.stringify({
+          type: 'permission',
+          conversationId: '1741766502.000001',
+          requestId: 'perm-1',
+          decision: 'approved',
+        }),
+      }],
+      user: { id: 'U123' },
+    });
+
+    expect(coreMocks.resolvePermissionRequest).toHaveBeenCalledWith({
+      conversationId: '1741766502.000001',
+      requestId: 'perm-1',
+      decision: 'approved',
+    });
+    expect(transport.updateBlocks).toHaveBeenCalledWith(
+      { channelId: 'D123', threadTs: '1741766502.000001' },
+      '1741766402.000001',
+      'Permission Required',
+      expect.any(Array),
     );
   });
 

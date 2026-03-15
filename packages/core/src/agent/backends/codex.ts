@@ -12,6 +12,7 @@ import {
 } from '../backend';
 import { buildEnvironment } from '../environment';
 import type { AgentSessionOptions, AgentStreamEvent } from '../session';
+import type { PermissionMode } from '../tools';
 
 const WORKING_DIR_PATTERN = /^Working directory:\s*(.+)$/;
 const LOG_LINE_PATTERN = /^\d{4}-\d{2}-\d{2}T/;
@@ -36,6 +37,12 @@ function formatCommandSummary(command: string): string {
   return `running Bash ${safeJson({ command }).slice(0, 600)}`;
 }
 
+type ExtractedPermissionRequest = {
+  requestId: string;
+  tool?: string;
+  reason?: string;
+};
+
 function extractCodexSessionId(payload: unknown): string | undefined {
   if (!isRecord(payload)) return undefined;
   const type = asString(payload.type);
@@ -56,12 +63,68 @@ function isAuthoritativeCodexResumeFailure(error: string): boolean {
   ].some(pattern => pattern.test(error));
 }
 
-export function createCodexArgs(options: AgentSessionOptions): string[] {
+export function extractCodexPermissionRequest(payload: unknown): ExtractedPermissionRequest | undefined {
+  if (!isRecord(payload)) return undefined;
+
+  const legacyType = asString(payload.type);
+  if (legacyType === 'permission.requested') {
+    const requestId = asString(payload.id);
+    if (!requestId) return undefined;
+    return {
+      requestId,
+      tool: asString(payload.tool),
+      reason: asString(payload.reason),
+    };
+  }
+
+  const method = asString(payload.method);
+  const requestId = asString(payload.id);
+  if (!method || !requestId) return undefined;
+
+  const params = isRecord(payload.params) ? payload.params : {};
+  if (method === 'item/commandExecution/requestApproval') {
+    const command = Array.isArray(params.command)
+      ? params.command.filter((value): value is string => typeof value === 'string').join(' ')
+      : undefined;
+    return {
+      requestId,
+      tool: 'Bash',
+      reason: asString(params.reason) ?? command,
+    };
+  }
+
+  if (method === 'item/fileChange/requestApproval') {
+    return {
+      requestId,
+      tool: 'Patch',
+      reason: asString(params.reason),
+    };
+  }
+
+  return undefined;
+}
+
+export function formatCodexPermissionDecision(
+  requestId: string,
+  decision: 'approved' | 'denied',
+): string {
+  return `${JSON.stringify({
+    id: requestId,
+    result: {
+      decision: decision === 'approved' ? 'accept' : 'decline',
+    },
+  })}\n`;
+}
+
+export function createCodexArgs(
+  options: AgentSessionOptions,
+  permissionMode: PermissionMode = config.permissionMode,
+): string[] {
   const args = options.resumeSessionId
     ? ['exec', 'resume', options.resumeSessionId, '--json', '--skip-git-repo-check']
     : ['exec', '--json', '--skip-git-repo-check'];
 
-  if (options.mode === 'code') {
+  if (options.mode === 'code' && permissionMode !== 'safe') {
     args.push('--full-auto');
   }
 
@@ -75,7 +138,7 @@ export function createCodexArgs(options: AgentSessionOptions): string[] {
     args.push('--cd', options.cwd);
   }
 
-  args.push('-');
+  args.push(permissionMode === 'safe' ? options.prompt : '-');
   return args;
 }
 
@@ -199,7 +262,8 @@ async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentS
     ? options.prompt
     : `请在开始任务前，先找到与本任务相关的项目目录，并在响应的第一行输出：Working directory: /absolute/path，然后再执行任务。\n\n${options.prompt}`;
 
-  const args = createCodexArgs(options);
+  const permissionMode = config.permissionMode;
+  const args = createCodexArgs({ ...options, prompt }, permissionMode);
 
   const child = spawn(config.codexBin, args, {
     cwd,
@@ -207,7 +271,9 @@ async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentS
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 
-  child.stdin?.end(prompt);
+  if (permissionMode !== 'safe') {
+    child.stdin?.end(prompt);
+  }
 
   const closePromise = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
     (resolve, reject) => {
@@ -244,45 +310,122 @@ async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentS
   try {
     if (!stdoutReader) throw new Error('Codex CLI stdout is unavailable');
 
-    for await (const rawLine of stdoutReader) {
-      const line = rawLine.trimEnd();
-      if (!line) continue;
-      if (LOG_LINE_PATTERN.test(line)) {
-        stderrLines.push(line);
-        continue;
-      }
+    if (permissionMode === 'safe' && options.conversationId && child.stdin) {
+      const {
+        registerConversationPermissionResponder,
+        registerPermissionRequest,
+      } = await import('../runtime.js');
 
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(line);
-      } catch {
-        continue;
-      }
+      registerConversationPermissionResponder(options.conversationId, {
+        backend: 'codex',
+        respond(requestId, decision) {
+          child.stdin?.write(formatCodexPermissionDecision(requestId, decision));
+        },
+      });
 
-      sessionId = extractCodexSessionId(parsed) ?? sessionId;
+      for await (const rawLine of stdoutReader) {
+        const line = rawLine.trimEnd();
+        if (!line) continue;
+        if (LOG_LINE_PATTERN.test(line)) {
+          stderrLines.push(line);
+          continue;
+        }
 
-      for (const event of extractCodexEvents(parsed, { resumeSessionId: options.resumeSessionId })) {
-        if (event.type === 'text') {
-          fullOutput += event.delta;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(line);
+        } catch {
+          continue;
+        }
 
-          for (const textLine of event.delta.split('\n')) {
-            const cwdMatch = WORKING_DIR_PATTERN.exec(textLine.trim());
-            if (cwdMatch?.[1]) {
-              const detectedCwd = cwdMatch[1].trim();
-              yield { type: 'status', status: `cwd:${detectedCwd}` };
-              if (environmentCwd !== detectedCwd || environmentSource !== 'auto-detected') {
-                environmentCwd = detectedCwd;
-                environmentSource = 'auto-detected';
-                yield {
-                  type: 'environment',
-                  environment: buildEnvironment('codex', options, environmentCwd, environmentSource, options.model),
-                };
+        sessionId = extractCodexSessionId(parsed) ?? sessionId;
+
+        const permissionRequest = extractCodexPermissionRequest(parsed);
+        if (permissionRequest) {
+          const request = registerPermissionRequest({
+            conversationId: options.conversationId,
+            requestId: permissionRequest.requestId,
+            backend: 'codex',
+            tool: permissionRequest.tool,
+            reason: permissionRequest.reason,
+            timeoutMs: config.permissionRequestTimeoutMs,
+          });
+          yield {
+            type: 'permission-requested',
+            requestId: request.requestId,
+            backend: request.backend,
+            tool: request.tool,
+            reason: request.reason,
+            expiresAt: request.expiresAt,
+          };
+          continue;
+        }
+
+        for (const event of extractCodexEvents(parsed, { resumeSessionId: options.resumeSessionId })) {
+          if (event.type === 'text') {
+            fullOutput += event.delta;
+
+            for (const textLine of event.delta.split('\n')) {
+              const cwdMatch = WORKING_DIR_PATTERN.exec(textLine.trim());
+              if (cwdMatch?.[1]) {
+                const detectedCwd = cwdMatch[1].trim();
+                yield { type: 'status', status: `cwd:${detectedCwd}` };
+                if (environmentCwd !== detectedCwd || environmentSource !== 'auto-detected') {
+                  environmentCwd = detectedCwd;
+                  environmentSource = 'auto-detected';
+                  yield {
+                    type: 'environment',
+                    environment: buildEnvironment('codex', options, environmentCwd, environmentSource, options.model),
+                  };
+                }
               }
             }
           }
+
+          yield event;
+        }
+      }
+    } else {
+      for await (const rawLine of stdoutReader) {
+        const line = rawLine.trimEnd();
+        if (!line) continue;
+        if (LOG_LINE_PATTERN.test(line)) {
+          stderrLines.push(line);
+          continue;
         }
 
-        yield event;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(line);
+        } catch {
+          continue;
+        }
+
+        sessionId = extractCodexSessionId(parsed) ?? sessionId;
+
+        for (const event of extractCodexEvents(parsed, { resumeSessionId: options.resumeSessionId })) {
+          if (event.type === 'text') {
+            fullOutput += event.delta;
+
+            for (const textLine of event.delta.split('\n')) {
+              const cwdMatch = WORKING_DIR_PATTERN.exec(textLine.trim());
+              if (cwdMatch?.[1]) {
+                const detectedCwd = cwdMatch[1].trim();
+                yield { type: 'status', status: `cwd:${detectedCwd}` };
+                if (environmentCwd !== detectedCwd || environmentSource !== 'auto-detected') {
+                  environmentCwd = detectedCwd;
+                  environmentSource = 'auto-detected';
+                  yield {
+                    type: 'environment',
+                    environment: buildEnvironment('codex', options, environmentCwd, environmentSource, options.model),
+                  };
+                }
+              }
+            }
+          }
+
+          yield event;
+        }
       }
     }
 

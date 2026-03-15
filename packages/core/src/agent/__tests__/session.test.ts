@@ -194,6 +194,38 @@ describe('extractEvents', () => {
       status: 'confirmed',
     });
   });
+
+  it('supports normalized permission lifecycle events', () => {
+    const requested: AgentStreamEvent = {
+      type: 'permission-requested',
+      requestId: 'perm-1',
+      backend: 'claude',
+      tool: 'Bash',
+      reason: 'Run pwd',
+      expiresAt: '2026-03-15T00:00:00.000Z',
+    };
+    const resolved: AgentStreamEvent = {
+      type: 'permission-resolved',
+      requestId: 'perm-1',
+      backend: 'claude',
+      decision: 'approved',
+    };
+
+    expect(requested).toEqual({
+      type: 'permission-requested',
+      requestId: 'perm-1',
+      backend: 'claude',
+      tool: 'Bash',
+      reason: 'Run pwd',
+      expiresAt: '2026-03-15T00:00:00.000Z',
+    });
+    expect(resolved).toEqual({
+      type: 'permission-resolved',
+      requestId: 'perm-1',
+      backend: 'claude',
+      decision: 'approved',
+    });
+  });
 });
 
 describe('streamAgentSession', () => {

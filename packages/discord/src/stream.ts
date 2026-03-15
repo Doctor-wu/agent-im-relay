@@ -2,12 +2,14 @@ import type { Message } from 'discord.js';
 import { stripArtifactManifest, type AgentEnvironment, type AgentStreamEvent } from '@agent-im-relay/core';
 import { config } from './config';
 import { buildDiscordReplyPayload, type DiscordReplyContext } from './reply-context';
+import { buildDiscordPermissionMessage } from './permissions';
 
 export type StreamTargetChannel = {
-  send(content: string | { content: string; embeds?: any[]; allowedMentions?: { users: string[] } }): Promise<Message<boolean>>;
+  send(content: string | { content: string; embeds?: any[]; components?: any[]; allowedMentions?: { users: string[] } }): Promise<Message<boolean>>;
 };
 
 type StreamToDiscordOptions = {
+  conversationId?: string;
   channel: StreamTargetChannel;
   initialMessage?: Message<boolean>;
   showEnvironment?: boolean;
@@ -411,6 +413,7 @@ export async function streamAgentToDiscord(
 ): Promise<void> {
   const showEnvironment = options.showEnvironment ?? false;
   const messages: Message<boolean>[] = [];
+  const permissionMessages = new Map<string, Message<boolean>>();
   let environmentMessage: Message<boolean> | undefined;
   let mentionSent = false;
   if (options.initialMessage) {
@@ -518,6 +521,33 @@ export async function streamAgentToDiscord(
       if (!isThinking && !buffer.trim()) {
         isThinking = true;
         buffer = '⏳ *' + event.status + '*';
+      }
+    } else if (event.type === 'permission-requested') {
+      if (!options.conversationId) {
+        continue;
+      }
+
+      const permissionMessage = await options.channel.send(
+        buildDiscordPermissionMessage({
+          conversationId: options.conversationId,
+          requestId: event.requestId,
+          tool: event.tool,
+          reason: event.reason,
+        }),
+      );
+      permissionMessages.set(event.requestId, permissionMessage);
+    } else if (event.type === 'permission-resolved') {
+      if (!options.conversationId) {
+        continue;
+      }
+
+      const permissionMessage = permissionMessages.get(event.requestId);
+      if (permissionMessage) {
+        await permissionMessage.edit(buildDiscordPermissionMessage({
+          conversationId: options.conversationId,
+          requestId: event.requestId,
+        }, event.decision)).catch(() => {});
+        permissionMessages.delete(event.requestId);
       }
     } else if (event.type === 'error') {
       if (event.error === 'Agent request aborted') {

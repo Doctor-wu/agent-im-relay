@@ -12,6 +12,7 @@ import {
 } from '../backend';
 import { buildEnvironment } from '../environment';
 import type { AgentSessionOptions, AgentStreamEvent } from '../session';
+import type { PermissionMode } from '../tools';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -69,7 +70,10 @@ function isAuthoritativeOpencodeResumeFailure(error: string): boolean {
   ].some(pattern => pattern.test(error));
 }
 
-export function createOpencodeArgs(options: AgentSessionOptions): string[] {
+export function createOpencodeArgs(
+  options: AgentSessionOptions,
+  _permissionMode: PermissionMode = config.permissionMode,
+): string[] {
   const args = ['run', '--format', 'json'];
 
   if (options.model) {

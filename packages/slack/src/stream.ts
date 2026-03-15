@@ -16,6 +16,8 @@ type SlackStreamEvent =
   | { type: 'environment'; environment: unknown }
   | { type: 'text'; delta: string }
   | { type: 'tool'; summary: string }
+  | { type: 'permission-requested'; requestId: string; backend: string; tool?: string; reason?: string; expiresAt: string }
+  | { type: 'permission-resolved'; requestId: string; backend: string; decision: 'approved' | 'denied' | 'timeout' }
   | { type: 'status'; status: string }
   | { type: 'done'; result: string }
   | { type: 'error'; error: string };
@@ -25,6 +27,8 @@ export async function streamSlackMessages(
     transport: SlackStreamTransport;
     target: SlackStreamTarget;
     updateIntervalMs: number;
+    onPermissionRequested?: (event: Extract<SlackStreamEvent, { type: 'permission-requested' }>) => Promise<void>;
+    onPermissionResolved?: (event: Extract<SlackStreamEvent, { type: 'permission-resolved' }>) => Promise<void>;
   },
   events: AsyncIterable<SlackStreamEvent>,
 ): Promise<void> {
@@ -72,6 +76,16 @@ export async function streamSlackMessages(
 
   for await (const event of events) {
     if (event.type === 'environment') {
+      continue;
+    }
+
+    if (event.type === 'permission-requested') {
+      await options.onPermissionRequested?.(event);
+      continue;
+    }
+
+    if (event.type === 'permission-resolved') {
+      await options.onPermissionResolved?.(event);
       continue;
     }
 

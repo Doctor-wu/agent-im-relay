@@ -10,6 +10,20 @@ export type AgentStreamEvent =
   | { type: 'session-invalidated'; sessionId?: string; reason: string }
   | { type: 'text'; delta: string }
   | { type: 'tool'; summary: string }
+  | {
+    type: 'permission-requested';
+    requestId: string;
+    backend: string;
+    tool?: string;
+    reason?: string;
+    expiresAt: string;
+  }
+  | {
+    type: 'permission-resolved';
+    requestId: string;
+    backend: string;
+    decision: 'approved' | 'denied' | 'timeout';
+  }
   | { type: 'status'; status: string }
   | { type: 'done'; result: string; sessionId?: string }
   | { type: 'error'; error: string };
@@ -33,6 +47,7 @@ export type AgentEnvironment = {
 };
 
 export type AgentSessionOptions = {
+  conversationId?: string;
   mode: AgentMode;
   prompt: string;
   cwd?: string;

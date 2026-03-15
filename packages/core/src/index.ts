@@ -27,8 +27,20 @@ export type { AgentSessionFactory, OrchestratorOptions } from './orchestrator';
 
 // Agent
 export { buildAgentPrompt, streamAgentSession, extractEvents, createClaudeArgs } from './agent/session';
-export { runConversationSession, interruptConversationRun, isConversationRunning, resetConversationRuntimeForTests } from './agent/runtime';
+export {
+  clearConversationPermissionState,
+  getPendingPermissionRequests,
+  interruptConversationRun,
+  isConversationRunning,
+  registerConversationPermissionResponder,
+  registerPermissionRequest,
+  resetConversationRuntimeForTests,
+  resolvePermissionRequest,
+  runConversationSession,
+} from './agent/runtime';
+export { maybeUnrefTimer } from './runtime/timers';
 export type { AgentEnvironment, AgentStreamEvent, AgentSessionOptions } from './agent/session';
+export type { PendingPermissionRequest } from './agent/runtime';
 export {
   getAvailableBackendCapabilities,
   getAvailableBackendNames,

@@ -88,6 +88,12 @@ vi.mock('@agent-im-relay/core', () => ({
   initState: vi.fn(async () => {}),
   listSkills: vi.fn(async () => []),
   Orchestrator: class {},
+  resolvePermissionRequest: vi.fn(({ conversationId, requestId, decision }: any) => ({
+    conversationId,
+    requestId,
+    decision,
+    backend: 'claude',
+  })),
 }));
 
 vi.mock('../adapter', () => ({
@@ -151,6 +157,7 @@ import {
   getAvailableBackendCapabilities,
   persistState,
   preprocessConversationMessage,
+  resolvePermissionRequest,
 } from '@agent-im-relay/core';
 
 const interactionCreateHandler = clientMock.on.mock.calls.find(
@@ -195,6 +202,7 @@ describe('handleDiscordMessageCreate', () => {
     vi.mocked(applyMessageControlDirectives).mockReturnValue([]);
     vi.mocked(getAvailableBackendCapabilities).mockClear();
     vi.mocked(persistState).mockClear();
+    vi.mocked(resolvePermissionRequest).mockClear();
   });
 
   it('uses mention-aware channel sends when a bot mention has no prompt body', async () => {
@@ -248,6 +256,28 @@ describe('handleDiscordMessageCreate', () => {
     await interactionCreateHandler?.(interaction);
 
     expect(handleSkillAutocomplete).toHaveBeenCalledWith(interaction);
+  });
+
+  it('resolves permission button interactions through core runtime', async () => {
+    const interaction = {
+      channel: { id: 'thread-1', isThread: () => true, parentId: 'channel-1' },
+      isChatInputCommand: () => false,
+      isAutocomplete: () => false,
+      isButton: () => true,
+      customId: 'permission:approved:thread-1:perm:1',
+      update: vi.fn(async () => undefined),
+    } as any;
+
+    await interactionCreateHandler?.(interaction);
+
+    expect(resolvePermissionRequest).toHaveBeenCalledWith({
+      conversationId: 'thread-1',
+      requestId: 'perm:1',
+      decision: 'approved',
+    });
+    expect(interaction.update).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining('Status: approved'),
+    }));
   });
 
   it('applies control tags before starting a new thread run', async () => {

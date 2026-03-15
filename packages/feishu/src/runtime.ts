@@ -18,8 +18,10 @@ import {
 import {
   buildFeishuBackendSelectionCardPayload,
   buildFeishuModelSelectionCardPayload,
+  buildFeishuPermissionCardPayload,
   buildFeishuSessionControlPanelPayload,
   buildModelSelectionCard,
+  buildPermissionRequestCard,
   buildSessionControlCard,
   createBackendConfirmationCard,
   createBackendSelectionCard,
@@ -57,6 +59,11 @@ export type FeishuRuntimeTransport = {
 const pendingAttachments = new Map<string, RemoteAttachmentLike[]>();
 const pendingRuns = new Map<string, PendingFeishuRun>();
 const pendingModelSelectionTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const pendingPermissionCards = new Map<string, {
+  target: FeishuTarget;
+  messageId: string;
+  card: ReturnType<typeof buildPermissionRequestCard>;
+}>();
 
 function readModelSelectionTimeoutMs(timeoutMs?: number): number {
   return timeoutMs ?? 10_000;
@@ -76,6 +83,10 @@ function clearPendingModelSelectionTimer(conversationId: string): void {
 
   clearTimeout(timer);
   pendingModelSelectionTimers.delete(conversationId);
+}
+
+function permissionCardKey(conversationId: string, requestId: string): string {
+  return `${conversationId}:${requestId}`;
 }
 
 async function resolveFeishuCapabilities(
@@ -454,6 +465,7 @@ async function streamAgentToFeishu(
   target: FeishuTarget,
   events: AsyncIterable<AgentStreamEvent>,
   showEnvironment: boolean,
+  conversationId: string,
   lifecycle?: FeishuConversationLifecycle,
 ): Promise<void> {
   let finalText = '';
@@ -470,6 +482,44 @@ async function streamAgentToFeishu(
 
     if (event.type === 'text') {
       chunks.push(event.delta);
+      continue;
+    }
+
+    if (event.type === 'permission-requested') {
+      const card = buildPermissionRequestCard(
+        conversationId,
+        event.requestId,
+        event.tool,
+        event.reason,
+      );
+      const messageId = await transport.sendCard(
+        target,
+        buildFeishuPermissionCardPayload(card, buildFeishuCardContext(conversationId, target)),
+      );
+      if (messageId) {
+        pendingPermissionCards.set(permissionCardKey(conversationId, event.requestId), {
+          target,
+          messageId,
+          card,
+        });
+      }
+      continue;
+    }
+
+    if (event.type === 'permission-resolved') {
+      const pendingCard = pendingPermissionCards.get(permissionCardKey(conversationId, event.requestId));
+      if (pendingCard) {
+        await transport.updateCard(
+          pendingCard.target,
+          pendingCard.messageId,
+          buildFeishuPermissionCardPayload(
+            pendingCard.card,
+            buildFeishuCardContext(conversationId, pendingCard.target),
+            event.decision,
+          ),
+        );
+        pendingPermissionCards.delete(permissionCardKey(conversationId, event.requestId));
+      }
       continue;
     }
 
@@ -582,7 +632,14 @@ export async function runFeishuConversation(options: {
     attachments: mergedAttachments,
     attachmentFetchImpl: options.attachmentFetchImpl,
     render: ({ target, showEnvironment }, events) =>
-      streamAgentToFeishu(options.transport, target, events, showEnvironment, options.lifecycle),
+      streamAgentToFeishu(
+        options.transport,
+        target,
+        events,
+        showEnvironment,
+        options.conversationId,
+        options.lifecycle,
+      ),
     publishArtifacts: async ({ files, warnings, target }) => {
       for (const filePath of files) {
         await options.transport.uploadFile(target, filePath);
@@ -746,6 +803,7 @@ export function resetFeishuRuntimeForTests(): void {
   pendingModelSelectionTimers.clear();
   pendingAttachments.clear();
   pendingRuns.clear();
+  pendingPermissionCards.clear();
 }
 
 export { buildSessionControlCard };

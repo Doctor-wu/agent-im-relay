@@ -143,6 +143,23 @@ describe('opencode backend', () => {
     ]);
   });
 
+  it('keeps opencode args unchanged in safe mode because it has no permission flags', () => {
+    const args = createOpencodeArgs({
+      mode: 'code',
+      prompt: 'ship it',
+      model: 'openai/gpt-5',
+    }, 'safe');
+
+    expect(args).toEqual([
+      'run',
+      '--format',
+      'json',
+      '--model',
+      'openai/gpt-5',
+      'ship it',
+    ]);
+  });
+
   it('extracts session, tool, and text events from opencode JSONL output', () => {
     expect(extractOpencodeEvents({
       type: 'step_start',

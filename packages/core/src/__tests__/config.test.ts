@@ -61,7 +61,7 @@ describe('core config', () => {
     await mkdir(configDir, { recursive: true });
     await writeFile(join(configDir, 'config.jsonl'), [
       '{"type":"meta","version":1}',
-      '{"type":"runtime","config":{"agentTimeoutMs":1234,"artifactRetentionDays":21,"artifactMaxSizeBytes":4096,"streamUpdateIntervalMs":750,"discordMessageCharLimit":1800,"claudeCwd":"/tmp/relay-workspace","claudeBin":"/tmp/bin/claude","codexBin":"/tmp/bin/codex","opencodeBin":"/tmp/bin/opencode"}}',
+      '{"type":"runtime","config":{"agentTimeoutMs":1234,"artifactRetentionDays":21,"artifactMaxSizeBytes":4096,"streamUpdateIntervalMs":750,"discordMessageCharLimit":1800,"permissionMode":"safe","permissionRequestTimeoutMs":120000,"claudeCwd":"/tmp/relay-workspace","claudeBin":"/tmp/bin/claude","codexBin":"/tmp/bin/codex","opencodeBin":"/tmp/bin/opencode"}}',
       '{"type":"im","id":"discord","enabled":true,"config":{"token":"discord-token","clientId":"discord-client","guildIds":["guild-1"],"allowedChannelIds":["channel-1"]}}',
       '{"type":"im","id":"feishu","enabled":true,"config":{"appId":"feishu-app","appSecret":"feishu-secret","baseUrl":"https://feishu.example.invalid","modelSelectionTimeoutMs":2500}}',
       '{"type":"im","id":"slack","enabled":true,"config":{"botToken":"xoxb-token","appToken":"xapp-token","signingSecret":"signing-secret","socketMode":false}}',
@@ -86,6 +86,8 @@ describe('core config', () => {
       agentTimeoutMs: 1234,
       artifactRetentionDays: 21,
       artifactMaxSizeBytes: 4096,
+      permissionMode: 'safe',
+      permissionRequestTimeoutMs: 120000,
       claudeCwd: '/tmp/relay-workspace',
       claudeBin: '/tmp/bin/claude',
       codexBin: '/tmp/bin/codex',
@@ -122,6 +124,15 @@ describe('core config', () => {
     expect(resolveRelayPlatformStateDir('slack', baseDir)).toBe(
       join(baseDir, '.agent-inbox', 'state', 'slack'),
     );
+  });
+
+  it('defaults permission runtime settings when config.jsonl omits them', async () => {
+    const { resolveRuntimeConfig } = await import('../config.js');
+
+    expect(resolveRuntimeConfig([])).toMatchObject({
+      permissionMode: 'auto',
+      permissionRequestTimeoutMs: 120000,
+    });
   });
 });
 

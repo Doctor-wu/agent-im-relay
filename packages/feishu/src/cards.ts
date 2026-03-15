@@ -48,6 +48,14 @@ export interface SessionControlCard {
   models: BackendModel[];
 }
 
+export interface PermissionRequestCard {
+  type: 'permission-request';
+  conversationId: string;
+  requestId: string;
+  tool?: string;
+  reason?: string;
+}
+
 export interface FeishuCardContext {
   conversationId: string;
   chatId: string;
@@ -136,6 +144,21 @@ export function buildSessionControlCard(
     ],
     backends,
     models,
+  };
+}
+
+export function buildPermissionRequestCard(
+  conversationId: string,
+  requestId: string,
+  tool?: string,
+  reason?: string,
+): PermissionRequestCard {
+  return {
+    type: 'permission-request',
+    conversationId,
+    requestId,
+    tool,
+    reason,
   };
 }
 
@@ -290,6 +313,60 @@ export function buildFeishuSessionControlPanelPayload(
     buildSessionControlCard(conversationId, backends, models),
     context,
   );
+}
+
+export function buildFeishuPermissionCardPayload(
+  card: PermissionRequestCard,
+  context: FeishuCardContext,
+  decision?: 'approved' | 'denied' | 'timeout',
+): Record<string, unknown> {
+  const status = decision
+    ? decision === 'approved'
+      ? 'Approved'
+      : decision === 'timeout'
+        ? 'Timed out and denied'
+        : 'Denied'
+    : undefined;
+
+  return {
+    schema: '2.0',
+    header: {
+      title: plainText('Permission Required'),
+    },
+    body: {
+      elements: [
+        {
+          tag: 'markdown',
+          content: card.tool
+            ? `Tool: \`${card.tool}\``
+            : `Request: \`${card.requestId}\``,
+        },
+        ...(card.reason
+          ? [{
+              tag: 'markdown',
+              content: card.reason,
+            }]
+          : []),
+        ...(status
+          ? [{
+              tag: 'markdown',
+              content: `Status: ${status}`,
+            }]
+          : [
+              button('Approve', context, 'permission-approve', {
+                requestId: card.requestId,
+                tool: card.tool,
+                reason: card.reason,
+              }, 'primary'),
+              button('Deny', context, 'permission-deny', {
+                requestId: card.requestId,
+                tool: card.tool,
+                reason: card.reason,
+              }),
+            ]),
+      ],
+    },
+  };
 }
 
 export function buildFeishuInterruptCardPayload(

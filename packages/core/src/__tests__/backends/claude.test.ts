@@ -17,6 +17,12 @@ vi.mock('node:child_process', () => ({
   spawnSync: vi.fn(() => ({ status: 0 })),
 }));
 
+import {
+  createClaudeArgs,
+  extractClaudePermissionRequest,
+  formatClaudePermissionDecision,
+} from '../../agent/backends/claude.js';
+
 describe('claude backend', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -38,5 +44,55 @@ describe('claude backend', () => {
       { id: 'claude-opus-4-6', label: 'claude-opus-4-6' },
       { id: 'claude-sonnet-4-5', label: 'claude-sonnet-4-5' },
     ]);
+  });
+
+  it('keeps skip-permissions in auto mode and omits it in safe mode', () => {
+    const autoArgs = createClaudeArgs({
+      mode: 'code',
+      prompt: 'fix this',
+    }, 'auto');
+    const safeArgs = createClaudeArgs({
+      mode: 'code',
+      prompt: 'fix this',
+    }, 'safe');
+
+    expect(autoArgs).toContain('--dangerously-skip-permissions');
+    expect(safeArgs).not.toContain('--dangerously-skip-permissions');
+  });
+
+  it('extracts permission requests from Claude stream-json payloads', () => {
+    expect(extractClaudePermissionRequest({
+      type: 'stream_event',
+      event: {
+        type: 'permission_request',
+        request_id: 'perm-1',
+        tool_name: 'Bash',
+        reason: 'Run rm -rf build',
+      },
+    })).toEqual({
+      requestId: 'perm-1',
+      tool: 'Bash',
+      reason: 'Run rm -rf build',
+    });
+
+    expect(extractClaudePermissionRequest({
+      type: 'permission_request',
+      requestId: 'perm-2',
+      toolName: 'Edit',
+      message: 'Apply patch',
+    })).toEqual({
+      requestId: 'perm-2',
+      tool: 'Edit',
+      reason: 'Apply patch',
+    });
+  });
+
+  it('formats Claude permission decisions as stream-json stdin messages', () => {
+    expect(formatClaudePermissionDecision('perm-1', 'approved')).toBe(
+      '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Permission request perm-1 approved. Continue with the operation."}]}}\n',
+    );
+    expect(formatClaudePermissionDecision('perm-1', 'denied')).toBe(
+      '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Permission request perm-1 denied. Skip that operation and continue."}]}}\n',
+    );
   });
 });

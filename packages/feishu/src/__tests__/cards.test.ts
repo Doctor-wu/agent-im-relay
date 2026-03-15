@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   FEISHU_NON_SESSION_CONTROL_TEXT,
   buildFeishuModelSelectionCardPayload,
+  buildFeishuPermissionCardPayload,
   buildFeishuSessionAnchorCardPayload,
   buildFeishuBackendConfirmationCardPayload,
   buildFeishuBackendSelectionCardPayload,
@@ -9,6 +10,7 @@ import {
   buildFeishuSessionControlPanelPayload,
   buildFeishuSessionControlCardPayload,
   buildModelSelectionCard,
+  buildPermissionRequestCard,
   buildSessionAnchorCard,
   buildSessionControlCard,
   createBackendConfirmationCard,
@@ -143,6 +145,24 @@ describe('Feishu cards', () => {
     );
 
     expect(collectButtonTexts(payload)).toEqual(['Sonnet', 'Opus']);
+  });
+
+  it('renders a permission approval card and a terminal resolved state', () => {
+    const pending = buildFeishuPermissionCardPayload(
+      buildPermissionRequestCard('session-chat-1', 'perm-1', 'Bash', 'Run rm -rf build'),
+      context,
+    );
+    const resolved = buildFeishuPermissionCardPayload(
+      buildPermissionRequestCard('session-chat-1', 'perm-1', 'Bash', 'Run rm -rf build'),
+      context,
+      'denied',
+    );
+
+    expect(collectButtonTexts(pending)).toEqual(['Approve', 'Deny']);
+    expect(resolved.body.elements).toContainEqual({
+      tag: 'markdown',
+      content: 'Status: Denied',
+    });
   });
 
   it('exposes explanatory copy for non-session control requests', () => {

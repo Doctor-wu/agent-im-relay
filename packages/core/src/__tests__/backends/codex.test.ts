@@ -8,7 +8,12 @@ vi.mock('node:child_process', () => ({
 
 import { spawn, spawnSync } from 'node:child_process';
 import type { AgentStreamEvent } from '../../agent/session';
-import { createCodexArgs, extractCodexEvents } from '../../agent/backends/codex';
+import {
+  createCodexArgs,
+  extractCodexEvents,
+  extractCodexPermissionRequest,
+  formatCodexPermissionDecision,
+} from '../../agent/backends/codex';
 
 async function collect(gen: AsyncGenerator<AgentStreamEvent>): Promise<AgentStreamEvent[]> {
   const events: AgentStreamEvent[] = [];
@@ -58,6 +63,20 @@ describe('codex backend', () => {
       '-',
     ]);
     expect(args).not.toContain('-q');
+  });
+
+  it('keeps full-auto in auto mode and omits it in safe mode', () => {
+    const autoArgs = createCodexArgs({
+      mode: 'code',
+      prompt: 'test',
+    }, 'auto');
+    const safeArgs = createCodexArgs({
+      mode: 'code',
+      prompt: 'test',
+    }, 'safe');
+
+    expect(autoArgs).toContain('--full-auto');
+    expect(safeArgs).not.toContain('--full-auto');
   });
 
   it('builds resume arguments when resuming a session', () => {
@@ -121,6 +140,54 @@ describe('codex backend', () => {
     })).toEqual([
       { type: 'text', delta: 'Working directory: /tmp/project\nDone.' },
     ]);
+  });
+
+  it('extracts permission requests from Codex approval payloads', () => {
+    expect(extractCodexPermissionRequest({
+      method: 'item/commandExecution/requestApproval',
+      id: 'perm-1',
+      params: {
+        command: ['/bin/rm', '-rf', 'build'],
+        cwd: '/tmp/project',
+        reason: 'Run rm -rf build',
+      },
+    })).toEqual({
+      requestId: 'perm-1',
+      tool: 'Bash',
+      reason: 'Run rm -rf build',
+    });
+
+    expect(extractCodexPermissionRequest({
+      method: 'item/fileChange/requestApproval',
+      id: 'perm-file-1',
+      params: {
+        reason: 'Edit package.json',
+      },
+    })).toEqual({
+      requestId: 'perm-file-1',
+      tool: 'Patch',
+      reason: 'Edit package.json',
+    });
+
+    expect(extractCodexPermissionRequest({
+      type: 'permission.requested',
+      id: 'perm-2',
+      tool: 'Bash',
+      reason: 'Run rm -rf build',
+    })).toEqual({
+      requestId: 'perm-2',
+      tool: 'Bash',
+      reason: 'Run rm -rf build',
+    });
+  });
+
+  it('formats Codex permission decisions as JSON-RPC responses', () => {
+    expect(formatCodexPermissionDecision('perm-1', 'approved')).toBe(
+      '{"id":"perm-1","result":{"decision":"accept"}}\n',
+    );
+    expect(formatCodexPermissionDecision('perm-1', 'denied')).toBe(
+      '{"id":"perm-1","result":{"decision":"decline"}}\n',
+    );
   });
 
   it('emits a structured invalidation event for authoritative resume failures', () => {

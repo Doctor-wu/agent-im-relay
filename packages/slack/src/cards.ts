@@ -14,6 +14,13 @@ export interface SlackModelSelectionCard {
   models: BackendModel[];
 }
 
+export interface SlackPermissionCard {
+  conversationId: string;
+  requestId: string;
+  tool?: string;
+  reason?: string;
+}
+
 function backendLabel(backend: BackendName): string {
   if (backend === 'claude') return 'Claude';
   if (backend === 'codex') return 'Codex';
@@ -79,5 +86,74 @@ export function buildSlackModelSelectionBlocks(card: SlackModelSelectionCard): S
         }),
       })),
     },
+  ];
+}
+
+export function buildSlackPermissionBlocks(
+  card: SlackPermissionCard,
+  decision?: 'approved' | 'denied' | 'timeout',
+): SlackBlock[] {
+  const status = decision
+    ? decision === 'approved'
+      ? '*Status:* Approved'
+      : decision === 'timeout'
+        ? '*Status:* Timed out and denied'
+        : '*Status:* Denied'
+    : undefined;
+
+  return [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: [
+          '*Permission Required*',
+          card.tool ? `*Tool:* \`${card.tool}\`` : undefined,
+          card.reason,
+          status,
+        ].filter(Boolean).join('\n'),
+      },
+    },
+    ...(decision
+      ? []
+      : [{
+          type: 'actions',
+          elements: [
+            {
+              type: 'button',
+              text: {
+                type: 'plain_text',
+                text: 'Approve',
+              },
+              style: 'primary',
+              action_id: `permission:${card.requestId}:approved`,
+              value: actionValue({
+                type: 'permission',
+                conversationId: card.conversationId,
+                requestId: card.requestId,
+                decision: 'approved',
+                tool: card.tool,
+                reason: card.reason,
+              }),
+            },
+            {
+              type: 'button',
+              text: {
+                type: 'plain_text',
+                text: 'Deny',
+              },
+              action_id: `permission:${card.requestId}:denied`,
+              value: actionValue({
+                type: 'permission',
+                conversationId: card.conversationId,
+                requestId: card.requestId,
+                decision: 'denied',
+                tool: card.tool,
+                reason: card.reason,
+              }),
+            },
+          ],
+        }],
+    ),
   ];
 }
