@@ -24,7 +24,7 @@ import {
   rememberFeishuSessionChat,
   resolveFeishuMessageRequest,
   resetFeishuSessionChatsForTests,
-} from '../index.js';
+} from '../index';
 
 describe('Feishu actions', () => {
   beforeEach(() => {

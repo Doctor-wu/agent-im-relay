@@ -19,8 +19,8 @@ vi.mock('node:child_process', () => ({
 }));
 
 import { spawn } from 'node:child_process';
-import type { AgentStreamEvent } from '../../agent/session.js';
-import { createOpencodeArgs, extractOpencodeEvents } from '../../agent/backends/opencode.js';
+import type { AgentStreamEvent } from '../../agent/session';
+import { createOpencodeArgs, extractOpencodeEvents } from '../../agent/backends/opencode';
 
 async function collect(gen: AsyncGenerator<AgentStreamEvent>): Promise<AgentStreamEvent[]> {
   const events: AgentStreamEvent[] = [];
@@ -51,6 +51,7 @@ describe('opencode backend', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     readFileSyncMock.mockReset();
+    readFileSyncMock.mockReturnValue('{"type":"meta","version":1}\n' as any);
   });
 
   it('lists configured models as provider/modelKey values', async () => {
@@ -70,7 +71,7 @@ describe('opencode backend', () => {
       },
     }) as any);
 
-    const { opencodeBackend } = await import('../../agent/backends/opencode.js');
+    const { opencodeBackend } = await import('../../agent/backends/opencode');
 
     expect(opencodeBackend.listModels?.()).toEqual([
       { id: 'openai/gpt-5', label: 'openai/gpt-5' },
@@ -84,7 +85,7 @@ describe('opencode backend', () => {
       model: 'openai/gpt-5',
     }) as any);
 
-    const { opencodeBackend } = await import('../../agent/backends/opencode.js');
+    const { opencodeBackend } = await import('../../agent/backends/opencode');
 
     expect(opencodeBackend.listModels?.()).toEqual([
       { id: 'openai/gpt-5', label: 'openai/gpt-5' },
@@ -139,6 +140,23 @@ describe('opencode backend', () => {
       '--format',
       'json',
       'why?',
+    ]);
+  });
+
+  it('keeps opencode args unchanged in safe mode because it has no permission flags', () => {
+    const args = createOpencodeArgs({
+      mode: 'code',
+      prompt: 'ship it',
+      model: 'openai/gpt-5',
+    }, 'safe');
+
+    expect(args).toEqual([
+      'run',
+      '--format',
+      'json',
+      '--model',
+      'openai/gpt-5',
+      'ship it',
     ]);
   });
 
@@ -234,7 +252,7 @@ describe('opencode backend', () => {
       ].join('\n')) as any,
     );
 
-    const { opencodeBackend } = await import('../../agent/backends/opencode.js');
+    const { opencodeBackend } = await import('../../agent/backends/opencode');
     const events = await collect(opencodeBackend.stream({
       mode: 'code',
       prompt: 'ship it',
@@ -280,7 +298,7 @@ describe('opencode backend', () => {
       makeProcess('', 'ProviderModelNotFoundError: openai/gpt-does-not-exist', 1) as any,
     );
 
-    const { opencodeBackend } = await import('../../agent/backends/opencode.js');
+    const { opencodeBackend } = await import('../../agent/backends/opencode');
     const events = await collect(opencodeBackend.stream({
       mode: 'code',
       prompt: 'ship it',
@@ -302,7 +320,7 @@ describe('opencode backend', () => {
       makeProcess('', 'ProviderModelNotFoundError: openai/gpt-does-not-exist', 0) as any,
     );
 
-    const { opencodeBackend } = await import('../../agent/backends/opencode.js');
+    const { opencodeBackend } = await import('../../agent/backends/opencode');
     const events = await collect(opencodeBackend.stream({
       mode: 'code',
       prompt: 'ship it',

@@ -1,8 +1,8 @@
 import {
   markFeishuDispatchMessageEmitted,
   type FeishuDispatchMessageKind,
-} from './launch-state.js';
-import { buildFeishuInterruptCardPayload, type FeishuCardContext } from './cards.js';
+} from './launch-state';
+import { buildFeishuInterruptCardPayload, type FeishuCardContext } from './cards';
 
 export type FeishuPresentationTarget = {
   chatId: string;

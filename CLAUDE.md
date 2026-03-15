@@ -28,7 +28,7 @@ A Discord bot that lets users interact with Claude Code directly in Discord thre
 3. Tool usage (file reads, edits, bash commands) shown as formatted blocks
 4. Support `/ask` for quick questions without file system tools
 5. Error handling: timeouts, rate limits, graceful shutdown
-6. Use environment variables for all secrets (dotenv)
+6. Store secrets and runtime config in `~/.agent-inbox/config.jsonl`
 
 ## Code Style
 - ESM modules
@@ -41,5 +41,5 @@ A Discord bot that lets users interact with Claude Code directly in Discord thre
 ## Setup
 - pnpm init, install deps
 - tsconfig.json with strict mode, ESM
-- .env.example with required vars
-- .gitignore for node_modules, .env, dist
+- `~/.agent-inbox/config.jsonl` with required records
+- .gitignore for node_modules, dist

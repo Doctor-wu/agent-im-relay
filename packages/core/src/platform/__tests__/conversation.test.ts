@@ -11,12 +11,12 @@ import {
   threadContinuationSnapshots,
   threadSessionBindings,
   updateThreadContinuationSnapshot,
-} from '../../index.js';
+} from '../../index';
 import {
   applyConversationControlAction,
   evaluateConversationRunRequest,
-} from '../conversation.js';
-import * as sessionControlController from '../../session-control/controller.js';
+} from '../conversation';
+import * as sessionControlController from '../../session-control/controller';
 
 describe('platform conversation setup and controls', () => {
   beforeEach(() => {

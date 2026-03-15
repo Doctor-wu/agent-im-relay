@@ -25,11 +25,11 @@ vi.mock('@agent-im-relay/core', async () => {
   };
 });
 
-vi.mock('../stream.js', () => ({
+vi.mock('../stream', () => ({
   streamAgentToDiscord,
 }));
 
-vi.mock('../artifacts.js', () => ({
+vi.mock('../artifacts', () => ({
   publishConversationArtifacts,
 }));
 
@@ -43,7 +43,7 @@ import {
   openThreadSessionBinding,
   threadSessionBindings,
 } from '@agent-im-relay/core';
-import { hasOpenStickyThreadSession, runMentionConversation } from '../conversation.js';
+import { hasOpenStickyThreadSession, runMentionConversation } from '../conversation';
 
 describe('runMentionConversation', () => {
   beforeEach(() => {
@@ -89,7 +89,7 @@ describe('runMentionConversation', () => {
       prompt: 'hello',
     }));
     expect(streamAgentToDiscord).toHaveBeenCalledWith(
-      { channel: thread, showEnvironment: true },
+      expect.objectContaining({ channel: thread, showEnvironment: true }),
       expect.any(Object),
     );
   });
@@ -129,7 +129,7 @@ describe('runMentionConversation', () => {
       prompt: 'hello again',
     }));
     expect(streamAgentToDiscord).toHaveBeenCalledWith(
-      { channel: thread, showEnvironment: false },
+      expect.objectContaining({ channel: thread, showEnvironment: false }),
       expect.any(Object),
     );
   });
@@ -179,11 +179,11 @@ describe('runMentionConversation', () => {
 
     expect(started).toBe(true);
     expect(streamAgentToDiscord).toHaveBeenCalledWith(
-      {
+      expect.objectContaining({
         channel: thread,
         showEnvironment: false,
         replyContext,
-      },
+      }),
       expect.any(Object),
     );
 

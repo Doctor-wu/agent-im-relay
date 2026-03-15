@@ -3,7 +3,7 @@ import {
   getFeishuSessionChat,
   launchFeishuSessionFromPrivateChat,
   resetFeishuSessionChatsForTests,
-} from '../index.js';
+} from '../index';
 
 function extractPostParagraphTexts(content: string): string[] {
   const parsed = JSON.parse(content) as {

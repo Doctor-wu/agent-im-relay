@@ -18,7 +18,7 @@ export async function handleInterruptCommand(interaction: ChatInputCommandIntera
     type: 'interrupt',
   });
 
-  if (result.interrupted) {
+  if (result.kind === 'interrupt' && result.interrupted) {
     await interaction.reply({ content: '⏹️ 已请求中断当前任务。', ephemeral: true });
     return;
   }

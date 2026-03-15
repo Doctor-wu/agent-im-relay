@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildDiscordReplyPayload, createDiscordReplyContext } from '../reply-context.js';
+import { buildDiscordReplyPayload, createDiscordReplyContext } from '../reply-context';
 
 describe('createDiscordReplyContext', () => {
   it('derives reply context for a trigger authored by another bot', () => {

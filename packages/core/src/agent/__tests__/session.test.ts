@@ -1,8 +1,8 @@
 import { Readable } from 'node:stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { registerBackend, type AgentBackend } from '../backend.js';
-import type { AgentStreamEvent } from '../session.js';
-import { createClaudeArgs, extractEvents, streamAgentSession } from '../session.js';
+import { registerBackend, type AgentBackend } from '../backend';
+import type { AgentStreamEvent } from '../session';
+import { createClaudeArgs, extractEvents, streamAgentSession } from '../session';
 import { spawn } from 'node:child_process';
 
 vi.mock('node:child_process', () => ({
@@ -193,6 +193,52 @@ describe('extractEvents', () => {
       sessionId: 'session-live',
       status: 'confirmed',
     });
+  });
+
+  it('passes through normalized permission lifecycle events from a backend stream', async () => {
+    const backend: AgentBackend = {
+      name: 'permission-test-backend',
+      isAvailable: () => true,
+      async *stream() {
+        yield {
+          type: 'permission-requested',
+          requestId: 'perm-1',
+          backend: 'claude',
+          tool: 'Bash',
+          reason: 'Run pwd',
+          expiresAt: '2026-03-15T00:00:00.000Z',
+        } as const;
+        yield {
+          type: 'permission-resolved',
+          requestId: 'perm-1',
+          backend: 'claude',
+          decision: 'approved',
+        } as const;
+      },
+    };
+
+    registerBackend(backend);
+
+    await expect(collect(streamAgentSession({
+      mode: 'code',
+      prompt: 'test prompt',
+      backend: 'permission-test-backend',
+    }))).resolves.toEqual([
+      {
+        type: 'permission-requested',
+        requestId: 'perm-1',
+        backend: 'claude',
+        tool: 'Bash',
+        reason: 'Run pwd',
+        expiresAt: '2026-03-15T00:00:00.000Z',
+      },
+      {
+        type: 'permission-resolved',
+        requestId: 'perm-1',
+        backend: 'claude',
+        decision: 'approved',
+      },
+    ]);
   });
 });
 

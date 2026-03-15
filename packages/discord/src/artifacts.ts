@@ -1,5 +1,5 @@
 import { stageOutgoingArtifacts } from '@agent-im-relay/core';
-import { buildDiscordReplyPayload, type DiscordReplyContext } from './reply-context.js';
+import { buildDiscordReplyPayload, type DiscordReplyContext } from './reply-context';
 
 type ArtifactUploadChannel = {
   send(payload: string | {

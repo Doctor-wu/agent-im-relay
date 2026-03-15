@@ -8,58 +8,58 @@ import {
   applyFeishuConfigEnvironment,
   readFeishuConfig,
   type FeishuConfig,
-} from './config.js';
-import { createFeishuClient } from './api.js';
+} from './config';
+import { createFeishuClient } from './api';
 import {
   buildFeishuLongConnectionEventHandlers,
   createFeishuEventRouter,
-} from './events.js';
+} from './events';
 
-export { readFeishuConfig } from './config.js';
-export type { FeishuConfig } from './config.js';
-export { resolveFeishuSessionChatStateFile } from './config.js';
-export { createFeishuClient } from './api.js';
+export { readFeishuConfig } from './config';
+export type { FeishuConfig } from './config';
+export { resolveFeishuSessionChatStateFile } from './config';
+export { createFeishuClient } from './api';
 export {
   buildFeishuSessionReferenceText,
   launchFeishuSessionFromPrivateChat,
-} from './launcher.js';
+} from './launcher';
 export type {
   FeishuLaunchResult,
   FeishuLauncherClient,
-} from './launcher.js';
+} from './launcher';
 export {
   beginFeishuDispatch,
   consumeMirroredFeishuMessageId,
   markFeishuDispatchMessageEmitted,
   rememberMirroredFeishuMessageId,
   resetFeishuLaunchStateForTests,
-} from './launch-state.js';
-export type { FeishuDispatchMessageKind } from './launch-state.js';
+} from './launch-state';
+export type { FeishuDispatchMessageKind } from './launch-state';
 export {
   buildFeishuSessionChatName,
   normalizeFeishuSessionPromptPreview,
-} from './naming.js';
+} from './naming';
 export {
   buildModelSelectionCard,
   buildSessionAnchorCard,
   buildSessionControlCard,
   createBackendConfirmationCard,
   createBackendSelectionCard,
-} from './cards.js';
+} from './cards';
 export type {
   BackendConfirmationCard,
   BackendSelectionCard,
   FeishuCardContext,
   ModelSelectionCard,
   SessionAnchorCard,
-} from './cards.js';
+} from './cards';
 export {
   buildFeishuBackendConfirmationCardPayload,
   buildFeishuBackendSelectionCardPayload,
   buildFeishuModelSelectionCardPayload,
   buildFeishuSessionAnchorCardPayload,
   buildFeishuSessionControlCardPayload,
-} from './cards.js';
+} from './cards';
 export {
   extractFeishuAttachmentInfos,
   extractFeishuFileInfo,
@@ -68,8 +68,8 @@ export {
   resolveConversationId,
   resolveConversationIdFromAction,
   shouldProcessFeishuMessage,
-} from './conversation.js';
-export type { FeishuAttachmentInfo, FeishuRawEvent, NormalizedFeishuEvent } from './conversation.js';
+} from './conversation';
+export type { FeishuAttachmentInfo, FeishuRawEvent, NormalizedFeishuEvent } from './conversation';
 export {
   buildFeishuLongConnectionEventHandlers,
   createFeishuEventRouter,
@@ -79,12 +79,12 @@ export {
   normalizeFeishuCardActionTriggerEvent,
   normalizeFeishuMenuActionTriggerEvent,
   normalizeFeishuMessageReceiveEvent,
-} from './events.js';
+} from './events';
 export type {
   FeishuCardActionTriggerEvent,
   FeishuMenuActionTriggerEvent,
   FeishuMessageReceiveEvent,
-} from './events.js';
+} from './events';
 export {
   beginFeishuConversationRun,
   buildFeishuCardContext,
@@ -98,9 +98,9 @@ export {
   requestBackendChange,
   resolveFeishuMessageRequest,
   runFeishuConversation,
-} from './runtime.js';
-export { ingestFeishuFiles, uploadFeishuArtifacts } from './files.js';
-export type { FeishuFileLike } from './files.js';
+} from './runtime';
+export { ingestFeishuFiles, uploadFeishuArtifacts } from './files';
+export type { FeishuFileLike } from './files';
 export {
   buildFeishuSessionChatRecord,
   findFeishuSessionChatBySourceMessage,
@@ -110,11 +110,11 @@ export {
   rememberFeishuSessionChat,
   resetFeishuSessionChatsForTests,
   resolveFeishuChatSessionKind,
-} from './session-chat.js';
+} from './session-chat';
 export type {
   FeishuChatSessionKind,
   FeishuSessionChatRecord,
-} from './session-chat.js';
+} from './session-chat';
 
 export type FeishuRuntimeConnection = {
   start(): Promise<void>;

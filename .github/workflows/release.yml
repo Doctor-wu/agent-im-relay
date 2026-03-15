@@ -1,4 +1,4 @@
-name: Build, Publish & Optional SEA
+name: Build, Publish & Release
 
 on:
   push:
@@ -133,53 +133,80 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
-      - id: package-name
-        name: Check publish package name
+      - id: package-meta
+        name: Validate package metadata
         run: |
           package_name=$(node -p "JSON.parse(require('node:fs').readFileSync('apps/agent-inbox/package.json', 'utf8')).name")
+          package_version=$(node -p "JSON.parse(require('node:fs').readFileSync('apps/agent-inbox/package.json', 'utf8')).version")
+          tag_version="${GITHUB_REF_NAME#v}"
           echo "package_name=$package_name" >> "$GITHUB_OUTPUT"
-          if [[ "$package_name" == "@doctorwu/agent-inbox" ]]; then
-            echo "publish_ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "publish_ready=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping npm publish until package name is set to @doctorwu/agent-inbox."
+          echo "package_version=$package_version" >> "$GITHUB_OUTPUT"
+
+          if [[ "$package_name" != "@doctorwu/agent-inbox" ]]; then
+            echo "Expected package name @doctorwu/agent-inbox, got $package_name" >&2
+            exit 1
+          fi
+
+          if [[ "$package_version" != "$tag_version" ]]; then
+            echo "Tag version $tag_version does not match apps/agent-inbox/package.json version $package_version" >&2
+            exit 1
           fi
       - name: Publish package
-        if: steps.package-name.outputs.publish_ready == 'true'
         run: pnpm --filter ./apps/agent-inbox publish --access public --provenance --no-git-checks
 
-  build-sea:
-    name: Build SEA (${{ matrix.os }}-${{ matrix.arch }})
-    continue-on-error: true
-    strategy:
-      matrix:
-        include:
-          - os: darwin
-            arch: x64
-            runner: macos-15-intel
-          - os: darwin
-            arch: arm64
-            runner: macos-14
-          - os: linux
-            arch: x64
-            runner: ubuntu-latest
-          - os: linux
-            arch: arm64
-            runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
+  create-release:
+    name: Create GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-package, publish-npm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter ./apps/agent-inbox build
-      - run: pnpm --filter ./apps/agent-inbox build:sea
-      - name: Rename executable
-        run: mv apps/agent-inbox/dist/agent-inbox apps/agent-inbox/dist/agent-inbox-${{ matrix.os }}-${{ matrix.arch }}
-      - uses: actions/upload-artifact@v4
+          fetch-depth: 0
+      - name: Fetch tags
+        run: git fetch --force --tags
+      - uses: actions/download-artifact@v4
         with:
-          name: agent-inbox-${{ matrix.os }}-${{ matrix.arch }}
-          path: apps/agent-inbox/dist/agent-inbox-${{ matrix.os }}-${{ matrix.arch }}
+          name: agent-inbox-npm-package
+          path: artifacts
+      - name: Generate release notes
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          current_tag="$TAG_NAME"
+          previous_tag=$(git tag -l 'v*' --sort=-version:refname | grep -Fxv "$current_tag" | head -n1 || true)
+          package_version="${current_tag#v}"
+          changelog_file=$(mktemp)
+
+          if [[ -n "$previous_tag" ]]; then
+            git log --no-merges --pretty='- %s (%h)' "${previous_tag}..${current_tag}" > "$changelog_file"
+          else
+            git log --no-merges --pretty='- %s (%h)' "$current_tag" > "$changelog_file"
+          fi
+
+          if [[ ! -s "$changelog_file" ]]; then
+            printf -- '- No changes captured between tags.\n' > "$changelog_file"
+          fi
+
+          {
+            echo "# agent-inbox ${current_tag}"
+            echo
+            echo "- Version: \`${package_version}\`"
+            if [[ -n "$previous_tag" ]]; then
+              echo "- Changes since: \`${previous_tag}\`"
+            else
+              echo "- Changes since: initial release"
+            fi
+            echo
+            echo "## Changelog"
+            echo
+            cat "$changelog_file"
+          } > release-notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: agent-inbox ${{ github.ref_name }}
+          body_path: release-notes.md
+          files: artifacts/*.tgz

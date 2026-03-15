@@ -1,8 +1,8 @@
-import './backends/claude.js';
-import './backends/codex.js';
-import './backends/opencode.js';
-import { getBackend, type BackendName } from './backend.js';
-import type { AgentMode } from './tools.js';
+import './backends/claude';
+import './backends/codex';
+import './backends/opencode';
+import { getBackend, type BackendName } from './backend';
+import type { AgentMode } from './tools';
 
 export type AgentStreamEvent =
   | { type: 'environment'; environment: AgentEnvironment }
@@ -10,13 +10,27 @@ export type AgentStreamEvent =
   | { type: 'session-invalidated'; sessionId?: string; reason: string }
   | { type: 'text'; delta: string }
   | { type: 'tool'; summary: string }
+  | {
+    type: 'permission-requested';
+    requestId: string | number;
+    backend: string;
+    tool?: string;
+    reason?: string;
+    expiresAt: string;
+  }
+  | {
+    type: 'permission-resolved';
+    requestId: string | number;
+    backend: string;
+    decision: 'approved' | 'denied' | 'timeout';
+  }
   | { type: 'status'; status: string }
   | { type: 'done'; result: string; sessionId?: string }
   | { type: 'error'; error: string };
 
 export type AgentEnvironment = {
-  backend: import('./backend.js').BackendName;
-  mode: import('./tools.js').AgentMode;
+  backend: import('./backend').BackendName;
+  mode: import('./tools').AgentMode;
   model: {
     requested?: string;
     resolved?: string;
@@ -33,6 +47,7 @@ export type AgentEnvironment = {
 };
 
 export type AgentSessionOptions = {
+  conversationId?: string;
   mode: AgentMode;
   prompt: string;
   cwd?: string;
@@ -75,4 +90,4 @@ export async function* streamAgentSession(
 }
 
 // Re-export helpers for backward compatibility
-export { extractEvents, createClaudeArgs } from './backends/claude.js';
+export { extractEvents, createClaudeArgs } from './backends/claude';

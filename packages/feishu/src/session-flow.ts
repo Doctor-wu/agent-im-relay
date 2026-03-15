@@ -1,16 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import { beginFeishuDispatch } from './launch-state.js';
+import { beginFeishuDispatch } from './launch-state';
 import {
   presentFeishuBusyNotice,
   presentFeishuErrorOutput,
   presentFeishuFinalOutput,
   presentFeishuInterruptCard,
-} from './presentation.js';
+} from './presentation';
 import {
   runFeishuConversation,
   type FeishuRuntimeTransport,
   type FeishuTarget,
-} from './runtime.js';
+} from './runtime';
 
 export async function runFeishuSessionFlow(options: {
   conversationId: string;
@@ -23,6 +23,7 @@ export async function runFeishuSessionFlow(options: {
   attachments?: Parameters<typeof runFeishuConversation>[0]['attachments'];
   attachmentFetchImpl?: Parameters<typeof runFeishuConversation>[0]['attachmentFetchImpl'];
   persistState?: () => Promise<void>;
+  modelSelectionTimeoutMs?: number;
 }): Promise<{ kind: 'blocked' | 'started' | 'busy' | 'error' }> {
   const dispatch = options.sourceMessageId
     ? beginFeishuDispatch(options.sourceMessageId)
@@ -46,6 +47,7 @@ export async function runFeishuSessionFlow(options: {
     attachments: options.attachments,
     attachmentFetchImpl: options.attachmentFetchImpl,
     persistState: options.persistState,
+    modelSelectionTimeoutMs: options.modelSelectionTimeoutMs,
     lifecycle: {
       onFinalOutput: async (output) => {
         await presentFeishuFinalOutput({

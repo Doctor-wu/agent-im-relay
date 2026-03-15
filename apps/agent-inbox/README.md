@@ -17,5 +17,4 @@ On first run, the CLI creates `~/.agent-inbox/` as needed and enters the interac
 
 ## Runtime Output
 
-- `dist/index.mjs` is the npm `bin` target
-- `dist/agent-inbox` is the optional SEA executable built separately
+- `dist/index.mjs` is the npm `bin` target built via `vp pack`

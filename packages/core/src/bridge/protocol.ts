@@ -1,6 +1,6 @@
-import type { AgentMode } from '../agent/tools.js';
-import type { ConversationControlAction } from '../platform/conversation.js';
-import type { RemoteAttachmentLike } from '../runtime/files.js';
+import type { AgentMode } from '../agent/tools';
+import type { ConversationControlAction } from '../platform/conversation';
+import type { RemoteAttachmentLike } from '../runtime/files';
 
 type BridgeEnvelopeBase = {
   clientId: string;

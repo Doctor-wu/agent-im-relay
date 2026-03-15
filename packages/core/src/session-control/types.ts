@@ -1,4 +1,4 @@
-import type { BackendName } from '../agent/backend.js';
+import type { BackendName } from '../agent/backend';
 
 export type SessionControlCommand =
   | { conversationId: string; type: 'interrupt' }

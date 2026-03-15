@@ -22,32 +22,49 @@ import {
   initState,
   listSkills,
   Orchestrator,
+  resolvePermissionRequest,
   type IncomingMessage,
   preprocessConversationMessage,
 } from '@agent-im-relay/core';
-import { config } from './config.js';
-import { createDiscordAdapter } from './adapter.js';
-import { buildDiscordReplyPayload, createDiscordReplyContext, type DiscordReplyContext } from './reply-context.js';
-import type { StreamTargetChannel } from './stream.js';
-import { hasOpenStickyThreadSession, runMentionConversation } from './conversation.js';
-import { collectMessageAttachments } from './files.js';
-import { resolveInboundDiscordMessage } from './message-routing.js';
-import { ensureMentionThread } from './thread.js';
-import { askCommand, handleAskCommand } from './commands/ask.js';
-import { codeCommand, handleCodeCommand } from './commands/code.js';
-import { doneCommand, handleDoneCommand } from './commands/done.js';
-import { interruptCommand, handleInterruptCommand } from './commands/interrupt.js';
-import { statusCommand, handleStatusCommand } from './commands/status.js';
-import { agentControlCommandHandlers, agentControlCommands } from './commands/agent-control.js';
+import { config } from './config';
+import { createDiscordAdapter } from './adapter';
+import { buildDiscordReplyPayload, createDiscordReplyContext, type DiscordReplyContext } from './reply-context';
+import type { StreamTargetChannel } from './stream';
+import { hasOpenStickyThreadSession, runMentionConversation } from './conversation';
+import { collectMessageAttachments } from './files';
+import { resolveInboundDiscordMessage } from './message-routing';
+import { ensureMentionThread } from './thread';
+import { askCommand, handleAskCommand } from './commands/ask';
+import { codeCommand, handleCodeCommand } from './commands/code';
+import { doneCommand, handleDoneCommand } from './commands/done';
+import { interruptCommand, handleInterruptCommand } from './commands/interrupt';
+import { statusCommand, handleStatusCommand } from './commands/status';
+import { agentControlCommandHandlers, agentControlCommands } from './commands/agent-control';
 import {
   handleSkillAutocomplete,
   handleSkillCommand,
   skillCommand,
-} from './commands/skill.js';
-import { promptThreadSetup, applySetupResult } from './commands/thread-setup.js';
+} from './commands/skill';
+import { promptThreadSetup, applySetupResult } from './commands/thread-setup';
+import {
+  buildDiscordPermissionMessage,
+  parseDiscordPermissionCustomId,
+} from './permissions';
+
+function isChannelAllowed(channelId: string, parentId: string | null): boolean {
+  if (config.allowedChannelIds.length === 0) return true;
+  return config.allowedChannelIds.includes(channelId)
+    || (parentId !== null && config.allowedChannelIds.includes(parentId));
+}
 
 type CommandHandler = (interaction: ChatInputCommandInteraction) => Promise<void>;
 type AutocompleteHandler = (interaction: AutocompleteInteraction) => Promise<void>;
+
+function canSendToChannel(channel: Message['channel']): channel is Message['channel'] & {
+  send(payload: string | ReturnType<typeof buildDiscordReplyPayload>): Promise<unknown>;
+} {
+  return 'send' in channel;
+}
 
 // --- Command registry ---
 const commandHandlers = new Map<string, CommandHandler>([
@@ -167,6 +184,11 @@ export async function handleDiscordMessageCreate(
   const botUser = dependencies.botUser ?? client.user;
   if (!botUser) return;
 
+  // Channel allowlist filter
+  const channelId = message.channel.id;
+  const parentId = message.channel.isThread() ? message.channel.parentId : null;
+  if (!isChannelAllowed(channelId, parentId)) return;
+
   const isActiveThread = message.channel.isThread()
     && (dependencies.hasOpenStickyThreadSession ?? hasOpenStickyThreadSession)(message.channel.id);
   const routedMessage = resolveInboundDiscordMessage({
@@ -218,9 +240,11 @@ export async function handleDiscordMessageCreate(
     }
 
     if (!prompt && preprocessed.directives.length === 0) {
-      await message.channel.send(
-        buildDiscordReplyPayload('Please include a prompt after mentioning me.', replyContext),
-      ).catch(() => {});
+      if (canSendToChannel(message.channel)) {
+        await message.channel.send(
+          buildDiscordReplyPayload('Please include a prompt after mentioning me.', replyContext),
+        ).catch(() => {});
+      }
       return;
     }
 
@@ -271,7 +295,9 @@ export async function handleDiscordMessageCreate(
     }
   } catch (error) {
     const errorText = toErrorMessage(error);
-    await message.channel.send(buildDiscordReplyPayload(`❌ ${errorText}`, replyContext)).catch(() => {});
+    if (canSendToChannel(message.channel)) {
+      await message.channel.send(buildDiscordReplyPayload(`❌ ${errorText}`, replyContext)).catch(() => {});
+    }
   }
 }
 
@@ -305,6 +331,13 @@ client.on(Events.Error, (error) => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
+    // Channel allowlist filter
+    if (interaction.channel) {
+      const channelId = interaction.channel.id;
+      const parentId = interaction.channel.isThread() ? interaction.channel.parentId : null;
+      if (!isChannelAllowed(channelId, parentId)) return;
+    }
+
     if (interaction.isChatInputCommand()) {
       const handler = commandHandlers.get(interaction.commandName);
       if (!handler) return;
@@ -318,6 +351,27 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (!handler) return;
 
       await handler(interaction);
+      return;
+    }
+
+    if ('isButton' in interaction && interaction.isButton()) {
+      const parsed = parseDiscordPermissionCustomId(interaction.customId);
+      if (!parsed) {
+        return;
+      }
+
+      try {
+        const resolved = resolvePermissionRequest(parsed);
+        await interaction.update(buildDiscordPermissionMessage({
+          conversationId: parsed.conversationId,
+          requestId: parsed.requestId,
+        }, resolved.decision === 'timeout' ? 'timeout' : resolved.decision));
+      } catch {
+        await interaction.reply({
+          content: 'This permission request is no longer pending.',
+          ephemeral: true,
+        });
+      }
     }
   } catch (error) {
     const errorText = toErrorMessage(error);

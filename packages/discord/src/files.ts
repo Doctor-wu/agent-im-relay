@@ -26,7 +26,7 @@ type PrepareAttachmentPromptOptions = DownloadAttachmentsOptions & {
   prompt: string;
 };
 
-function normalizeAttachment(attachment: DiscordAttachmentLike): DiscordAttachmentLike | null {
+function normalizeAttachment(attachment: DiscordAttachmentLike | null | undefined): DiscordAttachmentLike | null {
   if (!attachment?.url) {
     return null;
   }

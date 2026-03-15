@@ -5,7 +5,7 @@ import {
   markFeishuDispatchMessageEmitted,
   rememberMirroredFeishuMessageId,
   resetFeishuLaunchStateForTests,
-} from '../index.js';
+} from '../index';
 
 describe('Feishu launch state', () => {
   beforeEach(() => {

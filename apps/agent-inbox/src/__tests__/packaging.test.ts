@@ -41,6 +41,9 @@ describe('npm packaging contract', () => {
     expect(appPackage.publishConfig).toMatchObject({
       access: 'public',
     });
+    expect(appPackage.scripts?.['build']).toContain('vp pack');
+    expect(appPackage.scripts).not.toHaveProperty('build:sea');
+    expect(appPackage.scripts).not.toHaveProperty('build:all');
     expect(appPackage.dependencies).not.toHaveProperty('@agent-im-relay/core');
     expect(appPackage.dependencies).not.toHaveProperty('@agent-im-relay/discord');
     expect(appPackage.dependencies).not.toHaveProperty('@agent-im-relay/feishu');

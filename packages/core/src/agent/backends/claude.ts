@@ -3,16 +3,16 @@ import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { config } from '../../config.js';
+import { config } from '../../config';
 import {
   isBackendCommandAvailable,
   registerBackend,
   type AgentBackend,
   type BackendModel,
-} from '../backend.js';
-import { buildEnvironment } from '../environment.js';
-import type { AgentSessionOptions, AgentStreamEvent } from '../session.js';
-import { toolsForMode } from '../tools.js';
+} from '../backend';
+import { buildEnvironment } from '../environment';
+import type { AgentSessionOptions, AgentStreamEvent } from '../session';
+import { toolsForMode, type PermissionMode } from '../tools';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -33,6 +33,79 @@ function safeJson(value: unknown): string {
 function formatToolSummary(name: string, input: unknown): string {
   const serialized = input === undefined ? '' : ` ${safeJson(input).slice(0, 600)}`;
   return `running ${name}${serialized}`;
+}
+
+type ExtractedPermissionRequest = {
+  requestId: string;
+  tool?: string;
+  reason?: string;
+};
+
+function formatClaudePermissionReason(toolInput: unknown): string | undefined {
+  if (!isRecord(toolInput)) {
+    return toolInput === undefined ? undefined : safeJson(toolInput);
+  }
+
+  const command = asString(toolInput.command);
+  if (command) {
+    return command;
+  }
+
+  return safeJson(toolInput);
+}
+
+function findControlPermissionRequest(record: Record<string, unknown>): ExtractedPermissionRequest | undefined {
+  const requestId = asString(record.request_id) ?? asString(record.requestId) ?? asString(record.id);
+  if (!requestId) {
+    return undefined;
+  }
+
+  const request = isRecord(record.request) ? record.request : undefined;
+  if (!request || asString(request.subtype) !== 'can_use_tool') {
+    return undefined;
+  }
+
+  return {
+    requestId,
+    tool: asString(request.tool_name) ?? asString(request.toolName) ?? asString(request.name),
+    reason: formatClaudePermissionReason(request.input),
+  };
+}
+
+function formatClaudeUserMessage(text: string): string {
+  return `${JSON.stringify({
+    type: 'user',
+    message: {
+      role: 'user',
+      content: [{ type: 'text', text }],
+    },
+  })}\n`;
+}
+
+export function extractClaudePermissionRequest(payload: unknown): ExtractedPermissionRequest | undefined {
+  if (!isRecord(payload)) return undefined;
+
+  if (asString(payload.type) === 'control_request') {
+    return findControlPermissionRequest(payload);
+  }
+
+  return undefined;
+}
+
+export function formatClaudePermissionDecision(
+  requestId: string,
+  decision: 'approved' | 'denied',
+): string {
+  return `${JSON.stringify({
+    type: 'control_response',
+    response: {
+      subtype: 'success',
+      request_id: requestId,
+      response: decision === 'approved'
+        ? { behavior: 'allow' }
+        : { behavior: 'deny', message: 'User denied' },
+    },
+  })}\n`;
 }
 
 function extractContentEvents(content: unknown): AgentStreamEvent[] {
@@ -178,8 +251,15 @@ export function extractEvents(
   return [];
 }
 
-export function createClaudeArgs(options: AgentSessionOptions): string[] {
+export function createClaudeArgs(
+  options: AgentSessionOptions,
+  permissionMode: PermissionMode = config.permissionMode,
+): string[] {
   const args = ['-p', '--output-format', 'stream-json', '--verbose'];
+
+  if (permissionMode === 'safe') {
+    args.push('--input-format', 'stream-json');
+  }
 
   if (options.model) {
     args.push('--model', options.model);
@@ -189,7 +269,7 @@ export function createClaudeArgs(options: AgentSessionOptions): string[] {
     args.push('--effort', options.effort);
   }
 
-  args.push(...toolsForMode(options.mode));
+  args.push(...toolsForMode(options.mode, permissionMode));
 
   if (options.resumeSessionId) {
     args.push('--resume', options.resumeSessionId);
@@ -197,7 +277,9 @@ export function createClaudeArgs(options: AgentSessionOptions): string[] {
     args.push('--session-id', options.sessionId);
   }
 
-  args.push(options.prompt);
+  if (permissionMode !== 'safe') {
+    args.push(options.prompt);
+  }
   return args;
 }
 
@@ -233,6 +315,7 @@ function getSupportedClaudeModels(): BackendModel[] {
 
 async function* streamClaude(options: AgentSessionOptions): AsyncGenerator<AgentStreamEvent, void> {
   const cwd = options.cwd ?? config.claudeCwd;
+  const permissionMode = config.permissionMode;
   yield {
     type: 'environment',
     environment: buildEnvironment(
@@ -244,11 +327,14 @@ async function* streamClaude(options: AgentSessionOptions): AsyncGenerator<Agent
     ),
   };
 
-  const child = spawn(config.claudeBin, createClaudeArgs(options), {
+  const child = spawn(config.claudeBin, createClaudeArgs(options, permissionMode), {
     cwd,
     env: process.env,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: permissionMode === 'safe' ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
   });
+  if (permissionMode === 'safe') {
+    child.stdin?.write(formatClaudeUserMessage(options.prompt));
+  }
   const closePromise = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
     child.once('error', reject);
     child.once('close', (code, signal) => resolve({ code, signal }));
@@ -288,6 +374,38 @@ async function* streamClaude(options: AgentSessionOptions): AsyncGenerator<Agent
       throw new Error('Claude CLI stdout is unavailable');
     }
 
+    let registerPermissionRequest:
+      | ((options: {
+        conversationId: string;
+        requestId: string | number;
+        backend: string;
+        tool?: string;
+        reason?: string;
+        timeoutMs: number;
+      }) => {
+        requestId: string | number;
+        backend: string;
+        tool?: string;
+        reason?: string;
+        expiresAt: string;
+      })
+      | undefined;
+
+    if (permissionMode === 'safe' && options.conversationId && child.stdin) {
+      const {
+        registerConversationPermissionResponder,
+        registerPermissionRequest: registerPermissionRequestWithRuntime,
+      } = await import('../runtime');
+
+      registerConversationPermissionResponder(options.conversationId, {
+        backend: 'claude',
+        respond(requestId, decision) {
+          child.stdin?.write(formatClaudePermissionDecision(String(requestId), decision));
+        },
+      });
+      registerPermissionRequest = registerPermissionRequestWithRuntime;
+    }
+
     for await (const rawLine of stdoutReader) {
       const line = rawLine.trim();
       if (!line) continue;
@@ -298,6 +416,29 @@ async function* streamClaude(options: AgentSessionOptions): AsyncGenerator<Agent
       } catch {
         yield { type: 'status', status: line };
         continue;
+      }
+
+      if (registerPermissionRequest && options.conversationId) {
+        const permissionRequest = extractClaudePermissionRequest(payload);
+        if (permissionRequest) {
+          const request = registerPermissionRequest({
+            conversationId: options.conversationId,
+            requestId: permissionRequest.requestId,
+            backend: 'claude',
+            tool: permissionRequest.tool,
+            reason: permissionRequest.reason,
+            timeoutMs: config.permissionRequestTimeoutMs,
+          });
+          yield {
+            type: 'permission-requested',
+            requestId: request.requestId,
+            backend: request.backend,
+            tool: request.tool,
+            reason: request.reason,
+            expiresAt: request.expiresAt,
+          };
+          continue;
+        }
       }
 
       const events = extractEvents(payload, { resumeSessionId: options.resumeSessionId });
