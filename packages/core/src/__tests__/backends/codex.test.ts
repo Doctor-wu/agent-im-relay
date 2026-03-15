@@ -297,6 +297,28 @@ describe('codex backend', () => {
     );
   });
 
+  it('emits an error instead of hanging when app-server exits before replying to a pending request', async () => {
+    vi.mocked(spawn).mockReturnValue(
+      makeProcess([
+        JSON.stringify({ jsonrpc: '2.0', id: 0, result: { userAgent: 'codex-test' } }),
+        JSON.stringify({ jsonrpc: '2.0', id: 1, result: { thread: { id: 'thread-safe' } } }),
+      ].join('\n'), '', 1) as any,
+    );
+
+    const { streamCodexAppServer } = await import('../../agent/backends/codex');
+    const events = await collect(streamCodexAppServer(
+      { mode: 'code', prompt: 'test prompt' },
+      'test prompt',
+      '/tmp/project',
+      '/tmp/project',
+      'explicit',
+    ));
+
+    expect(events).toEqual([
+      { type: 'error', error: 'Codex CLI exited with code 1' },
+    ]);
+  });
+
   it('emits a structured invalidation event for authoritative resume failures', () => {
     expect(extractCodexEvents({
       type: 'error',

@@ -438,6 +438,16 @@ type PendingCodexResponse = {
   reject(error: Error): void;
 };
 
+function rejectPendingCodexResponses(
+  pendingResponses: Map<string, PendingCodexResponse>,
+  error: Error,
+): void {
+  for (const [id, pending] of pendingResponses.entries()) {
+    pendingResponses.delete(id);
+    pending.reject(error);
+  }
+}
+
 function createEventQueue<T>() {
   const items: T[] = [];
   const waiters: Array<(value: T | null) => void> = [];
@@ -682,7 +692,7 @@ async function* streamCodexExec(
   }
 }
 
-async function* streamCodexAppServer(
+export async function* streamCodexAppServer(
   options: AgentSessionOptions,
   prompt: string,
   cwd: string,
@@ -694,13 +704,6 @@ async function* streamCodexAppServer(
     env: process.env,
     stdio: ['pipe', 'pipe', 'pipe'],
   });
-
-  const closePromise = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
-    (resolve, reject) => {
-      child.once('error', reject);
-      child.once('close', (code, signal) => resolve({ code, signal }));
-    },
-  );
 
   const stderrLines: string[] = [];
   let abortReason: 'timeout' | 'aborted' | null = null;
@@ -727,8 +730,29 @@ async function* streamCodexAppServer(
 
   const stdoutReader = child.stdout ? readline.createInterface({ input: child.stdout }) : null;
   const pendingResponses = new Map<string, PendingCodexResponse>();
+  const rejectPending = (error: Error) => {
+    rejectPendingCodexResponses(pendingResponses, error);
+  };
   const notifications = createEventQueue<JsonRpcMessage>();
   const permissionResponder = attachPermissionResponder(options, child.stdin);
+  const closePromise = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
+    (resolve, reject) => {
+      child.once('error', (error) => {
+        rejectPending(error instanceof Error ? error : new Error(toErrorMessage(error)));
+        reject(error);
+      });
+      child.once('close', (code, signal) => {
+        if (pendingResponses.size > 0) {
+          rejectPending(new Error(
+            signal
+              ? `Codex CLI exited with signal ${signal}`
+              : `Codex CLI exited with code ${String(code)}`,
+          ));
+        }
+        resolve({ code, signal });
+      });
+    },
+  );
 
   try {
     if (!stdoutReader) {
