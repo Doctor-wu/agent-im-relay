@@ -149,8 +149,7 @@ All adapter development commands load configuration from `~/.agent-inbox/config.
 
 ### Build Outputs
 
-- `apps/agent-inbox/dist/index.mjs` - npm package entrypoint, built with `pnpm --filter ./apps/agent-inbox build`
-- `apps/agent-inbox/dist/agent-inbox` - optional standalone executable (SEA), built with `pnpm --filter ./apps/agent-inbox build:sea`
+- `apps/agent-inbox/dist/index.mjs` - npm package entrypoint, built with `pnpm --filter ./apps/agent-inbox build` via `vp pack`
 
 ---
 

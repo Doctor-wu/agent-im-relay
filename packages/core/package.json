@@ -11,14 +11,13 @@
     }
   },
   "scripts": {
-    "build": "tsdown",
+    "build": "vp pack",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {},
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "tsdown": "^0.21.0",
     "vitest": "^3.2.4"
   }
 }

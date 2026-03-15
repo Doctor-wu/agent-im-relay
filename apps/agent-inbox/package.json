@@ -14,9 +14,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "pnpm --filter @agent-im-relay/core build && pnpm --filter @agent-im-relay/discord build && pnpm --filter @agent-im-relay/feishu build && tsdown",
-    "build:sea": "node ./scripts/build-executable.mjs",
-    "build:all": "pnpm run build && pnpm run build:sea",
+    "build": "pnpm --filter @agent-im-relay/core build && pnpm --filter @agent-im-relay/discord build && pnpm --filter @agent-im-relay/feishu build && pnpm --filter @agent-im-relay/slack build && vp pack",
     "prepack": "pnpm run build",
     "start": "node dist/index.mjs",
     "test": "vitest run",
@@ -32,8 +30,6 @@
     "@agent-im-relay/feishu": "workspace:*",
     "@agent-im-relay/slack": "workspace:*",
     "@types/node": "^22.10.0",
-    "postject": "1.0.0-alpha.6",
-    "tsdown": "^0.21.0",
     "vitest": "^3.2.4"
   },
   "repository": {
