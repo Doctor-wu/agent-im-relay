@@ -7,7 +7,8 @@
       "@agent-im-relay/core": ["packages/core/src/index.ts"],
       "@agent-im-relay/discord": ["packages/discord/src/index.ts"],
       "@agent-im-relay/feishu": ["packages/feishu/src/index.ts"],
-      "@agent-im-relay/slack": ["packages/slack/src/index.ts"]
+      "@agent-im-relay/slack": ["packages/slack/src/index.ts"],
+      "@agent-im-relay/telegram": ["packages/telegram/src/index.ts"]
     }
   },
   "include": [

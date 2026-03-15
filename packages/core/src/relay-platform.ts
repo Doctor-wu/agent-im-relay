@@ -1,4 +1,4 @@
-export const relayPlatforms = ['discord', 'feishu', 'slack'] as const;
+export const relayPlatforms = ['discord', 'feishu', 'slack', 'telegram'] as const;
 
 export type RelayPlatform = (typeof relayPlatforms)[number];
 
@@ -7,6 +7,8 @@ export function isRelayPlatform(value: unknown): value is RelayPlatform {
 }
 
 export function inferRelayPlatformFromConversationId(conversationId: string): RelayPlatform {
+  if (conversationId.startsWith('tg-')) return 'telegram';
+
   if (/^\d+$/.test(conversationId)) {
     return 'discord';
   }
