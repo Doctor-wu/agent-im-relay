@@ -9,6 +9,12 @@ Before you start, install at least one supported backend CLI on the machine wher
 
 Agent Inbox executes the selected backend locally. By default it looks for `claude` and `codex` in your `PATH`.
 
+If you plan to run with `permissionMode: "safe"`, install backend CLIs that support their duplex approval transports:
+
+- Codex: `codex app-server --listen stdio://`
+- Claude Code: bidirectional `--input-format stream-json --output-format stream-json`
+- OpenCode does not currently support the same approval flow, so Discord approval cards are only guaranteed for Codex and Claude safe mode
+
 Agent Inbox expects three Discord values:
 
 - `token`: your bot token
@@ -126,7 +132,8 @@ Then verify the Discord side:
 1. Open the server where you invited the bot.
 2. Run `/code` to create a working thread, or run `/ask` for a quick reply in the current channel.
 3. Mention the bot in a guild text channel if you want the bot to open a thread-backed session from a message.
-4. Confirm the bot streams its response in the expected place.
+4. If `permissionMode` is `safe`, trigger a write operation and confirm Discord shows an approval card with `Approve` / `Deny` buttons before the backend continues.
+5. Confirm the bot streams its response in the expected place.
 
 ## Troubleshooting
 

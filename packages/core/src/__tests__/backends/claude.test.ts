@@ -62,56 +62,56 @@ describe('claude backend', () => {
 
   it('extracts permission requests from Claude stream-json payloads', () => {
     expect(extractClaudePermissionRequest({
-      type: 'stream_event',
-      event: {
-        type: 'permission_request',
+      type: 'control_request',
+      request_id: 'perm-1',
+      request: {
+        subtype: 'can_use_tool',
         request_id: 'perm-1',
         tool_name: 'Bash',
-        reason: 'Run rm -rf build',
+        input: {
+          command: 'rm -rf build',
+        },
+        tool_use_id: 'tool-1',
       },
     })).toEqual({
       requestId: 'perm-1',
       tool: 'Bash',
-      reason: 'Run rm -rf build',
+      reason: 'rm -rf build',
+    });
+
+    expect(extractClaudePermissionRequest({
+      type: 'control_request',
+      request_id: 'perm-2',
+      request: {
+        subtype: 'can_use_tool',
+        tool_name: 'Edit',
+        input: {
+          file_path: 'package.json',
+          old_string: '"version": "1.0.0"',
+          new_string: '"version": "1.0.1"',
+        },
+        tool_use_id: 'tool-2',
+      },
+    })).toEqual({
+      requestId: 'perm-2',
+      tool: 'Edit',
+      reason: '{"file_path":"package.json","old_string":"\\"version\\": \\"1.0.0\\"","new_string":"\\"version\\": \\"1.0.1\\""}',
     });
 
     expect(extractClaudePermissionRequest({
       type: 'permission_request',
-      requestId: 'perm-2',
+      requestId: 'perm-legacy',
       toolName: 'Edit',
       message: 'Apply patch',
-    })).toEqual({
-      requestId: 'perm-2',
-      tool: 'Edit',
-      reason: 'Apply patch',
-    });
-
-    expect(extractClaudePermissionRequest({
-      type: 'assistant',
-      message: {
-        content: [
-          { type: 'text', text: 'Need approval' },
-          {
-            type: 'permission_request',
-            request_id: 'perm-3',
-            tool_name: 'Read',
-            description: 'Open secrets.json',
-          },
-        ],
-      },
-    })).toEqual({
-      requestId: 'perm-3',
-      tool: 'Read',
-      reason: 'Open secrets.json',
-    });
+    })).toBeUndefined();
   });
 
   it('formats Claude permission decisions as stream-json stdin messages', () => {
     expect(formatClaudePermissionDecision('perm-1', 'approved')).toBe(
-      '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Permission request perm-1 approved. Continue with the operation."}]}}\n',
+      '{"type":"control_response","response":{"subtype":"success","request_id":"perm-1","response":{"behavior":"allow"}}}\n',
     );
     expect(formatClaudePermissionDecision('perm-1', 'denied')).toBe(
-      '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Permission request perm-1 denied. Skip that operation and continue."}]}}\n',
+      '{"type":"control_response","response":{"subtype":"success","request_id":"perm-1","response":{"behavior":"deny","message":"User denied"}}}\n',
     );
   });
 });

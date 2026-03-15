@@ -91,6 +91,7 @@ Create a self-built enterprise application in the [Feishu Open Platform](https:/
 |---------|------|
 | **Claude Code** | Anthropic Claude with streaming output and tool calling |
 | **OpenAI Codex** | OpenAI Codex CLI with streaming output |
+| **OpenCode** | Optional fallback backend with no known safe-mode approval protocol |
 
 You can switch the backend for the current session through the setup wizard or IM commands.
 
@@ -103,7 +104,13 @@ Permission approval behavior is configured in the `runtime` record inside `~/.ag
 ### `permissionMode`
 
 - `auto` - Backward-compatible default behavior. Agent backends run with their existing automation flags, so dangerous operations are handled automatically with no IM approval step.
-- `safe` - Dangerous operations require an explicit approval from the IM client before the backend continues. Agent Inbox sends an approval card into the active conversation, waits for a user decision, and writes `approve` / `deny` back to the backend stdin.
+- `safe` - Dangerous operations require an explicit approval from the IM client before the backend continues. Agent Inbox sends an approval card into the active conversation, waits for a user decision, then writes the backend's real approval protocol response back to stdin.
+
+Safe mode currently requires backend CLIs with these capabilities:
+
+- Codex must support `codex app-server --listen stdio://`
+- Claude Code must support bidirectional `--input-format stream-json --output-format stream-json`
+- OpenCode does not currently expose an equivalent approval protocol, so safe mode degrades to the backend's normal behavior or an unsupported-mode warning
 
 ### `permissionRequestTimeoutMs`
 
@@ -122,7 +129,7 @@ Example:
 1. The backend encounters a dangerous action and emits a permission request.
 2. Agent Inbox renders an approval card in the active Discord thread, Feishu session chat, or Slack thread / DM.
 3. A user clicks `Approve` or `Deny`.
-4. Agent Inbox writes that decision back to the backend stdin and the run continues.
+4. Agent Inbox writes the backend-specific approval response back to stdin and the run continues.
 5. If no one responds before timeout, the request is denied automatically and the backend continues by skipping that action.
 
 ### Platform Card Styles

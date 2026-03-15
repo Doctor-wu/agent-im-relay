@@ -89,7 +89,7 @@ describe('runMentionConversation', () => {
       prompt: 'hello',
     }));
     expect(streamAgentToDiscord).toHaveBeenCalledWith(
-      { channel: thread, showEnvironment: true },
+      expect.objectContaining({ channel: thread, showEnvironment: true }),
       expect.any(Object),
     );
   });
@@ -129,7 +129,7 @@ describe('runMentionConversation', () => {
       prompt: 'hello again',
     }));
     expect(streamAgentToDiscord).toHaveBeenCalledWith(
-      { channel: thread, showEnvironment: false },
+      expect.objectContaining({ channel: thread, showEnvironment: false }),
       expect.any(Object),
     );
   });
@@ -179,11 +179,11 @@ describe('runMentionConversation', () => {
 
     expect(started).toBe(true);
     expect(streamAgentToDiscord).toHaveBeenCalledWith(
-      {
+      expect.objectContaining({
         channel: thread,
         showEnvironment: false,
         replyContext,
-      },
+      }),
       expect.any(Object),
     );
 

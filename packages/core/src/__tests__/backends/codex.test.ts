@@ -10,6 +10,11 @@ import { spawn, spawnSync } from 'node:child_process';
 import type { AgentStreamEvent } from '../../agent/session';
 import {
   createCodexArgs,
+  createCodexInitializeRequest,
+  createCodexInitializedNotification,
+  createCodexStartThreadRequest,
+  createCodexResumeThreadRequest,
+  createCodexStartTurnRequest,
   extractCodexEvents,
   extractCodexPermissionRequest,
   formatCodexPermissionDecision,
@@ -43,7 +48,7 @@ describe('codex backend', () => {
     vi.mocked(spawnSync).mockReturnValue({ status: 128, stdout: '' } as any);
   });
 
-  it('builds exec arguments that read prompt from stdin', () => {
+  it('builds exec arguments that read prompt from stdin in auto mode', () => {
     const args = createCodexArgs({
       mode: 'code',
       prompt: 'test',
@@ -76,9 +81,8 @@ describe('codex backend', () => {
     }, 'safe');
 
     expect(autoArgs).toContain('--full-auto');
-    expect(safeArgs).not.toContain('--full-auto');
+    expect(safeArgs).toEqual(['app-server', '--listen', 'stdio://']);
     expect(autoArgs.at(-1)).toBe('-');
-    expect(safeArgs.at(-1)).toBe('-');
   });
 
   it('builds resume arguments when resuming a session', () => {
@@ -105,42 +109,147 @@ describe('codex backend', () => {
     expect(args).not.toContain('--cd');
   });
 
+  it('builds JSON-RPC bootstrap requests for safe mode', () => {
+    expect(createCodexInitializeRequest(0)).toEqual({
+      jsonrpc: '2.0',
+      id: 0,
+      method: 'initialize',
+      params: {
+        clientInfo: {
+          name: 'agent-im-relay',
+          title: null,
+          version: '1.1.1',
+        },
+        capabilities: null,
+      },
+    });
+
+    expect(createCodexInitializedNotification()).toEqual({
+      jsonrpc: '2.0',
+      method: 'initialized',
+    });
+
+    expect(createCodexStartThreadRequest(1, {
+      cwd: '/tmp/project',
+      model: 'gpt-5',
+    })).toEqual({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'thread/start',
+      params: {
+        cwd: '/tmp/project',
+        model: 'gpt-5',
+        approvalPolicy: 'on-request',
+        sandbox: 'read-only',
+        experimentalRawEvents: false,
+        persistExtendedHistory: false,
+      },
+    });
+
+    expect(createCodexResumeThreadRequest(2, {
+      threadId: 'thread-123',
+      cwd: '/tmp/project',
+      model: 'gpt-5',
+    })).toEqual({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'thread/resume',
+      params: {
+        threadId: 'thread-123',
+        cwd: '/tmp/project',
+        model: 'gpt-5',
+        approvalPolicy: 'on-request',
+        sandbox: 'read-only',
+        persistExtendedHistory: false,
+      },
+    });
+
+    expect(createCodexStartTurnRequest(3, {
+      threadId: 'thread-123',
+      prompt: 'Create a file',
+      cwd: '/tmp/project',
+      model: 'gpt-5',
+    })).toEqual({
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'turn/start',
+      params: {
+        threadId: 'thread-123',
+        cwd: '/tmp/project',
+        model: 'gpt-5',
+        approvalPolicy: 'on-request',
+        sandboxPolicy: {
+          type: 'readOnly',
+          access: {
+            type: 'fullAccess',
+          },
+          networkAccess: true,
+        },
+        input: [{
+          type: 'text',
+          text: 'Create a file',
+          text_elements: [],
+        }],
+      },
+    });
+  });
+
   it('extracts text and tool events from Codex JSONL items', () => {
     expect(extractCodexEvents({
-      type: 'thread.started',
-      thread_id: 'thread-123',
+      jsonrpc: '2.0',
+      method: 'thread/started',
+      params: {
+        thread: {
+          id: 'thread-123',
+        },
+      },
     })).toEqual([
       { type: 'session', sessionId: 'thread-123', status: 'confirmed' },
     ]);
 
     expect(extractCodexEvents({
-      type: 'thread.resumed',
-      thread_id: 'thread-456',
-    })).toEqual([
-      { type: 'session', sessionId: 'thread-456', status: 'resumed' },
-    ]);
-
-    expect(extractCodexEvents({
-      type: 'item.started',
-      item: {
-        id: 'item_1',
-        type: 'command_execution',
-        command: '/bin/zsh -lc "pwd"',
-        status: 'in_progress',
+      jsonrpc: '2.0',
+      method: 'item/started',
+      params: {
+        threadId: 'thread-123',
+        turnId: 'turn-123',
+        item: {
+          id: 'item_1',
+          type: 'commandExecution',
+          command: '/bin/zsh -lc "pwd"',
+        },
       },
     })).toEqual([
       { type: 'tool', summary: 'running Bash {"command":"/bin/zsh -lc \\"pwd\\""}' },
     ]);
 
     expect(extractCodexEvents({
-      type: 'item.completed',
-      item: {
-        id: 'item_2',
-        type: 'agent_message',
-        text: 'Working directory: /tmp/project\nDone.',
+      jsonrpc: '2.0',
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'thread-123',
+        turnId: 'turn-123',
+        itemId: 'item_2',
+        delta: 'Working directory: /tmp/project\n',
       },
     })).toEqual([
-      { type: 'text', delta: 'Working directory: /tmp/project\nDone.' },
+      { type: 'text', delta: 'Working directory: /tmp/project\n' },
+    ]);
+
+    expect(extractCodexEvents({
+      jsonrpc: '2.0',
+      method: 'item/completed',
+      params: {
+        threadId: 'thread-123',
+        turnId: 'turn-123',
+        item: {
+          id: 'item_2',
+          type: 'agentMessage',
+          text: 'Done.',
+        },
+      },
+    })).toEqual([
+      { type: 'text', delta: 'Done.' },
     ]);
   });
 
@@ -176,19 +285,15 @@ describe('codex backend', () => {
       id: 'perm-2',
       tool: 'Bash',
       reason: 'Run rm -rf build',
-    })).toEqual({
-      requestId: 'perm-2',
-      tool: 'Bash',
-      reason: 'Run rm -rf build',
-    });
+    })).toBeUndefined();
   });
 
   it('formats Codex permission decisions as JSON-RPC responses', () => {
     expect(formatCodexPermissionDecision('perm-1', 'approved')).toBe(
-      '{"id":"perm-1","result":{"decision":"accept"}}\n',
+      '{"jsonrpc":"2.0","id":"perm-1","result":{"decision":"accept"}}\n',
     );
     expect(formatCodexPermissionDecision('perm-1', 'denied')).toBe(
-      '{"id":"perm-1","result":{"decision":"decline"}}\n',
+      '{"jsonrpc":"2.0","id":"perm-1","result":{"decision":"cancel"}}\n',
     );
   });
 

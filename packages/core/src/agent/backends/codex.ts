@@ -16,6 +16,8 @@ import type { PermissionMode } from '../tools';
 
 const WORKING_DIR_PATTERN = /^Working directory:\s*(.+)$/;
 const LOG_LINE_PATTERN = /^\d{4}-\d{2}-\d{2}T/;
+const CODEX_CLIENT_NAME = 'agent-im-relay';
+const CODEX_CLIENT_VERSION = '1.1.1';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -63,8 +65,25 @@ type ExtractedPermissionRequest = {
   reason?: string;
 };
 
+type JsonRpcId = number | string;
+type JsonRpcMessage = Record<string, unknown>;
+
 function extractCodexSessionId(payload: unknown): string | undefined {
   if (!isRecord(payload)) return undefined;
+
+  const method = asString(payload.method);
+  if (method === 'thread/started') {
+    const params = isRecord(payload.params) ? payload.params : undefined;
+    const thread = params && isRecord(params.thread) ? params.thread : undefined;
+    return thread ? asString(thread.id) : undefined;
+  }
+
+  const result = isRecord(payload.result) ? payload.result : undefined;
+  const thread = result && isRecord(result.thread) ? result.thread : undefined;
+  if (thread) {
+    return asString(thread.id);
+  }
+
   const type = asString(payload.type);
   if (type === 'thread.started' || type === 'thread.resumed') {
     return asString(payload.thread_id);
@@ -86,26 +105,16 @@ function isAuthoritativeCodexResumeFailure(error: string): boolean {
 export function extractCodexPermissionRequest(payload: unknown): ExtractedPermissionRequest | undefined {
   if (!isRecord(payload)) return undefined;
 
-  const legacyType = asString(payload.type);
-  if (legacyType === 'permission.requested') {
-    const requestId = asString(payload.id);
-    if (!requestId) return undefined;
-    return {
-      requestId,
-      tool: asString(payload.tool),
-      reason: asString(payload.reason),
-    };
-  }
-
   const method = asString(payload.method);
-  const requestId = asString(payload.id);
+  const id = payload.id;
+  const requestId = typeof id === 'string' || typeof id === 'number' ? String(id) : undefined;
   if (!method || !requestId) return undefined;
 
   const params = isRecord(payload.params) ? payload.params : {};
   if (method === 'item/commandExecution/requestApproval') {
     const command = Array.isArray(params.command)
       ? params.command.filter((value): value is string => typeof value === 'string').join(' ')
-      : undefined;
+      : asString(params.command);
     return {
       requestId,
       tool: 'Bash',
@@ -129,17 +138,115 @@ export function formatCodexPermissionDecision(
   decision: 'approved' | 'denied',
 ): string {
   return `${JSON.stringify({
+    jsonrpc: '2.0',
     id: requestId,
     result: {
-      decision: decision === 'approved' ? 'accept' : 'decline',
+      decision: decision === 'approved' ? 'accept' : 'cancel',
     },
   })}\n`;
+}
+
+export function createCodexInitializeRequest(id: JsonRpcId): JsonRpcMessage {
+  return {
+    jsonrpc: '2.0',
+    id,
+    method: 'initialize',
+    params: {
+      clientInfo: {
+        name: CODEX_CLIENT_NAME,
+        title: null,
+        version: CODEX_CLIENT_VERSION,
+      },
+      capabilities: null,
+    },
+  };
+}
+
+export function createCodexInitializedNotification(): JsonRpcMessage {
+  return {
+    jsonrpc: '2.0',
+    method: 'initialized',
+  };
+}
+
+type SafeModeCodexRequestOptions = Pick<AgentSessionOptions, 'cwd' | 'model' | 'effort'>;
+
+export function createCodexStartThreadRequest(
+  id: JsonRpcId,
+  options: SafeModeCodexRequestOptions,
+): JsonRpcMessage {
+  return {
+    jsonrpc: '2.0',
+    id,
+    method: 'thread/start',
+    params: {
+      cwd: options.cwd,
+      model: options.model,
+      approvalPolicy: 'on-request',
+      sandbox: 'read-only',
+      experimentalRawEvents: false,
+      persistExtendedHistory: false,
+    },
+  };
+}
+
+export function createCodexResumeThreadRequest(
+  id: JsonRpcId,
+  options: SafeModeCodexRequestOptions & { threadId: string },
+): JsonRpcMessage {
+  return {
+    jsonrpc: '2.0',
+    id,
+    method: 'thread/resume',
+    params: {
+      threadId: options.threadId,
+      cwd: options.cwd,
+      model: options.model,
+      approvalPolicy: 'on-request',
+      sandbox: 'read-only',
+      persistExtendedHistory: false,
+    },
+  };
+}
+
+export function createCodexStartTurnRequest(
+  id: JsonRpcId,
+  options: SafeModeCodexRequestOptions & { threadId: string; prompt: string },
+): JsonRpcMessage {
+  return {
+    jsonrpc: '2.0',
+    id,
+    method: 'turn/start',
+    params: {
+      threadId: options.threadId,
+      input: [{
+        type: 'text',
+        text: options.prompt,
+        text_elements: [],
+      }],
+      cwd: options.cwd,
+      approvalPolicy: 'on-request',
+      sandboxPolicy: {
+        type: 'readOnly',
+        access: {
+          type: 'fullAccess',
+        },
+        networkAccess: true,
+      },
+      model: options.model,
+      effort: options.effort,
+    },
+  };
 }
 
 export function createCodexArgs(
   options: AgentSessionOptions,
   permissionMode: PermissionMode = config.permissionMode,
 ): string[] {
+  if (permissionMode === 'safe') {
+    return ['app-server', '--listen', 'stdio://'];
+  }
+
   const args = options.resumeSessionId
     ? ['exec', 'resume', options.resumeSessionId, '--json', '--skip-git-repo-check']
     : ['exec', '--json', '--skip-git-repo-check'];
@@ -167,6 +274,64 @@ export function extractCodexEvents(
   options: { resumeSessionId?: string } = {},
 ): AgentStreamEvent[] {
   if (!isRecord(payload)) return [];
+
+  const method = asString(payload.method);
+  if (method) {
+    const params = isRecord(payload.params) ? payload.params : {};
+
+    if (method === 'thread/started') {
+      const thread = isRecord(params.thread) ? params.thread : undefined;
+      const sessionId = thread ? asString(thread.id) : undefined;
+      return sessionId
+        ? [{ type: 'session', sessionId, status: 'confirmed' }]
+        : [];
+    }
+
+    if (method === 'item/started') {
+      const item = isRecord(params.item) ? params.item : undefined;
+      if (!item || asString(item.type) !== 'commandExecution') {
+        return [];
+      }
+
+      const command = asString(item.command);
+      return command ? [{ type: 'tool', summary: formatCommandSummary(command) }] : [];
+    }
+
+    if (method === 'item/agentMessage/delta') {
+      const delta = asString(params.delta);
+      return delta ? [{ type: 'text', delta }] : [];
+    }
+
+    if (method === 'item/completed') {
+      const item = isRecord(params.item) ? params.item : undefined;
+      if (!item || asString(item.type) !== 'agentMessage') {
+        return [];
+      }
+
+      const text = asString(item.text);
+      return text ? [{ type: 'text', delta: text }] : [];
+    }
+
+    if (method === 'error') {
+      const error = asString(params.message) ?? asString(params.error);
+      if (!error) {
+        return [];
+      }
+
+      return options.resumeSessionId && isAuthoritativeCodexResumeFailure(error)
+        ? [
+            {
+              type: 'session-invalidated',
+              sessionId: options.resumeSessionId,
+              reason: error,
+            },
+            { type: 'error', error },
+          ]
+        : [{ type: 'error', error }];
+    }
+
+    return [];
+  }
 
   const type = asString(payload.type);
   if (!type) return [];
@@ -268,22 +433,131 @@ function getSupportedCodexModels(): BackendModel[] {
   return cachedModels.length > 0 ? cachedModels : readCodexConfigModel();
 }
 
-async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentStreamEvent, void> {
-  const cwd = options.cwd ?? config.claudeCwd;
-  let environmentCwd = cwd;
-  let environmentSource: 'explicit' | 'auto-detected' | 'default' = options.cwd ? 'explicit' : 'default';
+type PendingCodexResponse = {
+  resolve(payload: JsonRpcMessage): void;
+  reject(error: Error): void;
+};
 
-  yield {
-    type: 'environment',
-    environment: buildEnvironment('codex', options, environmentCwd, environmentSource, options.model),
+function createEventQueue<T>() {
+  const items: T[] = [];
+  const waiters: Array<(value: T | null) => void> = [];
+  let closed = false;
+
+  return {
+    push(value: T) {
+      const waiter = waiters.shift();
+      if (waiter) {
+        waiter(value);
+        return;
+      }
+      items.push(value);
+    },
+    close() {
+      closed = true;
+      while (waiters.length > 0) {
+        waiters.shift()?.(null);
+      }
+    },
+    async next(): Promise<T | null> {
+      const item = items.shift();
+      if (item) {
+        return item;
+      }
+      if (closed) {
+        return null;
+      }
+      return new Promise(resolve => waiters.push(resolve));
+    },
   };
+}
 
-  const prompt = options.cwd
-    ? options.prompt
-    : `请在开始任务前，先找到与本任务相关的项目目录，并在响应的第一行输出：Working directory: /absolute/path，然后再执行任务。\n\n${options.prompt}`;
+function writeJsonLine(
+  stdin: NodeJS.WritableStream | null | undefined,
+  payload: JsonRpcMessage,
+): void {
+  if (!stdin) {
+    throw new Error('Codex CLI stdin is unavailable');
+  }
+  stdin.write(`${JSON.stringify(payload)}\n`);
+}
 
-  const permissionMode = config.permissionMode;
-  const args = createCodexArgs({ ...options, prompt }, permissionMode);
+function attachPermissionResponder(
+  options: AgentSessionOptions,
+  stdin: NodeJS.WritableStream | null | undefined,
+) {
+  let registerPermissionRequest:
+    | ((options: {
+      conversationId: string;
+      requestId: string;
+      backend: string;
+      tool?: string;
+      reason?: string;
+      timeoutMs: number;
+    }) => {
+      requestId: string;
+      backend: string;
+      tool?: string;
+      reason?: string;
+      expiresAt: string;
+    })
+    | undefined;
+
+  const ready = (async () => {
+    if (!options.conversationId || !stdin) {
+      return;
+    }
+
+    const runtime = await import('../runtime.js');
+    runtime.registerConversationPermissionResponder(options.conversationId, {
+      backend: 'codex',
+      respond(requestId, decision) {
+        stdin.write(formatCodexPermissionDecision(requestId, decision));
+      },
+    });
+    registerPermissionRequest = runtime.registerPermissionRequest;
+  })();
+
+  return {
+    async handle(payload: unknown): Promise<Extract<AgentStreamEvent, { type: 'permission-requested' }> | undefined> {
+      await ready;
+      if (!registerPermissionRequest || !options.conversationId) {
+        return undefined;
+      }
+
+      const permissionRequest = extractCodexPermissionRequest(payload);
+      if (!permissionRequest) {
+        return undefined;
+      }
+
+      const request = registerPermissionRequest({
+        conversationId: options.conversationId,
+        requestId: permissionRequest.requestId,
+        backend: 'codex',
+        tool: permissionRequest.tool,
+        reason: permissionRequest.reason,
+        timeoutMs: config.permissionRequestTimeoutMs,
+      });
+
+      return {
+        type: 'permission-requested',
+        requestId: request.requestId,
+        backend: request.backend,
+        tool: request.tool,
+        reason: request.reason,
+        expiresAt: request.expiresAt,
+      };
+    },
+  };
+}
+
+async function* streamCodexExec(
+  options: AgentSessionOptions,
+  prompt: string,
+  cwd: string,
+  environmentCwd: string,
+  environmentSource: 'explicit' | 'auto-detected' | 'default',
+): AsyncGenerator<AgentStreamEvent, void> {
+  const args = createCodexArgs({ ...options, prompt }, 'auto');
 
   const child = spawn(config.codexBin, args, {
     cwd,
@@ -291,7 +565,7 @@ async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentS
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 
-  writeCodexPrompt(child.stdin, prompt, permissionMode === 'safe');
+  writeCodexPrompt(child.stdin, prompt, false);
 
   const closePromise = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
     (resolve, reject) => {
@@ -328,34 +602,6 @@ async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentS
   try {
     if (!stdoutReader) throw new Error('Codex CLI stdout is unavailable');
 
-    let registerPermissionRequest:
-      | ((options: {
-        conversationId: string;
-        requestId: string;
-        backend: string;
-        tool?: string;
-        reason?: string;
-        timeoutMs: number;
-      }) => {
-        requestId: string;
-        backend: string;
-        tool?: string;
-        reason?: string;
-        expiresAt: string;
-      })
-      | undefined;
-
-    if (permissionMode === 'safe' && options.conversationId && child.stdin) {
-      const runtime = await import('../runtime.js');
-      runtime.registerConversationPermissionResponder(options.conversationId, {
-        backend: 'codex',
-        respond(requestId, decision) {
-          child.stdin?.write(formatCodexPermissionDecision(requestId, decision));
-        },
-      });
-      registerPermissionRequest = runtime.registerPermissionRequest;
-    }
-
     for await (const rawLine of stdoutReader) {
       const line = rawLine.trimEnd();
       if (!line) continue;
@@ -372,29 +618,6 @@ async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentS
       }
 
       sessionId = extractCodexSessionId(parsed) ?? sessionId;
-
-      if (registerPermissionRequest && options.conversationId) {
-        const permissionRequest = extractCodexPermissionRequest(parsed);
-        if (permissionRequest) {
-          const request = registerPermissionRequest({
-            conversationId: options.conversationId,
-            requestId: permissionRequest.requestId,
-            backend: 'codex',
-            tool: permissionRequest.tool,
-            reason: permissionRequest.reason,
-            timeoutMs: config.permissionRequestTimeoutMs,
-          });
-          yield {
-            type: 'permission-requested',
-            requestId: request.requestId,
-            backend: request.backend,
-            tool: request.tool,
-            reason: request.reason,
-            expiresAt: request.expiresAt,
-          };
-          continue;
-        }
-      }
 
       for (const event of extractCodexEvents(parsed, { resumeSessionId: options.resumeSessionId })) {
         if (event.type === 'text') {
@@ -457,6 +680,253 @@ async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentS
     if (!child.killed) child.kill('SIGTERM');
     if (options.abortSignal) options.abortSignal.removeEventListener('abort', onAbort);
   }
+}
+
+async function* streamCodexAppServer(
+  options: AgentSessionOptions,
+  prompt: string,
+  cwd: string,
+  environmentCwd: string,
+  environmentSource: 'explicit' | 'auto-detected' | 'default',
+): AsyncGenerator<AgentStreamEvent, void> {
+  const child = spawn(config.codexBin, createCodexArgs(options, 'safe'), {
+    cwd,
+    env: process.env,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+
+  const closePromise = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
+    (resolve, reject) => {
+      child.once('error', reject);
+      child.once('close', (code, signal) => resolve({ code, signal }));
+    },
+  );
+
+  const stderrLines: string[] = [];
+  let abortReason: 'timeout' | 'aborted' | null = null;
+  let sessionId: string | undefined = options.resumeSessionId ?? options.sessionId;
+  let fullOutput = '';
+
+  const timeout = setTimeout(() => {
+    abortReason = 'timeout';
+    child.kill('SIGTERM');
+  }, config.agentTimeoutMs);
+
+  const onAbort = () => {
+    abortReason = 'aborted';
+    child.kill('SIGTERM');
+  };
+
+  if (options.abortSignal) {
+    options.abortSignal.addEventListener('abort', onAbort);
+    if (options.abortSignal.aborted) onAbort();
+  }
+
+  const stderrReader = child.stderr ? readline.createInterface({ input: child.stderr }) : null;
+  stderrReader?.on('line', (line) => { if (line.trim()) stderrLines.push(line.trim()); });
+
+  const stdoutReader = child.stdout ? readline.createInterface({ input: child.stdout }) : null;
+  const pendingResponses = new Map<string, PendingCodexResponse>();
+  const notifications = createEventQueue<JsonRpcMessage>();
+  const permissionResponder = attachPermissionResponder(options, child.stdin);
+
+  try {
+    if (!stdoutReader) {
+      throw new Error('Codex CLI stdout is unavailable');
+    }
+
+    const consumeStdout = (async () => {
+      try {
+        for await (const rawLine of stdoutReader) {
+          const line = rawLine.trimEnd();
+          if (!line) continue;
+          if (LOG_LINE_PATTERN.test(line)) {
+            stderrLines.push(line);
+            continue;
+          }
+
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(line);
+          } catch {
+            continue;
+          }
+
+          if (!isRecord(parsed)) {
+            continue;
+          }
+
+          const method = asString(parsed.method);
+          const id = parsed.id;
+          if (!method && (typeof id === 'string' || typeof id === 'number')) {
+            const pending = pendingResponses.get(String(id));
+            if (!pending) {
+              continue;
+            }
+
+            pendingResponses.delete(String(id));
+            if (isRecord(parsed.error)) {
+              const message = asString(parsed.error.message) ?? 'Codex app-server request failed';
+              pending.reject(new Error(message));
+              continue;
+            }
+            pending.resolve(parsed);
+            continue;
+          }
+
+          notifications.push(parsed);
+        }
+      } finally {
+        notifications.close();
+      }
+    })();
+
+    const sendRequest = async (payload: JsonRpcMessage): Promise<JsonRpcMessage> => {
+      const id = payload.id;
+      if (typeof id !== 'string' && typeof id !== 'number') {
+        throw new Error('Codex JSON-RPC request id is required');
+      }
+
+      const response = new Promise<JsonRpcMessage>((resolve, reject) => {
+        pendingResponses.set(String(id), { resolve, reject });
+      });
+      writeJsonLine(child.stdin, payload);
+      return response;
+    };
+
+    await sendRequest(createCodexInitializeRequest(0));
+    writeJsonLine(child.stdin, createCodexInitializedNotification());
+
+    const threadResponse = options.resumeSessionId
+      ? await sendRequest(createCodexResumeThreadRequest(1, {
+          threadId: options.resumeSessionId,
+          cwd: options.cwd,
+          model: options.model,
+          effort: options.effort,
+        }))
+      : await sendRequest(createCodexStartThreadRequest(1, {
+          cwd: options.cwd,
+          model: options.model,
+          effort: options.effort,
+        }));
+
+    sessionId = extractCodexSessionId(threadResponse) ?? sessionId;
+    if (sessionId) {
+      yield {
+        type: 'session',
+        sessionId,
+        status: options.resumeSessionId ? 'resumed' : 'confirmed',
+      };
+    }
+
+    if (!sessionId) {
+      throw new Error('Codex app-server did not return a thread id');
+    }
+
+    await sendRequest(createCodexStartTurnRequest(2, {
+      threadId: sessionId,
+      prompt,
+      cwd: options.cwd,
+      model: options.model,
+      effort: options.effort,
+    }));
+
+    while (true) {
+      const message = await notifications.next();
+      if (!message) {
+        break;
+      }
+
+      const permissionEvent = await permissionResponder.handle(message);
+      if (permissionEvent) {
+        yield permissionEvent;
+        continue;
+      }
+
+      for (const event of extractCodexEvents(message, { resumeSessionId: options.resumeSessionId })) {
+        if (event.type === 'text') {
+          fullOutput += event.delta;
+
+          for (const textLine of event.delta.split('\n')) {
+            const cwdMatch = WORKING_DIR_PATTERN.exec(textLine.trim());
+            if (cwdMatch?.[1]) {
+              const detectedCwd = cwdMatch[1].trim();
+              yield { type: 'status', status: `cwd:${detectedCwd}` };
+              if (environmentCwd !== detectedCwd || environmentSource !== 'auto-detected') {
+                environmentCwd = detectedCwd;
+                environmentSource = 'auto-detected';
+                yield {
+                  type: 'environment',
+                  environment: buildEnvironment('codex', options, environmentCwd, environmentSource, options.model),
+                };
+              }
+            }
+          }
+        }
+
+        yield event;
+      }
+    }
+
+    await consumeStdout;
+    const { code, signal } = await closePromise;
+
+    if (abortReason === 'timeout') {
+      yield { type: 'error', error: 'Agent request timed out' };
+      return;
+    }
+    if (abortReason === 'aborted') {
+      yield { type: 'error', error: 'Agent request aborted' };
+      return;
+    }
+    if (code !== 0) {
+      const details = stderrLines.join('\n').trim();
+      const fallback = signal
+        ? `Codex CLI exited with signal ${signal}`
+        : `Codex CLI exited with code ${String(code)}`;
+      yield { type: 'error', error: details || fallback };
+      return;
+    }
+
+    yield { type: 'done', result: fullOutput.trim(), sessionId };
+  } catch (error) {
+    if (abortReason === 'timeout') {
+      yield { type: 'error', error: 'Agent request timed out' };
+    } else if (abortReason === 'aborted') {
+      yield { type: 'error', error: 'Agent request aborted' };
+    } else {
+      const details = stderrLines.join('\n').trim();
+      yield { type: 'error', error: details || toErrorMessage(error) };
+    }
+  } finally {
+    clearTimeout(timeout);
+    stderrReader?.close();
+    stdoutReader?.close();
+    if (!child.killed) child.kill('SIGTERM');
+    if (options.abortSignal) options.abortSignal.removeEventListener('abort', onAbort);
+  }
+}
+
+async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentStreamEvent, void> {
+  const cwd = options.cwd ?? config.claudeCwd;
+  let environmentCwd = cwd;
+  let environmentSource: 'explicit' | 'auto-detected' | 'default' = options.cwd ? 'explicit' : 'default';
+
+  yield {
+    type: 'environment',
+    environment: buildEnvironment('codex', options, environmentCwd, environmentSource, options.model),
+  };
+
+  const prompt = options.cwd
+    ? options.prompt
+    : `请在开始任务前，先找到与本任务相关的项目目录，并在响应的第一行输出：Working directory: /absolute/path，然后再执行任务。\n\n${options.prompt}`;
+
+  if (config.permissionMode === 'safe') {
+    yield* streamCodexAppServer(options, prompt, cwd, environmentCwd, environmentSource);
+    return;
+  }
+
+  yield* streamCodexExec(options, prompt, cwd, environmentCwd, environmentSource);
 }
 
 export const codexBackend: AgentBackend = {
