@@ -25,6 +25,7 @@ describe('npm packaging contract', () => {
       bin?: Record<string, string>;
       files?: string[];
       dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
       engines?: Record<string, string>;
       publishConfig?: {
         access?: string;
@@ -47,6 +48,7 @@ describe('npm packaging contract', () => {
     expect(appPackage.dependencies).not.toHaveProperty('@agent-im-relay/core');
     expect(appPackage.dependencies).not.toHaveProperty('@agent-im-relay/discord');
     expect(appPackage.dependencies).not.toHaveProperty('@agent-im-relay/feishu');
+    expect(appPackage.devDependencies?.['vitest']).toBeDefined();
     expect(appPackage.scripts?.['prepack']).toBe('pnpm run build');
   });
 
