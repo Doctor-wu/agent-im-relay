@@ -17,7 +17,7 @@
     "build": "pnpm --filter @agent-im-relay/core build && pnpm --filter @agent-im-relay/discord build && pnpm --filter @agent-im-relay/feishu build && pnpm --filter @agent-im-relay/slack build && vp pack",
     "prepack": "pnpm run build",
     "start": "node dist/index.mjs",
-    "test": "vitest run",
+    "test": "vp test run",
     "test:watch": "vitest"
   },
   "dependencies": {
