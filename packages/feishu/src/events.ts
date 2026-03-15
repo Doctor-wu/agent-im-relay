@@ -14,8 +14,6 @@ import { createFeishuClient } from './api';
 import type { FeishuConfig } from './config';
 import {
   buildFeishuBackendConfirmationCardPayload,
-} from './cards';
-import { formatFeishuTextMessages } from './formatting';
   buildFeishuPermissionCardPayload,
   buildPermissionRequestCard,
 } from './cards';

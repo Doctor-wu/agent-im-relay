@@ -6,9 +6,6 @@ import {
 } from './session';
 import type { AgentBackend, BackendName } from './backend';
 import { maybeUnrefTimer } from '../runtime/timers';
-} from './session';
-import type { AgentBackend, BackendName } from './backend';
-import { maybeUnrefTimer } from '../runtime/timers';
 
 type RuntimeSessionOptions = AgentSessionOptions & {
   backend?: BackendName | AgentBackend;
