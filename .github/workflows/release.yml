@@ -177,7 +177,7 @@ jobs:
         run: |
           set -euo pipefail
           current_tag="$TAG_NAME"
-          previous_tag=$(git tag --sort=-version:refname | grep -Fxv "$current_tag" | head -n1 || true)
+          previous_tag=$(git tag -l 'v*' --sort=-version:refname | grep -Fxv "$current_tag" | head -n1 || true)
           package_version="${current_tag#v}"
           changelog_file=$(mktemp)
 
