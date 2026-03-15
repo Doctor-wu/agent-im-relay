@@ -88,69 +88,76 @@ vi.mock('@agent-im-relay/core', () => ({
   initState: vi.fn(async () => {}),
   listSkills: vi.fn(async () => []),
   Orchestrator: class {},
+  resolvePermissionRequest: vi.fn(({ conversationId, requestId, decision }: any) => ({
+    conversationId,
+    requestId,
+    decision,
+    backend: 'claude',
+  })),
 }));
 
-vi.mock('../adapter.js', () => ({
+vi.mock('../adapter', () => ({
   createDiscordAdapter: vi.fn(() => ({ name: 'discord' })),
 }));
 
-vi.mock('../conversation.js', () => ({
+vi.mock('../conversation', () => ({
   hasOpenStickyThreadSession: vi.fn(() => false),
   runMentionConversation: vi.fn(async () => true),
 }));
 
-vi.mock('../files.js', () => ({
+vi.mock('../files', () => ({
   collectMessageAttachments: vi.fn(() => []),
 }));
 
-vi.mock('../thread.js', () => ({
+vi.mock('../thread', () => ({
   ensureMentionThread: vi.fn(),
 }));
 
-vi.mock('../commands/ask.js', () => ({
+vi.mock('../commands/ask', () => ({
   askCommand: { toJSON: () => ({}) },
   handleAskCommand: vi.fn(),
 }));
 
-vi.mock('../commands/code.js', () => ({
+vi.mock('../commands/code', () => ({
   codeCommand: { toJSON: () => ({}) },
   handleCodeCommand: vi.fn(),
 }));
 
-vi.mock('../commands/done.js', () => ({
+vi.mock('../commands/done', () => ({
   doneCommand: { toJSON: () => ({}) },
   handleDoneCommand: vi.fn(),
 }));
 
-vi.mock('../commands/interrupt.js', () => ({
+vi.mock('../commands/interrupt', () => ({
   interruptCommand: { toJSON: () => ({}) },
   handleInterruptCommand: vi.fn(),
 }));
 
-vi.mock('../commands/agent-control.js', () => ({
+vi.mock('../commands/agent-control', () => ({
   agentControlCommandHandlers: new Map(),
   agentControlCommands: [],
 }));
 
-vi.mock('../commands/skill.js', () => ({
+vi.mock('../commands/skill', () => ({
   handleSkillAutocomplete: vi.fn(),
   handleSkillCommand: vi.fn(),
   skillCommand: { toJSON: () => ({}) },
 }));
 
-vi.mock('../commands/thread-setup.js', () => ({
+vi.mock('../commands/thread-setup', () => ({
   promptThreadSetup: vi.fn(async () => ({ kind: 'skip' })),
   applySetupResult: vi.fn(async () => {}),
 }));
 
-import { handleDiscordMessageCreate } from '../index.js';
-import { handleSkillAutocomplete } from '../commands/skill.js';
-import { config as discordConfig } from '../config.js';
+import { handleDiscordMessageCreate } from '../index';
+import { handleSkillAutocomplete } from '../commands/skill';
+import { config as discordConfig } from '../config';
 import {
   applyMessageControlDirectives,
   getAvailableBackendCapabilities,
   persistState,
   preprocessConversationMessage,
+  resolvePermissionRequest,
 } from '@agent-im-relay/core';
 
 const interactionCreateHandler = clientMock.on.mock.calls.find(
@@ -195,6 +202,7 @@ describe('handleDiscordMessageCreate', () => {
     vi.mocked(applyMessageControlDirectives).mockReturnValue([]);
     vi.mocked(getAvailableBackendCapabilities).mockClear();
     vi.mocked(persistState).mockClear();
+    vi.mocked(resolvePermissionRequest).mockClear();
   });
 
   it('uses mention-aware channel sends when a bot mention has no prompt body', async () => {
@@ -248,6 +256,52 @@ describe('handleDiscordMessageCreate', () => {
     await interactionCreateHandler?.(interaction);
 
     expect(handleSkillAutocomplete).toHaveBeenCalledWith(interaction);
+  });
+
+  it('resolves permission button interactions through core runtime', async () => {
+    const interaction = {
+      channel: { id: 'thread-1', isThread: () => true, parentId: 'channel-1' },
+      isChatInputCommand: () => false,
+      isAutocomplete: () => false,
+      isButton: () => true,
+      customId: 'permission:approved:thread-1:perm:1',
+      update: vi.fn(async () => undefined),
+    } as any;
+
+    await interactionCreateHandler?.(interaction);
+
+    expect(resolvePermissionRequest).toHaveBeenCalledWith({
+      conversationId: 'thread-1',
+      requestId: 'perm:1',
+      decision: 'approved',
+    });
+    expect(interaction.update).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining('Status: approved'),
+    }));
+  });
+
+  it('replies ephemerally when a permission button click is stale', async () => {
+    vi.mocked(resolvePermissionRequest).mockImplementationOnce(() => {
+      throw new Error('Permission request is not pending: perm-1');
+    });
+
+    const interaction = {
+      channel: { id: 'thread-1', isThread: () => true, parentId: 'channel-1' },
+      isChatInputCommand: () => false,
+      isAutocomplete: () => false,
+      isButton: () => true,
+      customId: 'permission:approved:thread-1:perm-1',
+      reply: vi.fn(async () => undefined),
+      update: vi.fn(async () => undefined),
+    } as any;
+
+    await interactionCreateHandler?.(interaction);
+
+    expect(interaction.update).not.toHaveBeenCalled();
+    expect(interaction.reply).toHaveBeenCalledWith({
+      content: 'This permission request is no longer pending.',
+      ephemeral: true,
+    });
   });
 
   it('applies control tags before starting a new thread run', async () => {

@@ -53,7 +53,7 @@ describe('publishConversationArtifacts', () => {
     await mkdir(path.dirname(generatedFile), { recursive: true });
     await writeFile(generatedFile, '# Summary\n', 'utf-8');
 
-    const { publishConversationArtifacts } = await import('../artifacts.js');
+    const { publishConversationArtifacts } = await import('../artifacts');
     const { getConversationArtifactMetadata } = await import('@agent-im-relay/core');
     const send = vi.fn().mockResolvedValue({});
 
@@ -93,7 +93,7 @@ describe('publishConversationArtifacts', () => {
     await mkdir(path.dirname(generatedFile), { recursive: true });
     await writeFile(generatedFile, '# Summary\n', 'utf-8');
 
-    const { publishConversationArtifacts } = await import('../artifacts.js');
+    const { publishConversationArtifacts } = await import('../artifacts');
     const send = vi.fn().mockResolvedValue({});
 
     await publishConversationArtifacts({
@@ -123,7 +123,7 @@ describe('publishConversationArtifacts', () => {
 
     await mkdir(cwd, { recursive: true });
 
-    const { publishConversationArtifacts } = await import('../artifacts.js');
+    const { publishConversationArtifacts } = await import('../artifacts');
     const send = vi.fn().mockResolvedValue({});
 
     await publishConversationArtifacts({
@@ -149,7 +149,7 @@ describe('publishConversationArtifacts', () => {
 
     await mkdir(cwd, { recursive: true });
 
-    const { publishConversationArtifacts } = await import('../artifacts.js');
+    const { publishConversationArtifacts } = await import('../artifacts');
     const send = vi.fn().mockResolvedValue({});
 
     await publishConversationArtifacts({
@@ -180,7 +180,7 @@ describe('publishConversationArtifacts', () => {
     await mkdir(path.dirname(generatedFile), { recursive: true });
     await writeFile(generatedFile, '# Summary\n', 'utf-8');
 
-    const { publishConversationArtifacts } = await import('../artifacts.js');
+    const { publishConversationArtifacts } = await import('../artifacts');
     const { getConversationArtifactMetadata } = await import('@agent-im-relay/core');
     const send = vi.fn()
       .mockRejectedValueOnce(new Error('upload failed'))
@@ -220,7 +220,7 @@ describe('publishConversationArtifacts', () => {
     await mkdir(path.dirname(generatedFile), { recursive: true });
     await writeFile(generatedFile, '# Summary\n', 'utf-8');
 
-    const { publishConversationArtifacts } = await import('../artifacts.js');
+    const { publishConversationArtifacts } = await import('../artifacts');
     const send = vi.fn().mockResolvedValue({});
 
     await publishConversationArtifacts({

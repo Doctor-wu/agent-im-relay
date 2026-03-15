@@ -1,5 +1,5 @@
 import type { RelayPaths } from '@agent-im-relay/core';
-import type { AvailableIm, RuntimeConfig } from './config.js';
+import type { AvailableIm, RuntimeConfig } from './config';
 
 type RuntimeLoaders = {
   discord?: () => Promise<{ startDiscordRuntime: () => Promise<unknown> }>;

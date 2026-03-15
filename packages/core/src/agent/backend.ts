@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import type { AgentSessionOptions, AgentStreamEvent } from './session.js';
+import type { AgentSessionOptions, AgentStreamEvent } from './session';
 
 export type BackendName = string;
 

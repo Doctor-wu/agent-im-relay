@@ -3,14 +3,14 @@ import {
   registerBackend,
   resetBackendRegistryForTests,
   type AgentBackend,
-} from '../../agent/backend.js';
+} from '../../agent/backend';
 
 const { runConversationSession } = vi.hoisted(() => ({
   runConversationSession: vi.fn(),
 }));
 
-vi.mock('../../agent/runtime.js', async () => {
-  const actual = await vi.importActual<typeof import('../../agent/runtime.js')>('../../agent/runtime.js');
+vi.mock('../../agent/runtime', async () => {
+  const actual = await vi.importActual<typeof import('../../agent/runtime')>('../../agent/runtime');
   return {
     ...actual,
     runConversationSession,
@@ -30,8 +30,8 @@ import {
   threadContinuationSnapshots,
   threadSessionBindings,
   updateThreadContinuationSnapshot,
-} from '../../index.js';
-import { runConversationWithRenderer } from '../conversation-runner.js';
+} from '../../index';
+import { runConversationWithRenderer } from '../conversation-runner';
 
 async function drainEvents(events: AsyncIterable<unknown>): Promise<void> {
   for await (const _event of events) {
@@ -320,6 +320,43 @@ describe('runConversationWithRenderer', () => {
       whyStopped,
     }));
     expect(resolveThreadResumeMode(`conv-${whyStopped}`).type).toBe('snapshot-resume');
+  });
+
+  it.each([
+    ['Agent request timed out'],
+    ['Agent request aborted'],
+  ] as const)('does not emit a terminal done phase after %s', async (error) => {
+    const onPhaseChange = vi.fn(async () => {});
+
+    runConversationSession.mockImplementation(async function* () {
+      yield {
+        type: 'environment',
+        environment: {
+          backend: 'claude',
+          mode: 'code',
+          model: {},
+          cwd: { value: '/tmp/workspace', source: 'explicit' },
+          git: { isRepo: false },
+        },
+      };
+      yield { type: 'error', error };
+    });
+
+    const render = vi.fn(async (_options, events) => {
+      await drainEvents(events);
+    });
+
+    await runConversationWithRenderer({
+      conversationId: `conv-phase-${error}`,
+      target: { id: `channel-phase-${error}` },
+      prompt: 'resume later',
+      defaultCwd: '/tmp/workspace',
+      onPhaseChange,
+      render,
+    });
+
+    expect(onPhaseChange).toHaveBeenCalledTimes(1);
+    expect(onPhaseChange).toHaveBeenCalledWith('error', 'thinking', undefined);
   });
 
   it('uses snapshot fallback on the next message when native resume is unavailable', async () => {

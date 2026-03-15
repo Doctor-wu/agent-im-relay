@@ -19,7 +19,14 @@ const coreMocks = vi.hoisted(() => ({
   ]),
   getAvailableBackendNames: vi.fn(async () => ['claude', 'opencode']),
   initState: vi.fn(async () => undefined),
+  maybeUnrefTimer: vi.fn(),
   persistState: vi.fn(async () => undefined),
+  resolvePermissionRequest: vi.fn(({ conversationId, requestId, decision }: any) => ({
+    conversationId,
+    requestId,
+    decision,
+    backend: 'claude',
+  })),
 }));
 
 const runtimeMocks = vi.hoisted(() => ({
@@ -36,12 +43,14 @@ vi.mock('@agent-im-relay/core', async (importOriginal) => {
     getAvailableBackendCapabilities: coreMocks.getAvailableBackendCapabilities,
     getAvailableBackendNames: coreMocks.getAvailableBackendNames,
     initState: coreMocks.initState,
+    maybeUnrefTimer: coreMocks.maybeUnrefTimer,
     persistState: coreMocks.persistState,
+    resolvePermissionRequest: coreMocks.resolvePermissionRequest,
   };
 });
 
-vi.mock('../runtime.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../runtime.js')>();
+vi.mock('../runtime', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../runtime')>();
   return {
     ...actual,
     handleFeishuControlAction: runtimeMocks.handleFeishuControlAction,
@@ -60,15 +69,15 @@ import {
   normalizeFeishuCardActionTriggerEvent,
   normalizeFeishuMenuActionTriggerEvent,
   normalizeFeishuMessageReceiveEvent,
-} from '../events.js';
-import { normalizeFeishuEvent } from '../conversation.js';
-import { resolveFeishuSessionChatStateFile } from '../config.js';
+} from '../events';
+import { normalizeFeishuEvent } from '../conversation';
+import { resolveFeishuSessionChatStateFile } from '../config';
 import {
   buildFeishuSessionChatRecord,
   persistFeishuSessionChats,
   rememberFeishuSessionChat,
   resetFeishuSessionChatsForTests,
-} from '../session-chat.js';
+} from '../session-chat';
 
 const baseConfig = {
   agentTimeoutMs: 1_000,
@@ -114,7 +123,9 @@ afterEach(async () => {
     },
   ]);
   coreMocks.getAvailableBackendNames.mockResolvedValue(['claude', 'opencode']);
+  coreMocks.maybeUnrefTimer.mockClear();
   coreMocks.persistState.mockClear();
+  coreMocks.resolvePermissionRequest.mockClear();
   runtimeMocks.handleFeishuControlAction.mockReset();
   runtimeMocks.queuePendingFeishuAttachments.mockReset();
   runtimeMocks.resumePendingFeishuRun.mockReset();
@@ -249,6 +260,91 @@ describe('Feishu long-connection events', () => {
       prompt: 'ship it',
       mode: 'code',
     }));
+  });
+
+  it('routes permission card actions through the shared core resolver', async () => {
+    const updateCardMessage = vi.fn(async () => undefined);
+    const router = createFeishuEventRouter(baseConfig, {
+      client: {
+        replyMessage: vi.fn(async () => undefined),
+        sendMessage: vi.fn(async () => undefined),
+        sendCard: vi.fn(async () => undefined),
+        updateCardMessage,
+        uploadFileContent: vi.fn(async () => 'file-key'),
+        sendFileMessage: vi.fn(async () => undefined),
+        downloadMessageResource: vi.fn(async () => new Response()),
+      } as never,
+    });
+
+    await router.handleCardActionEvent({
+      open_message_id: 'open-message-1',
+      action: {
+        value: {
+          conversationId: 'conv-1',
+          chatId: 'chat-1',
+          action: 'permission-approve',
+          requestId: 'perm-1',
+          tool: 'Bash',
+          reason: 'Run rm -rf build',
+        },
+      },
+    });
+
+    expect(coreMocks.resolvePermissionRequest).toHaveBeenCalledWith({
+      conversationId: 'conv-1',
+      requestId: 'perm-1',
+      decision: 'approved',
+    });
+    expect(updateCardMessage).toHaveBeenCalledWith(
+      'open-message-1',
+      expect.objectContaining({
+        body: expect.objectContaining({
+          elements: expect.arrayContaining([
+            expect.objectContaining({ content: 'Status: Approved' }),
+          ]),
+        }),
+      }),
+    );
+  });
+
+  it('sends a friendly message when a permission card action is stale', async () => {
+    coreMocks.resolvePermissionRequest.mockImplementationOnce(() => {
+      throw new Error('Permission request is not pending: perm-1');
+    });
+
+    const replyMessage = vi.fn(async () => undefined);
+    const sendMessage = vi.fn(async () => undefined);
+    const router = createFeishuEventRouter(baseConfig, {
+      client: {
+        replyMessage,
+        sendMessage,
+        sendCard: vi.fn(async () => undefined),
+        updateCardMessage: vi.fn(async () => undefined),
+        uploadFileContent: vi.fn(async () => 'file-key'),
+        sendFileMessage: vi.fn(async () => undefined),
+        downloadMessageResource: vi.fn(async () => new Response()),
+      } as never,
+    });
+
+    await router.handleCardActionEvent({
+      open_message_id: 'open-message-1',
+      action: {
+        value: {
+          conversationId: 'conv-1',
+          chatId: 'chat-1',
+          action: 'permission-deny',
+          requestId: 'perm-1',
+          replyToMessageId: 'open-message-1',
+        },
+      },
+    });
+
+    expect(replyMessage).toHaveBeenCalledWith(expect.objectContaining({
+      messageId: 'open-message-1',
+      msgType: 'post',
+      content: expect.stringContaining('This permission request is no longer pending.'),
+    }));
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
   it('applies standalone backend control tags without prompting for missing text', async () => {

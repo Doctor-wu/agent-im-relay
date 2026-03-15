@@ -5,15 +5,15 @@ const { ensureCodeThread, runMentionConversation } = vi.hoisted(() => ({
   runMentionConversation: vi.fn(),
 }));
 
-vi.mock('../thread.js', () => ({
+vi.mock('../thread', () => ({
   ensureCodeThread,
 }));
 
-vi.mock('../conversation.js', () => ({
+vi.mock('../conversation', () => ({
   runMentionConversation,
 }));
 
-import { handleCodeCommand } from '../commands/code.js';
+import { handleCodeCommand } from '../commands/code';
 
 describe('handleCodeCommand', () => {
   beforeEach(() => {

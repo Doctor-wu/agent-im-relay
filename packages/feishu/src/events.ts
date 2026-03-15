@@ -2,18 +2,22 @@ import { readFile } from 'node:fs/promises';
 import {
   applyMessageControlDirectives,
   initState,
+  maybeUnrefTimer,
   persistState,
   preprocessConversationMessage,
   processedEventIds,
   processedMessages,
+  resolvePermissionRequest,
   type BackendName,
 } from '@agent-im-relay/core';
-import { createFeishuClient } from './api.js';
-import type { FeishuConfig } from './config.js';
+import { createFeishuClient } from './api';
+import type { FeishuConfig } from './config';
 import {
   buildFeishuBackendConfirmationCardPayload,
-} from './cards.js';
-import { formatFeishuTextMessages } from './formatting.js';
+  buildFeishuPermissionCardPayload,
+  buildPermissionRequestCard,
+} from './cards';
+import { formatFeishuTextMessages } from './formatting';
 import {
   extractFeishuAttachmentInfos,
   extractFeishuMessageText,
@@ -25,19 +29,19 @@ import {
   type FeishuActionPayload,
   type FeishuMessagePayload,
   type FeishuRawEvent,
-} from './conversation.js';
+} from './conversation';
 import {
   buildFeishuSessionChatRecord,
   findFeishuSessionChatBySourceMessage,
   initializeFeishuSessionChats,
   persistFeishuSessionChats,
   resolveFeishuChatSessionKind,
-} from './session-chat.js';
+} from './session-chat';
 import {
   rememberMirroredFeishuMessageId,
   consumeMirroredFeishuMessageId,
-} from './launch-state.js';
-import { launchFeishuSessionFromPrivateChat } from './launcher.js';
+} from './launch-state';
+import { launchFeishuSessionFromPrivateChat } from './launcher';
 import {
   buildFeishuCardContext,
   drainPendingFeishuAttachments,
@@ -49,9 +53,9 @@ import {
   resolveFeishuMessageRequest,
   type FeishuRuntimeTransport,
   type FeishuTarget,
-} from './runtime.js';
-import { runFeishuSessionFlow } from './session-flow.js';
-import { describeError } from './utils.js';
+} from './runtime';
+import { runFeishuSessionFlow } from './session-flow';
+import { describeError } from './utils';
 
 type FeishuClient = ReturnType<typeof createFeishuClient>;
 
@@ -135,12 +139,6 @@ type DedupClaim = {
   duplicate: boolean;
   complete(succeeded: boolean): void;
 };
-
-function maybeUnrefTimer(timer: ReturnType<typeof setTimeout>): void {
-  if (typeof (timer as { unref?: () => void }).unref === 'function') {
-    (timer as { unref: () => void }).unref();
-  }
-}
 
 function scheduleProcessedKey(
   store: ProcessedKeyStore,
@@ -744,6 +742,40 @@ export function createFeishuEventRouter(
           target,
           transport,
         });
+        succeeded = true;
+        return;
+      }
+
+      if (actionType === 'permission-approve' || actionType === 'permission-deny') {
+        const requestId = typeof action.requestId === 'string' ? action.requestId : undefined;
+        if (!requestId || !target.replyToMessageId) {
+          succeeded = true;
+          return;
+        }
+
+        try {
+          const resolved = resolvePermissionRequest({
+            conversationId,
+            requestId,
+            decision: actionType === 'permission-approve' ? 'approved' : 'denied',
+          });
+          await transport.updateCard(
+            target,
+            target.replyToMessageId,
+            buildFeishuPermissionCardPayload(
+              buildPermissionRequestCard(
+                conversationId,
+                requestId,
+                typeof action.tool === 'string' ? action.tool : undefined,
+                typeof action.reason === 'string' ? action.reason : undefined,
+              ),
+              buildFeishuCardContext(conversationId, target),
+              resolved.decision,
+            ),
+          );
+        } catch {
+          await transport.sendText(target, 'This permission request is no longer pending.');
+        }
         succeeded = true;
         return;
       }

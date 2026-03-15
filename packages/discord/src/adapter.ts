@@ -10,9 +10,14 @@ import type {
   AgentStatus,
   FormattedContent,
 } from '@agent-im-relay/core';
-import { config } from './config.js';
-import { convertMarkdownForDiscord, type EmbedData } from './stream.js';
-import { ensureMentionThread } from './thread.js';
+import { config } from './config';
+import { convertMarkdownForDiscord, type EmbedData } from './stream';
+import { ensureMentionThread } from './thread';
+
+type SendableTextChannel = TextBasedChannel & {
+  send(payload: string | { content: string; embeds?: any[] }): Promise<Message>;
+  messages: { fetch(messageId: MessageId): Promise<Message | null> };
+};
 
 // --- Reaction-based status ---
 
@@ -36,12 +41,12 @@ class DiscordMessageSender implements MessageSender {
     this.maxMessageLength = Math.max(200, config.discordMessageCharLimit);
   }
 
-  private async resolveChannel(conversationId: ConversationId): Promise<TextBasedChannel> {
+  private async resolveChannel(conversationId: ConversationId): Promise<SendableTextChannel> {
     const channel = await this.client.channels.fetch(conversationId);
-    if (!channel?.isTextBased()) {
+    if (!channel?.isTextBased() || !('send' in channel) || !('messages' in channel)) {
       throw new Error(`Channel ${conversationId} is not text-based or not found`);
     }
-    return channel as TextBasedChannel;
+    return channel as SendableTextChannel;
   }
 
   async send(conversationId: ConversationId, content: string, extras?: unknown): Promise<MessageId> {

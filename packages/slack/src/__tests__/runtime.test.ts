@@ -24,12 +24,19 @@ const coreMocks = vi.hoisted(() => ({
       dir: '/tmp/brainstorming',
     },
   ]),
+  maybeUnrefTimer: vi.fn(),
   resolveBackendModelId: vi.fn((backend: string, model: string) => {
     if (backend === 'claude' && (model === 'sonnet' || model === 'claude/sonnet')) {
       return 'sonnet';
     }
     return undefined;
   }),
+  resolvePermissionRequest: vi.fn(({ conversationId, requestId, decision }: any) => ({
+    conversationId,
+    requestId,
+    decision,
+    backend: 'claude',
+  })),
   runPlatformConversation: vi.fn(async () => true),
 }));
 
@@ -42,7 +49,9 @@ vi.mock('@agent-im-relay/core', async (importOriginal) => {
     getAvailableBackendCapabilities: coreMocks.getAvailableBackendCapabilities,
     getAvailableBackendNames: coreMocks.getAvailableBackendNames,
     listSkills: coreMocks.listSkills,
+    maybeUnrefTimer: coreMocks.maybeUnrefTimer,
     resolveBackendModelId: coreMocks.resolveBackendModelId,
+    resolvePermissionRequest: coreMocks.resolvePermissionRequest,
     runPlatformConversation: coreMocks.runPlatformConversation,
   };
 });
@@ -93,24 +102,33 @@ function createRuntimeConfig() {
 function createMockApp() {
   const commandHandlers = new Map<string, (args: any) => Promise<void>>();
   const eventHandlers = new Map<string, (args: any) => Promise<void>>();
+  const actionHandlers: Array<(args: any) => Promise<void>> = [];
   return {
     command: vi.fn((name: string, handler: (args: any) => Promise<void>) => {
       commandHandlers.set(name, handler);
     }),
-    action: vi.fn(),
+    action: vi.fn((_constraint: string | RegExp, handler: (args: any) => Promise<void>) => {
+      actionHandlers.push(handler);
+    }),
     event: vi.fn((name: string, handler: (args: any) => Promise<void>) => {
       eventHandlers.set(name, handler);
     }),
     start: vi.fn(async () => undefined),
+    client: {
+      chat: {
+        postEphemeral: vi.fn(async () => undefined),
+      },
+    },
     commandHandlers,
+    actionHandlers,
     eventHandlers,
   };
 }
 
 afterEach(async () => {
   vi.useRealTimers();
-  const { resetSlackRuntimeForTests } = await import('../runtime.js');
-  const { resetSlackStateForTests } = await import('../state.js');
+  const { resetSlackRuntimeForTests } = await import('../runtime');
+  const { resetSlackStateForTests } = await import('../state');
   resetSlackRuntimeForTests();
   resetSlackStateForTests();
 });
@@ -125,7 +143,9 @@ describe('Slack runtime', () => {
     coreMocks.getAvailableBackendCapabilities.mockClear();
     coreMocks.getAvailableBackendNames.mockClear();
     coreMocks.listSkills.mockClear();
+    coreMocks.maybeUnrefTimer.mockClear();
     coreMocks.resolveBackendModelId.mockClear();
+    coreMocks.resolvePermissionRequest.mockClear();
     coreMocks.runPlatformConversation.mockReset();
     coreMocks.runPlatformConversation.mockResolvedValue(true);
     coreMocks.evaluateConversationRunRequest.mockReturnValue({
@@ -188,7 +208,7 @@ describe('Slack runtime', () => {
   });
 
   it('registers Socket Mode handlers for commands, actions, and messages', async () => {
-    const { createSlackRuntime } = await import('../runtime.js');
+    const { createSlackRuntime } = await import('../runtime');
     const transport = createMockTransport();
     const app = createMockApp();
 
@@ -213,7 +233,7 @@ describe('Slack runtime', () => {
   });
 
   it('sets Slack presence to auto when the runtime starts', async () => {
-    const { createSlackRuntime } = await import('../runtime.js');
+    const { createSlackRuntime } = await import('../runtime');
     const transport = createMockTransport();
     const app = createMockApp();
     (app as any).client = {
@@ -235,8 +255,8 @@ describe('Slack runtime', () => {
   });
 
   it('starts a new conversation from a channel root app mention without creating a seed thread', async () => {
-    const { createSlackRuntime } = await import('../runtime.js');
-    const { getSlackConversation } = await import('../state.js');
+    const { createSlackRuntime } = await import('../runtime');
+    const { getSlackConversation } = await import('../state');
     const transport = createMockTransport();
     const app = createMockApp();
     const runtime = createSlackRuntime({
@@ -271,8 +291,8 @@ describe('Slack runtime', () => {
   });
 
   it('routes app mentions inside a mapped thread back into the existing conversation', async () => {
-    const { createSlackRuntime } = await import('../runtime.js');
-    const { rememberSlackConversation } = await import('../state.js');
+    const { createSlackRuntime } = await import('../runtime');
+    const { rememberSlackConversation } = await import('../state');
     const transport = createMockTransport();
     const app = createMockApp();
     const runtime = createSlackRuntime({
@@ -313,7 +333,7 @@ describe('Slack runtime', () => {
   });
 
   it('throws on start when no Slack config is provided from options or ~/.agent-inbox/config.jsonl', async () => {
-    const { createSlackRuntime } = await import('../runtime.js');
+    const { createSlackRuntime } = await import('../runtime');
     const transport = createMockTransport();
     const app = {
       command: vi.fn(),
@@ -333,8 +353,122 @@ describe('Slack runtime', () => {
     );
   });
 
-  it('always creates a fresh thread for /code and starts the run there', async () => {
+  it('resolves permission button actions and updates the existing Slack card', async () => {
     const { createSlackRuntime } = await import('../runtime.js');
+    const transport = createMockTransport();
+    coreMocks.runPlatformConversation.mockImplementationOnce(async (options: any) => {
+      const events = [
+        {
+          type: 'permission-requested',
+          requestId: 'perm-1',
+          backend: 'claude',
+          tool: 'Bash',
+          reason: 'Run rm -rf build',
+          expiresAt: '2026-03-15T00:00:00.000Z',
+        },
+        {
+          type: 'done',
+          result: 'Done.',
+        },
+      ];
+      await options.render({ target: options.target, showEnvironment: false }, (async function* () {
+        for (const event of events) {
+          yield event;
+        }
+      })());
+      return true;
+    });
+
+    const runtime = createSlackRuntime({
+      transport,
+      defaultCwd: process.cwd(),
+      config: createRuntimeConfig(),
+      createApp: () => createMockApp() as any,
+    });
+
+    await runtime.handleMessage({
+      channel: 'D123',
+      channel_type: 'im',
+      ts: '1741766502.000001',
+      text: 'ship it',
+      user: 'U123',
+      subtype: undefined,
+    } as any);
+
+    await runtime.handleAction({
+      channel: { id: 'D123' },
+      message: { ts: '1741766402.000001', thread_ts: '1741766502.000001' },
+      actions: [{
+        value: JSON.stringify({
+          type: 'permission',
+          conversationId: '1741766502.000001',
+          requestId: 'perm-1',
+          decision: 'approved',
+        }),
+      }],
+      user: { id: 'U123' },
+    });
+
+    expect(coreMocks.resolvePermissionRequest).toHaveBeenCalledWith({
+      conversationId: '1741766502.000001',
+      requestId: 'perm-1',
+      decision: 'approved',
+    });
+    expect(transport.updateBlocks).toHaveBeenCalledWith(
+      { channelId: 'D123', threadTs: '1741766502.000001' },
+      '1741766402.000001',
+      'Permission Required',
+      expect.any(Array),
+    );
+  });
+
+  it('shows an ephemeral stale-action message for resolved permission buttons', async () => {
+    const { createSlackRuntime } = await import('../runtime.js');
+    const transport = createMockTransport();
+    const app = createMockApp();
+    coreMocks.resolvePermissionRequest.mockImplementationOnce(() => {
+      throw new Error('Permission request is not pending: perm-1');
+    });
+
+    const runtime = createSlackRuntime({
+      transport,
+      defaultCwd: process.cwd(),
+      config: createRuntimeConfig(),
+      createApp: () => app as any,
+    });
+
+    await runtime.start();
+    const handler = app.actionHandlers[0];
+    expect(handler).toBeTypeOf('function');
+
+    await handler({
+      body: {
+        channel: { id: 'D123' },
+        message: { ts: '1741766402.000001', thread_ts: '1741766502.000001' },
+        user: { id: 'U123' },
+      },
+      ack: vi.fn(async () => undefined),
+      action: {
+        value: JSON.stringify({
+          type: 'permission',
+          conversationId: '1741766502.000001',
+          requestId: 'perm-1',
+          decision: 'approved',
+        }),
+      },
+    });
+
+    expect(app.client.chat.postEphemeral).toHaveBeenCalledWith({
+      channel: 'D123',
+      user: 'U123',
+      text: 'This permission request is no longer pending.',
+      thread_ts: '1741766502.000001',
+    });
+    expect(transport.sendText).not.toHaveBeenCalled();
+  });
+
+  it('always creates a fresh thread for /code and starts the run there', async () => {
+    const { createSlackRuntime } = await import('../runtime');
     const transport = createMockTransport();
     const runtime = createSlackRuntime({
       transport,
@@ -370,7 +504,7 @@ describe('Slack runtime', () => {
   });
 
   it('uses a DM root message instead of createThread for /code in direct messages', async () => {
-    const { createSlackRuntime } = await import('../runtime.js');
+    const { createSlackRuntime } = await import('../runtime');
     const transport = createMockTransport();
     const runtime = createSlackRuntime({
       transport,
@@ -404,7 +538,7 @@ describe('Slack runtime', () => {
   });
 
   it('rejects control commands outside mapped conversation threads', async () => {
-    const { createSlackRuntime } = await import('../runtime.js');
+    const { createSlackRuntime } = await import('../runtime');
     const transport = createMockTransport();
     const runtime = createSlackRuntime({
       transport,
@@ -431,7 +565,7 @@ describe('Slack runtime', () => {
   });
 
   it('stores blocked runs and resumes them after backend selection', async () => {
-    const { createSlackRuntime } = await import('../runtime.js');
+    const { createSlackRuntime } = await import('../runtime');
     const transport = createMockTransport();
     const runtime = createSlackRuntime({
       transport,
@@ -498,7 +632,7 @@ describe('Slack runtime', () => {
 
   it('auto-selects a model after timeout and resumes the pending run', async () => {
     vi.useFakeTimers();
-    const { createSlackRuntime } = await import('../runtime.js');
+    const { createSlackRuntime } = await import('../runtime');
     const transport = createMockTransport();
     const runtime = createSlackRuntime({
       transport,
@@ -539,7 +673,7 @@ describe('Slack runtime', () => {
 
   it('clears the pending run when model auto-selection cannot choose a fallback', async () => {
     vi.useFakeTimers();
-    const { createSlackRuntime, hasPendingSlackRun } = await import('../runtime.js');
+    const { createSlackRuntime, hasPendingSlackRun } = await import('../runtime');
     const transport = createMockTransport();
     const runtime = createSlackRuntime({
       transport,
@@ -587,8 +721,8 @@ describe('Slack runtime', () => {
   });
 
   it('routes active-thread user messages back into the mapped conversation', async () => {
-    const { createSlackRuntime } = await import('../runtime.js');
-    const { rememberSlackConversation } = await import('../state.js');
+    const { createSlackRuntime } = await import('../runtime');
+    const { rememberSlackConversation } = await import('../state');
     const transport = createMockTransport();
     const runtime = createSlackRuntime({
       transport,
@@ -624,8 +758,8 @@ describe('Slack runtime', () => {
   });
 
   it('starts a DM conversation from the first direct message without creating a thread', async () => {
-    const { createSlackRuntime } = await import('../runtime.js');
-    const { getSlackConversation } = await import('../state.js');
+    const { createSlackRuntime } = await import('../runtime');
+    const { getSlackConversation } = await import('../state');
     const transport = createMockTransport();
     const runtime = createSlackRuntime({
       transport,

@@ -1,14 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { copyFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { config } from '../config.js';
+import { config } from '../config';
 import {
   cloneConversationArtifactMetadata,
   ensureConversationArtifactPaths,
-} from '../artifacts/store.js';
-import { parseArtifactManifest, resolveArtifactCandidatePaths } from '../artifacts/protocol.js';
-import type { ArtifactKind, ArtifactManifestFile, ArtifactRecord } from '../artifacts/types.js';
-import { getConversationArtifactMetadata, persistConversationArtifactMetadata } from '../state.js';
+} from '../artifacts/store';
+import { parseArtifactManifest, resolveArtifactCandidatePaths } from '../artifacts/protocol';
+import type { ArtifactKind, ArtifactManifestFile, ArtifactRecord } from '../artifacts/types';
+import { getConversationArtifactMetadata, persistConversationArtifactMetadata } from '../state';
 
 export type RemoteAttachmentLike = {
   id?: string;

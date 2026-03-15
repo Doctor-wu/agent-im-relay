@@ -22,7 +22,7 @@ describe('discord config', () => {
 
     await import('@agent-im-relay/core');
 
-    const { readDiscordConfig } = await import('../config.js');
+    const { readDiscordConfig } = await import('../config');
     const config = readDiscordConfig(homeDir);
     expect(config.discordToken).toBe('discord-token');
     expect(config.discordClientId).toBe('discord-client-id');

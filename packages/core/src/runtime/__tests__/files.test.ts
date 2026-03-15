@@ -35,7 +35,7 @@ describe('shared runtime files', () => {
     const tempRoot = await createTempDir('core-files-');
     const artifactsBaseDir = await setupRelayHome(tempRoot);
 
-    const { prepareAttachmentPrompt } = await import('../files.js');
+    const { prepareAttachmentPrompt } = await import('../files');
 
     const prepared = await prepareAttachmentPrompt({
       conversationId: 'conv-files',
@@ -69,7 +69,7 @@ describe('shared runtime files', () => {
     await mkdir(path.dirname(generatedFile), { recursive: true });
     await writeFile(generatedFile, '# Summary\n', 'utf-8');
 
-    const { stageOutgoingArtifacts } = await import('../files.js');
+    const { stageOutgoingArtifacts } = await import('../files');
 
     const staged = await stageOutgoingArtifacts({
       conversationId: 'conv-stage',

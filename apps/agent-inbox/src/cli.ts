@@ -7,14 +7,14 @@ import {
   saveAppConfig,
   type AvailableIm,
   upsertRecord,
-} from './config.js';
-import { acquirePidLock, registerPidCleanup } from './pid-lock.js';
-import { startSelectedIm } from './runtime.js';
+} from './config';
+import { acquirePidLock, registerPidCleanup } from './pid-lock';
+import { startSelectedIm } from './runtime';
 import {
   runSetup,
   getUnconfiguredPlatforms,
   PLATFORM_LABELS,
-} from './setup.js';
+} from './setup';
 
 const CONFIGURE_NEW = '__configure_new__' as const;
 

@@ -11,7 +11,7 @@ describe('core config', () => {
   it('does not expose relay-level model config', async () => {
     vi.stubEnv('CLAUDE_MODEL', 'sonnet');
 
-    const { readCoreConfig } = await import('../config.js');
+    const { readCoreConfig } = await import('../config');
     const config = readCoreConfig();
 
     expect('claudeModel' in config).toBe(false);
@@ -22,7 +22,7 @@ describe('core config', () => {
     vi.stubEnv('HOME', homeDir);
     vi.stubEnv('INIT_CWD', '');
 
-    const { readCoreConfig } = await import('../config.js');
+    const { readCoreConfig } = await import('../config');
     const config = readCoreConfig(homeDir);
 
     expect(config.stateFile).toBe(join(homeDir, '.agent-inbox', 'state', 'sessions.json'));
@@ -33,7 +33,7 @@ describe('core config', () => {
     vi.stubEnv('HOME', '/definitely/missing-home');
     vi.stubEnv('INIT_CWD', '');
 
-    const { readCoreConfig } = await import('../config.js');
+    const { readCoreConfig } = await import('../config');
     const config = readCoreConfig(process.cwd());
 
     expect(config.stateFile).toBe(join(process.cwd(), '.agent-inbox', 'state', 'sessions.json'));
@@ -45,7 +45,7 @@ describe('core config', () => {
     vi.stubEnv('HOME', '/definitely/missing-home');
     vi.stubEnv('INIT_CWD', initCwd);
 
-    const { readCoreConfig } = await import('../config.js');
+    const { readCoreConfig } = await import('../config');
     const config = readCoreConfig(initCwd);
 
     expect(config.stateFile).toBe(join(initCwd, '.agent-inbox', 'state', 'sessions.json'));
@@ -61,7 +61,7 @@ describe('core config', () => {
     await mkdir(configDir, { recursive: true });
     await writeFile(join(configDir, 'config.jsonl'), [
       '{"type":"meta","version":1}',
-      '{"type":"runtime","config":{"agentTimeoutMs":1234,"artifactRetentionDays":21,"artifactMaxSizeBytes":4096,"streamUpdateIntervalMs":750,"discordMessageCharLimit":1800,"claudeCwd":"/tmp/relay-workspace","claudeBin":"/tmp/bin/claude","codexBin":"/tmp/bin/codex","opencodeBin":"/tmp/bin/opencode"}}',
+      '{"type":"runtime","config":{"agentTimeoutMs":1234,"artifactRetentionDays":21,"artifactMaxSizeBytes":4096,"streamUpdateIntervalMs":750,"discordMessageCharLimit":1800,"permissionMode":"safe","permissionRequestTimeoutMs":120000,"claudeCwd":"/tmp/relay-workspace","claudeBin":"/tmp/bin/claude","codexBin":"/tmp/bin/codex","opencodeBin":"/tmp/bin/opencode"}}',
       '{"type":"im","id":"discord","enabled":true,"config":{"token":"discord-token","clientId":"discord-client","guildIds":["guild-1"],"allowedChannelIds":["channel-1"]}}',
       '{"type":"im","id":"feishu","enabled":true,"config":{"appId":"feishu-app","appSecret":"feishu-secret","baseUrl":"https://feishu.example.invalid","modelSelectionTimeoutMs":2500}}',
       '{"type":"im","id":"slack","enabled":true,"config":{"botToken":"xoxb-token","appToken":"xapp-token","signingSecret":"signing-secret","socketMode":false}}',
@@ -73,7 +73,7 @@ describe('core config', () => {
       readDiscordRelayConfig,
       readFeishuRelayConfig,
       readSlackRelayConfig,
-    } = await import('../config.js');
+    } = await import('../config');
 
     const loaded = readRelayConfig(homeDir);
     const coreConfig = readCoreConfig(homeDir);
@@ -86,6 +86,8 @@ describe('core config', () => {
       agentTimeoutMs: 1234,
       artifactRetentionDays: 21,
       artifactMaxSizeBytes: 4096,
+      permissionMode: 'safe',
+      permissionRequestTimeoutMs: 120000,
       claudeCwd: '/tmp/relay-workspace',
       claudeBin: '/tmp/bin/claude',
       codexBin: '/tmp/bin/codex',
@@ -117,17 +119,26 @@ describe('core config', () => {
 
   it('resolves platform-specific state directories for Slack', async () => {
     const baseDir = await mkdtemp('/tmp/agent-inbox-platform-state-');
-    const { resolveRelayPlatformStateDir } = await import('../paths.js');
+    const { resolveRelayPlatformStateDir } = await import('../paths');
 
     expect(resolveRelayPlatformStateDir('slack', baseDir)).toBe(
       join(baseDir, '.agent-inbox', 'state', 'slack'),
     );
   });
+
+  it('defaults permission runtime settings when config.jsonl omits them', async () => {
+    const { resolveRuntimeConfig } = await import('../config.js');
+
+    expect(resolveRuntimeConfig([])).toMatchObject({
+      permissionMode: 'auto',
+      permissionRequestTimeoutMs: 120000,
+    });
+  });
 });
 
 describe('relay platform inference', () => {
   it('recognizes Slack thread timestamps as Slack conversations', async () => {
-    const { inferRelayPlatformFromConversationId, relayPlatforms } = await import('../relay-platform.js');
+    const { inferRelayPlatformFromConversationId, relayPlatforms } = await import('../relay-platform');
 
     expect(relayPlatforms).toContain('slack');
     expect(inferRelayPlatformFromConversationId('1741766400.123456')).toBe('slack');

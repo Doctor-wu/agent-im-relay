@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatFeishuTextMessages } from '../formatting.js';
+import { formatFeishuTextMessages } from '../formatting';
 
 function extractPostParagraphTexts(content: string): string[] {
   const parsed = JSON.parse(content) as {

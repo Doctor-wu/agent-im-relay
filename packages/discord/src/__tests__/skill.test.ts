@@ -14,7 +14,7 @@ vi.mock('@agent-im-relay/core', async () => {
   };
 });
 
-vi.mock('../conversation.js', () => ({
+vi.mock('../conversation', () => ({
   runMentionConversation,
 }));
 
@@ -26,7 +26,7 @@ vi.mock('node:fs/promises', async () => {
   };
 });
 
-import * as skillModule from '../commands/skill.js';
+import * as skillModule from '../commands/skill';
 
 function createSkillMarkdown(options: { tags?: string; aliases?: string } = {}): string {
   const lines = ['---'];

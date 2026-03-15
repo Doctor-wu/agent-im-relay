@@ -6,8 +6,8 @@ const { runConversationWithRenderer } = vi.hoisted(() => ({
   runConversationWithRenderer: vi.fn(),
 }));
 
-vi.mock('../../runtime/conversation-runner.js', async () => {
-  const actual = await vi.importActual<typeof import('../../runtime/conversation-runner.js')>('../../runtime/conversation-runner.js');
+vi.mock('../../runtime/conversation-runner', async () => {
+  const actual = await vi.importActual<typeof import('../../runtime/conversation-runner')>('../../runtime/conversation-runner');
   return {
     ...actual,
     runConversationWithRenderer,
@@ -23,7 +23,7 @@ describe('runPlatformConversation', () => {
   });
 
   it('delegates to the shared runner and prepares attachment prompts', async () => {
-    const { runPlatformConversation } = await import('../conversation.js');
+    const { runPlatformConversation } = await import('../conversation');
     const render = vi.fn(async () => {});
     const publish = vi.fn(async () => {});
 
@@ -81,7 +81,7 @@ describe('runPlatformConversation', () => {
   });
 
   it('passes through phase callbacks and runner status', async () => {
-    const { runPlatformConversation } = await import('../conversation.js');
+    const { runPlatformConversation } = await import('../conversation');
     const onPhaseChange = vi.fn(async () => {});
 
     await expect(runPlatformConversation({

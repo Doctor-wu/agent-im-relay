@@ -8,8 +8,8 @@ import {
   preprocessConversationMessage,
   threadContinuationSnapshots,
   threadSessionBindings,
-} from '../../index.js';
-import { openThreadSessionBinding, updateThreadContinuationSnapshot } from '../../thread-session/manager.js';
+} from '../../index';
+import { openThreadSessionBinding, updateThreadContinuationSnapshot } from '../../thread-session/manager';
 
 describe('message preprocessing', () => {
   beforeEach(() => {

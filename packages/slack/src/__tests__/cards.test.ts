@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 describe('Slack Block Kit cards', () => {
   it('builds a backend selection card with one action per backend', async () => {
-    const { buildSlackBackendSelectionBlocks } = await import('../cards.js');
+    const { buildSlackBackendSelectionBlocks } = await import('../cards');
 
     const blocks = buildSlackBackendSelectionBlocks({
       conversationId: '1741766400.123456',
@@ -23,7 +23,7 @@ describe('Slack Block Kit cards', () => {
   });
 
   it('builds a model selection card that exposes model ids in action values', async () => {
-    const { buildSlackModelSelectionBlocks } = await import('../cards.js');
+    const { buildSlackModelSelectionBlocks } = await import('../cards');
 
     const blocks = buildSlackModelSelectionBlocks({
       conversationId: '1741766400.123456',
@@ -44,5 +44,30 @@ describe('Slack Block Kit cards', () => {
         value: expect.stringContaining('"value":"gpt-4.1"'),
       }),
     ]));
+  });
+
+  it('builds a permission approval block set with terminal resolved state', async () => {
+    const { buildSlackPermissionBlocks } = await import('../cards.js');
+
+    const pending = buildSlackPermissionBlocks({
+      conversationId: '1741766400.123456',
+      requestId: 'perm-1',
+      tool: 'Bash',
+      reason: 'Run rm -rf build',
+    });
+    const resolved = buildSlackPermissionBlocks({
+      conversationId: '1741766400.123456',
+      requestId: 'perm-1',
+      tool: 'Bash',
+      reason: 'Run rm -rf build',
+    }, 'timeout');
+
+    expect(pending[1]).toMatchObject({ type: 'actions' });
+    expect(resolved).toHaveLength(1);
+    expect(resolved[0]).toMatchObject({
+      text: expect.objectContaining({
+        text: expect.stringContaining('Timed out and denied'),
+      }),
+    });
   });
 });

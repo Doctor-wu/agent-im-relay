@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
-import type { BackendName } from './backend.js';
-import type { AgentEnvironment, AgentSessionOptions } from './session.js';
+import type { BackendName } from './backend';
+import type { AgentEnvironment, AgentSessionOptions } from './session';
 
 function readGitOutput(cwd: string, args: string[]): string | undefined {
   try {

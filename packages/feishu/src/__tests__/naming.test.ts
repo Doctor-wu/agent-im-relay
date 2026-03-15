@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildFeishuSessionChatName } from '../index.js';
+import { buildFeishuSessionChatName } from '../index';
 
 describe('Feishu session naming', () => {
   it('builds a readable session chat name from the original prompt', () => {

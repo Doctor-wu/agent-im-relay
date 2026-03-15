@@ -1,19 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { resetFeishuLaunchStateForTests } from '../index.js';
+import { resetFeishuLaunchStateForTests } from '../index';
 
 const runtimeMocks = vi.hoisted(() => ({
   runFeishuConversation: vi.fn(),
 }));
 
-vi.mock('../runtime.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../runtime.js')>();
+vi.mock('../runtime', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../runtime')>();
   return {
     ...actual,
     runFeishuConversation: runtimeMocks.runFeishuConversation,
   };
 });
 
-import { runFeishuSessionFlow } from '../session-flow.js';
+import { runFeishuSessionFlow } from '../session-flow';
 
 describe('Feishu session flow', () => {
   beforeEach(() => {

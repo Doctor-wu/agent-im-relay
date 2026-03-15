@@ -14,8 +14,8 @@ import {
   conversationCwd,
   activeConversations,
 } from '@agent-im-relay/core';
-import { config } from '../config.js';
-import { streamAgentToDiscord, type StreamTargetChannel } from '../stream.js';
+import { config } from '../config';
+import { streamAgentToDiscord, type StreamTargetChannel } from '../stream';
 
 type CommandHandler = (interaction: ChatInputCommandInteraction) => Promise<void>;
 

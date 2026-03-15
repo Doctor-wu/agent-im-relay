@@ -8,11 +8,11 @@ import {
   persistState,
   threadSessionBindings,
 } from '@agent-im-relay/core';
-import { config } from './config.js';
-import { publishConversationArtifacts } from './artifacts.js';
-import { prepareAttachmentPrompt, type DiscordAttachmentLike } from './files.js';
-import { streamAgentToDiscord, type StreamTargetChannel } from './stream.js';
-import type { DiscordReplyContext } from './reply-context.js';
+import { config } from './config';
+import { publishConversationArtifacts } from './artifacts';
+import { prepareAttachmentPrompt, type DiscordAttachmentLike } from './files';
+import { streamAgentToDiscord, type StreamTargetChannel } from './stream';
+import type { DiscordReplyContext } from './reply-context';
 
 type ReactionPhase = 'received' | 'thinking' | 'tools' | 'done' | 'error';
 
@@ -70,6 +70,7 @@ export async function runMentionConversation(
     attachments: options.attachments ?? [],
     render: ({ target, showEnvironment }, events) =>
       (options.streamToDiscord ?? streamAgentToDiscord)({
+        conversationId: thread.id,
         channel: target,
         showEnvironment,
         replyContext: options.replyContext,

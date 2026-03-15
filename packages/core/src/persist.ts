@@ -1,19 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { config } from './config.js';
-import type { BackendName } from './agent/backend.js';
+import { config } from './config';
+import type { BackendName } from './agent/backend';
 import {
   inferRelayPlatformFromConversationId,
   relayPlatforms,
   type RelayPlatform,
-} from './relay-platform.js';
+} from './relay-platform';
 import type {
   ThreadContinuationSnapshot,
   ThreadContinuationStopReason,
   ThreadNativeSessionStatus,
   ThreadSessionBinding,
-} from './thread-session/types.js';
+} from './thread-session/types';
 
 interface PersistedState {
   sessions: Record<string, string>;

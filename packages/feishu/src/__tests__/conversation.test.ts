@@ -7,7 +7,7 @@ import {
   resolveConversationId,
   resolveConversationIdFromAction,
   shouldProcessFeishuMessage,
-} from '../index.js';
+} from '../index';
 
 describe('resolveConversationId', () => {
   it('maps private launcher chats to chat_id for launcher bookkeeping', () => {

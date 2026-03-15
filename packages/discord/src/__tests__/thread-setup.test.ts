@@ -39,7 +39,7 @@ vi.mock('@agent-im-relay/core', async (importOriginal) => {
   };
 });
 
-import { BACKEND_SELECT_ID, MODEL_SELECT_ID, applySetupResult, promptThreadSetup } from '../commands/thread-setup.js';
+import { BACKEND_SELECT_ID, MODEL_SELECT_ID, applySetupResult, promptThreadSetup } from '../commands/thread-setup';
 
 describe('promptThreadSetup', () => {
   it('renders backend selection first and then model selection when the backend reports models', async () => {

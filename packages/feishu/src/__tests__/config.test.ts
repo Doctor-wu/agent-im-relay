@@ -6,7 +6,7 @@ import {
   createFeishuRuntime,
   readFeishuConfig,
   startFeishuRuntime,
-} from '../index.js';
+} from '../index';
 
 afterEach(() => {
   vi.unstubAllEnvs();

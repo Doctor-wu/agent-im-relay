@@ -1,16 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import { beginFeishuDispatch } from './launch-state.js';
+import { beginFeishuDispatch } from './launch-state';
 import {
   presentFeishuBusyNotice,
   presentFeishuErrorOutput,
   presentFeishuFinalOutput,
   presentFeishuInterruptCard,
-} from './presentation.js';
+} from './presentation';
 import {
   runFeishuConversation,
   type FeishuRuntimeTransport,
   type FeishuTarget,
-} from './runtime.js';
+} from './runtime';
 
 export async function runFeishuSessionFlow(options: {
   conversationId: string;

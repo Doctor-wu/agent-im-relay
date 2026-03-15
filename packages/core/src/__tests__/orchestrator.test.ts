@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { PlatformAdapter, StatusIndicator, ConversationManager, MarkdownFormatter, IncomingMessage } from '../types.js';
-import type { AgentStreamEvent } from '../agent/session.js';
-import { Orchestrator } from '../orchestrator.js';
+import type { PlatformAdapter, StatusIndicator, ConversationManager, MarkdownFormatter, IncomingMessage } from '../types';
+import type { AgentStreamEvent } from '../agent/session';
+import { Orchestrator } from '../orchestrator';
 
 function createMockAdapter(overrides: Partial<PlatformAdapter> = {}): PlatformAdapter {
   return {

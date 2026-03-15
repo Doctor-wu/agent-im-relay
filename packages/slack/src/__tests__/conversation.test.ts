@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 afterEach(async () => {
-  const { resetSlackStateForTests } = await import('../state.js');
+  const { resetSlackStateForTests } = await import('../state');
   resetSlackStateForTests();
 });
 
@@ -13,8 +13,8 @@ describe('Slack conversation helpers', () => {
       buildSlackConversationId,
       resolveSlackConversationIdForMessage,
       shouldProcessSlackMessage,
-    } = await import('../conversation.js');
-    const { rememberSlackConversation } = await import('../state.js');
+    } = await import('../conversation');
+    const { rememberSlackConversation } = await import('../state');
 
     rememberSlackConversation({
       conversationId: '1741766400.123456',
@@ -72,7 +72,7 @@ describe('Slack conversation helpers', () => {
       persistSlackConversationState,
       rememberSlackConversation,
       resetSlackStateForTests,
-    } = await import('../state.js');
+    } = await import('../state');
 
     rememberSlackConversation({
       conversationId: '1741766400.123456',

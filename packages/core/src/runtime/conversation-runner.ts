@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { runConversationSession } from '../agent/runtime.js';
+import { runConversationSession } from '../agent/runtime';
 import {
   getBackendSupportedModels,
   isBackendModelSupported,
   resolveBackendModelId,
-} from '../agent/backend.js';
+} from '../agent/backend';
 import {
   activeConversations,
   conversationBackend,
@@ -14,18 +14,18 @@ import {
   conversationSessions,
   persistState,
   threadSessionBindings,
-} from '../state.js';
-import type { AgentMode } from '../agent/tools.js';
-import type { AgentBackend, BackendName } from '../agent/backend.js';
-import type { AgentStreamEvent } from '../agent/session.js';
+} from '../state';
+import type { AgentMode } from '../agent/tools';
+import type { AgentBackend, BackendName } from '../agent/backend';
+import type { AgentStreamEvent } from '../agent/session';
 import {
   confirmThreadSessionBinding,
   invalidateThreadSessionBinding,
   openThreadSessionBinding,
   resolveThreadResumeMode,
   updateThreadContinuationSnapshot,
-} from '../thread-session/manager.js';
-import type { ThreadContinuationSnapshot, ThreadContinuationStopReason } from '../thread-session/types.js';
+} from '../thread-session/manager';
+import type { ThreadContinuationSnapshot, ThreadContinuationStopReason } from '../thread-session/types';
 
 export type ConversationRunPhase = 'thinking' | 'tools' | 'done' | 'error';
 
@@ -214,6 +214,7 @@ export async function runConversationWithRenderer<TTarget, TTrigger = unknown>(
     let finalResult = '';
     let assistantOutput = '';
     let stopReason: ThreadContinuationStopReason | undefined;
+    let sawTerminalError = false;
     let nativeResumeReconfirmed = false;
 
     await options.render(
@@ -255,6 +256,7 @@ export async function runConversationWithRenderer<TTarget, TTrigger = unknown>(
         } else if (event.type === 'error') {
           const previousPhase = phase;
           phase = 'error';
+          sawTerminalError = true;
           stopReason = inferStopReason(event.error);
           void options.onPhaseChange?.('error', previousPhase, options.trigger);
         }
@@ -303,10 +305,9 @@ export async function runConversationWithRenderer<TTarget, TTrigger = unknown>(
       });
     }
 
-    if (phase !== 'error') {
+    if (!sawTerminalError) {
       await options.onPhaseChange?.('done', phase, options.trigger);
     }
-
     if (finalBinding.nativeSessionStatus === 'confirmed' && finalBinding.nativeSessionId) {
       conversationSessions.set(conversationId, finalBinding.nativeSessionId);
     }

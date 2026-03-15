@@ -14,13 +14,13 @@ function createMockTransport() {
 }
 
 afterEach(async () => {
-  const { resetSlackStateForTests } = await import('../state.js');
+  const { resetSlackStateForTests } = await import('../state');
   resetSlackStateForTests();
 });
 
 describe('createSlackAdapter', () => {
   it('returns an adapter with Slack capabilities', async () => {
-    const { createSlackAdapter } = await import('../adapter.js');
+    const { createSlackAdapter } = await import('../adapter');
     const adapter = createSlackAdapter({
       transport: createMockTransport(),
     });
@@ -36,8 +36,8 @@ describe('createSlackAdapter', () => {
 
 describe('Slack message sender', () => {
   it('sends and edits messages against a mapped Slack thread', async () => {
-    const { createSlackAdapter } = await import('../adapter.js');
-    const { rememberSlackConversation } = await import('../state.js');
+    const { createSlackAdapter } = await import('../adapter');
+    const { rememberSlackConversation } = await import('../state');
     const transport = createMockTransport();
     const adapter = createSlackAdapter({ transport });
 
@@ -68,11 +68,11 @@ describe('Slack message sender', () => {
 
 describe('Slack conversation manager', () => {
   it('creates a new thread for a registered slash-command trigger', async () => {
-    const { createSlackAdapter } = await import('../adapter.js');
+    const { createSlackAdapter } = await import('../adapter');
     const {
       getSlackConversation,
       registerSlackTriggerContext,
-    } = await import('../state.js');
+    } = await import('../state');
     const transport = createMockTransport();
     const adapter = createSlackAdapter({ transport });
 
@@ -100,8 +100,8 @@ describe('Slack conversation manager', () => {
 
 describe('Slack status and interactive UI', () => {
   it('reuses a visible status message for repeated status updates', async () => {
-    const { createSlackAdapter } = await import('../adapter.js');
-    const { rememberSlackConversation } = await import('../state.js');
+    const { createSlackAdapter } = await import('../adapter');
+    const { rememberSlackConversation } = await import('../state');
     const transport = createMockTransport();
     const adapter = createSlackAdapter({ transport });
 
@@ -124,11 +124,11 @@ describe('Slack status and interactive UI', () => {
   });
 
   it('waits for a matching interactive selection and ignores unrelated ones', async () => {
-    const { createSlackAdapter } = await import('../adapter.js');
+    const { createSlackAdapter } = await import('../adapter');
     const {
       rememberSlackConversation,
       resolveSlackInteractiveValue,
-    } = await import('../state.js');
+    } = await import('../state');
     const transport = createMockTransport();
     const adapter = createSlackAdapter({ transport });
 

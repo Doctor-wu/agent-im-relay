@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolveRelayPaths } from '@agent-im-relay/core';
-import { parseConfigJsonl } from '../config.js';
+import { parseConfigJsonl } from '../config';
 
 describe('app config', () => {
   it('parses JSONL and keeps only valid IMs available', () => {

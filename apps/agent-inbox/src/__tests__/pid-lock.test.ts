@@ -1,7 +1,7 @@
 import { mkdtemp } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { acquirePidLock, releasePidLock } from '../pid-lock.js';
+import { acquirePidLock, releasePidLock } from '../pid-lock';
 
 const heldLocks: Array<{ dir: string; platform: string }> = [];
 

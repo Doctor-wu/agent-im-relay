@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 afterEach(async () => {
-  const { resetSlackStateForTests } = await import('../state.js');
+  const { resetSlackStateForTests } = await import('../state');
   resetSlackStateForTests();
   vi.useRealTimers();
 });
@@ -12,7 +12,7 @@ describe('Slack interactive state', () => {
     const {
       resolveSlackInteractiveValue,
       waitForSlackInteractiveValue,
-    } = await import('../state.js');
+    } = await import('../state');
 
     const pending = waitForSlackInteractiveValue('conv-timeout', 1_000);
     const rejection = expect(pending).rejects.toThrow('Slack interactive request timed out.');

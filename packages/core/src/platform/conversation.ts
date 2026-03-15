@@ -1,16 +1,16 @@
-import type { AgentBackend, BackendName } from '../agent/backend.js';
-import type { AgentMode } from '../agent/tools.js';
-import type { AgentStreamEvent } from '../agent/session.js';
-import { stageOutgoingArtifacts, type RemoteAttachmentLike } from '../runtime/files.js';
-import { prepareAttachmentPrompt } from '../runtime/files.js';
-import { runConversationWithRenderer, type ConversationRunPhase } from '../runtime/conversation-runner.js';
-import { conversationBackend } from '../state.js';
-import { applySessionControlCommand } from '../session-control/controller.js';
-import type { SessionControlCommand } from '../session-control/types.js';
+import type { AgentBackend, BackendName } from '../agent/backend';
+import type { AgentMode } from '../agent/tools';
+import type { AgentStreamEvent } from '../agent/session';
+import { stageOutgoingArtifacts, type RemoteAttachmentLike } from '../runtime/files';
+import { prepareAttachmentPrompt } from '../runtime/files';
+import { runConversationWithRenderer, type ConversationRunPhase } from '../runtime/conversation-runner';
+import { conversationBackend } from '../state';
+import { applySessionControlCommand } from '../session-control/controller';
+import type { SessionControlCommand } from '../session-control/types';
 export {
   applyMessageControlDirectives,
   preprocessConversationMessage,
-} from './message-preprocessing.js';
+} from './message-preprocessing';
 
 export type ConversationRunEvaluation =
   | {

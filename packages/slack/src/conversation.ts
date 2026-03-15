@@ -1,4 +1,4 @@
-import { findSlackConversationByThreadTs } from './state.js';
+import { findSlackConversationByThreadTs } from './state';
 
 export interface SlackMessageEvent {
   channel: string;

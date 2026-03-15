@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as core from '@agent-im-relay/core';
-import { createDiscordAdapter } from '../adapter.js';
-import { agentControlCommandHandlers } from '../commands/agent-control.js';
-import { handleDoneCommand } from '../commands/done.js';
-import { handleInterruptCommand } from '../commands/interrupt.js';
+import { createDiscordAdapter } from '../adapter';
+import { agentControlCommandHandlers } from '../commands/agent-control';
+import { handleDoneCommand } from '../commands/done';
+import { handleInterruptCommand } from '../commands/interrupt';
 
 function makeMockClient() {
   const sentMessages = new Map<string, { content: string; edit: ReturnType<typeof vi.fn> }>();

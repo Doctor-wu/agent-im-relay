@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { glob, mkdir } from 'node:fs/promises';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { loadState, saveState } from '../persist.js';
+import { loadState, saveState } from '../persist';
 
 afterEach(() => {
   vi.unstubAllEnvs();

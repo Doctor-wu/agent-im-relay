@@ -18,7 +18,7 @@ describe('readSlackConfig', () => {
       '{"type":"im","id":"slack","enabled":true,"config":{"botToken":"xoxb-test-token","appToken":"xapp-test-token","signingSecret":"test-signing-secret","socketMode":false}}',
     ].join('\n'), 'utf-8');
 
-    const { readSlackConfig } = await import('../config.js');
+    const { readSlackConfig } = await import('../config');
     const config = readSlackConfig();
 
     expect(config.slackBotToken).toBe('xoxb-test-token');
@@ -35,7 +35,7 @@ describe('readSlackConfig', () => {
     await mkdir(configDir, { recursive: true });
     await writeFile(join(configDir, 'config.jsonl'), '{"type":"meta","version":1}\n', 'utf-8');
 
-    const { readSlackConfig } = await import('../config.js');
+    const { readSlackConfig } = await import('../config');
 
     expect(() => readSlackConfig()).toThrow(
       'Missing required slack configuration in ~/.agent-inbox/config.jsonl',
@@ -48,7 +48,7 @@ describe('Slack state helpers', () => {
     const {
       resolveSlackConversationStateFile,
       resolveSlackPendingRunStateFile,
-    } = await import('../config.js');
+    } = await import('../config');
 
     expect(resolveSlackConversationStateFile('/tmp/agent-inbox/state/sessions.json')).toBe(
       '/tmp/agent-inbox/state/slack-conversations.json',

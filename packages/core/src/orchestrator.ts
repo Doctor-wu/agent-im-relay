@@ -4,8 +4,8 @@ import type {
   ConversationId,
   MessageId,
   FormattedContent,
-} from './types.js';
-import type { AgentStreamEvent } from './agent/session.js';
+} from './types';
+import type { AgentStreamEvent } from './agent/session';
 
 export type AgentSessionFactory = (conversationId: ConversationId, prompt: string) => AsyncGenerator<AgentStreamEvent, void>;
 

@@ -14,19 +14,19 @@ vi.mock('@agent-im-relay/core', async () => {
   };
 });
 
-vi.mock('../stream.js', () => ({
+vi.mock('../stream', () => ({
   streamAgentToDiscord,
 }));
 
-vi.mock('../files.js', async () => {
-  const actual = await vi.importActual<typeof import('../files.js')>('../files.js');
+vi.mock('../files', async () => {
+  const actual = await vi.importActual<typeof import('../files')>('../files');
   return {
     ...actual,
     prepareAttachmentPrompt,
   };
 });
 
-import { handleAskCommand } from '../commands/ask.js';
+import { handleAskCommand } from '../commands/ask';
 
 describe('handleAskCommand', () => {
   beforeEach(() => {

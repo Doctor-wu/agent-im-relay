@@ -1,7 +1,7 @@
 import { SlashCommandBuilder, type ChatInputCommandInteraction, type Message } from 'discord.js';
 import { streamAgentSession } from '@agent-im-relay/core';
-import { collectInteractionAttachments, prepareAttachmentPrompt } from '../files.js';
-import { streamAgentToDiscord, type StreamTargetChannel } from '../stream.js';
+import { collectInteractionAttachments, prepareAttachmentPrompt } from '../files';
+import { streamAgentToDiscord, type StreamTargetChannel } from '../stream';
 
 export const askCommand = new SlashCommandBuilder()
   .setName('ask')

@@ -43,7 +43,7 @@ Configuration is stored in `~/.agent-inbox/config.jsonl`. Example:
 {"type":"im","id":"discord","enabled":true,"config":{"token":"your-bot-token","clientId":"your-client-id"}}
 {"type":"im","id":"feishu","enabled":false,"config":{"appId":"","appSecret":""}}
 {"type":"im","id":"slack","enabled":false,"config":{"botToken":"","appToken":"","signingSecret":"","socketMode":true}}
-{"type":"runtime","config":{"agentTimeoutMs":600000,"claudeBin":"claude","codexBin":"codex","opencodeBin":"opencode"}}
+{"type":"runtime","config":{"agentTimeoutMs":600000,"permissionMode":"auto","permissionRequestTimeoutMs":120000,"claudeBin":"claude","codexBin":"codex","opencodeBin":"opencode"}}
 ```
 
 Standalone adapter runs use the same `~/.agent-inbox/config.jsonl` file. There is no repo-local `.env` bootstrap path.
@@ -92,8 +92,58 @@ Create a self-built enterprise application in the [Feishu Open Platform](https:/
 |---------|------|
 | **Claude Code** | Anthropic Claude with streaming output and tool calling |
 | **OpenAI Codex** | OpenAI Codex CLI with streaming output |
+| **OpenCode** | Optional fallback backend with no known safe-mode approval protocol |
 
 You can switch the backend for the current session through the setup wizard or IM commands.
+
+---
+
+## Permission Mode
+
+Permission approval behavior is configured in the `runtime` record inside `~/.agent-inbox/config.jsonl`.
+
+### `permissionMode`
+
+- `auto` - Backward-compatible default behavior. Agent backends run with their existing automation flags, so dangerous operations are handled automatically with no IM approval step.
+- `safe` - Dangerous operations require an explicit approval from the IM client before the backend continues. Agent Inbox sends an approval card into the active conversation, waits for a user decision, then writes the backend's real approval protocol response back to stdin.
+
+Safe mode currently requires backend CLIs with these capabilities:
+
+- Codex must support `codex app-server --listen stdio://`
+- Claude Code must support bidirectional `--input-format stream-json --output-format stream-json`
+- OpenCode does not currently expose an equivalent approval protocol, so safe mode degrades to the backend's normal behavior or an unsupported-mode warning
+
+### `permissionRequestTimeoutMs`
+
+- Timeout in milliseconds for each pending permission request.
+- Default: `120000` (2 minutes).
+- Applies only when `permissionMode` is `safe`.
+
+Example:
+
+```jsonc
+{"type":"runtime","config":{"permissionMode":"safe","permissionRequestTimeoutMs":120000}}
+```
+
+### Safe-Mode User Flow
+
+1. The backend encounters a dangerous action and emits a permission request.
+2. Agent Inbox renders an approval card in the active Discord thread, Feishu session chat, or Slack thread / DM.
+3. A user clicks `Approve` or `Deny`.
+4. Agent Inbox writes the backend-specific approval response back to stdin and the run continues.
+5. If no one responds before timeout, the request is denied automatically and the backend continues by skipping that action.
+
+### Platform Card Styles
+
+- Discord - A thread message with `Permission required`, optional tool / reason text, and `Approve` / `Deny` buttons. After a decision, the message is updated with the final status.
+- Feishu - An interactive card with a `Permission Required` header, tool / reason details, and `Approve` / `Deny` buttons. After resolution, the card shows the final status.
+- Slack - A Block Kit card with a `Permission Required` summary, tool / reason section, and `Approve` / `Deny` buttons. After resolution, the same card is updated with the final status.
+
+### Timeout Behavior
+
+- Timeout defaults to `deny`.
+- The backend keeps running after timeout and should skip the blocked operation instead of hanging indefinitely.
+- The rendered card status changes to indicate that the request timed out and was denied.
 
 ---
 
@@ -196,8 +246,7 @@ All adapter development commands load configuration from `~/.agent-inbox/config.
 
 ### Build Outputs
 
-- `apps/agent-inbox/dist/index.mjs` - npm package entrypoint, built with `pnpm --filter ./apps/agent-inbox build`
-- `apps/agent-inbox/dist/agent-inbox` - optional standalone executable (SEA), built with `pnpm --filter ./apps/agent-inbox build:sea`
+- `apps/agent-inbox/dist/index.mjs` - npm package entrypoint, built with `pnpm --filter ./apps/agent-inbox build` via `vp pack`
 
 ---
 

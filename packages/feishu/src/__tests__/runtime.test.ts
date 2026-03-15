@@ -44,11 +44,11 @@ import {
   conversationModels,
   conversationMode,
 } from '@agent-im-relay/core';
-import { buildFeishuSessionChatRecord, rememberFeishuSessionChat } from '../session-chat.js';
+import { buildFeishuSessionChatRecord, rememberFeishuSessionChat } from '../session-chat';
 import {
   FEISHU_NON_SESSION_CONTROL_TEXT,
   buildFeishuSessionControlPanelPayload,
-} from '../cards.js';
+} from '../cards';
 import {
   handleFeishuControlAction,
   isFeishuDoneCommand,
@@ -57,7 +57,7 @@ import {
   resumePendingFeishuRun,
   runFeishuConversation,
   scheduleModelSelectionTimeout,
-} from '../runtime.js';
+} from '../runtime';
 
 afterEach(() => {
   vi.useRealTimers();
