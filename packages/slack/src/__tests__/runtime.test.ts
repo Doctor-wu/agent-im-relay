@@ -24,6 +24,7 @@ const coreMocks = vi.hoisted(() => ({
       dir: '/tmp/brainstorming',
     },
   ]),
+  maybeUnrefTimer: vi.fn(),
   resolveBackendModelId: vi.fn((backend: string, model: string) => {
     if (backend === 'claude' && (model === 'sonnet' || model === 'claude/sonnet')) {
       return 'sonnet';
@@ -48,6 +49,7 @@ vi.mock('@agent-im-relay/core', async (importOriginal) => {
     getAvailableBackendCapabilities: coreMocks.getAvailableBackendCapabilities,
     getAvailableBackendNames: coreMocks.getAvailableBackendNames,
     listSkills: coreMocks.listSkills,
+    maybeUnrefTimer: coreMocks.maybeUnrefTimer,
     resolveBackendModelId: coreMocks.resolveBackendModelId,
     resolvePermissionRequest: coreMocks.resolvePermissionRequest,
     runPlatformConversation: coreMocks.runPlatformConversation,
@@ -100,16 +102,25 @@ function createRuntimeConfig() {
 function createMockApp() {
   const commandHandlers = new Map<string, (args: any) => Promise<void>>();
   const eventHandlers = new Map<string, (args: any) => Promise<void>>();
+  const actionHandlers: Array<(args: any) => Promise<void>> = [];
   return {
     command: vi.fn((name: string, handler: (args: any) => Promise<void>) => {
       commandHandlers.set(name, handler);
     }),
-    action: vi.fn(),
+    action: vi.fn((_constraint: string | RegExp, handler: (args: any) => Promise<void>) => {
+      actionHandlers.push(handler);
+    }),
     event: vi.fn((name: string, handler: (args: any) => Promise<void>) => {
       eventHandlers.set(name, handler);
     }),
     start: vi.fn(async () => undefined),
+    client: {
+      chat: {
+        postEphemeral: vi.fn(async () => undefined),
+      },
+    },
     commandHandlers,
+    actionHandlers,
     eventHandlers,
   };
 }
@@ -132,6 +143,7 @@ describe('Slack runtime', () => {
     coreMocks.getAvailableBackendCapabilities.mockClear();
     coreMocks.getAvailableBackendNames.mockClear();
     coreMocks.listSkills.mockClear();
+    coreMocks.maybeUnrefTimer.mockClear();
     coreMocks.resolveBackendModelId.mockClear();
     coreMocks.resolvePermissionRequest.mockClear();
     coreMocks.runPlatformConversation.mockReset();
@@ -408,6 +420,51 @@ describe('Slack runtime', () => {
       'Permission Required',
       expect.any(Array),
     );
+  });
+
+  it('shows an ephemeral stale-action message for resolved permission buttons', async () => {
+    const { createSlackRuntime } = await import('../runtime.js');
+    const transport = createMockTransport();
+    const app = createMockApp();
+    coreMocks.resolvePermissionRequest.mockImplementationOnce(() => {
+      throw new Error('Permission request is not pending: perm-1');
+    });
+
+    const runtime = createSlackRuntime({
+      transport,
+      defaultCwd: process.cwd(),
+      config: createRuntimeConfig(),
+      createApp: () => app as any,
+    });
+
+    await runtime.start();
+    const handler = app.actionHandlers[0];
+    expect(handler).toBeTypeOf('function');
+
+    await handler({
+      body: {
+        channel: { id: 'D123' },
+        message: { ts: '1741766402.000001', thread_ts: '1741766502.000001' },
+        user: { id: 'U123' },
+      },
+      ack: vi.fn(async () => undefined),
+      action: {
+        value: JSON.stringify({
+          type: 'permission',
+          conversationId: '1741766502.000001',
+          requestId: 'perm-1',
+          decision: 'approved',
+        }),
+      },
+    });
+
+    expect(app.client.chat.postEphemeral).toHaveBeenCalledWith({
+      channel: 'D123',
+      user: 'U123',
+      text: 'This permission request is no longer pending.',
+      thread_ts: '1741766502.000001',
+    });
+    expect(transport.sendText).not.toHaveBeenCalled();
   });
 
   it('always creates a fresh thread for /code and starts the run there', async () => {

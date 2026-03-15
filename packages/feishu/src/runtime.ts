@@ -6,6 +6,7 @@ import {
   evaluateConversationRunRequest,
   getAvailableBackendCapabilities,
   getAvailableBackendNames,
+  maybeUnrefTimer,
   resolveBackendModelId,
   runPlatformConversation,
   type AgentStreamEvent,
@@ -67,12 +68,6 @@ const pendingPermissionCards = new Map<string, {
 
 function readModelSelectionTimeoutMs(timeoutMs?: number): number {
   return timeoutMs ?? 10_000;
-}
-
-function maybeUnrefTimer(timer: ReturnType<typeof setTimeout>): void {
-  if (typeof (timer as { unref?: () => void }).unref === 'function') {
-    (timer as { unref: () => void }).unref();
-  }
 }
 
 function clearPendingModelSelectionTimer(conversationId: string): void {

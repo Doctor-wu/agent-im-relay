@@ -41,6 +41,10 @@ export {
 export { maybeUnrefTimer } from './runtime/timers';
 export type { AgentEnvironment, AgentStreamEvent, AgentSessionOptions } from './agent/session';
 export type { PendingPermissionRequest } from './agent/runtime';
+} from './agent/runtime';
+export { maybeUnrefTimer } from './runtime/timers';
+export type { AgentEnvironment, AgentStreamEvent, AgentSessionOptions } from './agent/session';
+export type { PendingPermissionRequest } from './agent/runtime';
 export {
   getAvailableBackendCapabilities,
   getAvailableBackendNames,

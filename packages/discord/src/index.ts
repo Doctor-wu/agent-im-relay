@@ -357,11 +357,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
-      const resolved = resolvePermissionRequest(parsed);
-      await interaction.update(buildDiscordPermissionMessage({
-        conversationId: parsed.conversationId,
-        requestId: parsed.requestId,
-      }, resolved.decision === 'timeout' ? 'timeout' : resolved.decision));
+      try {
+        const resolved = resolvePermissionRequest(parsed);
+        await interaction.update(buildDiscordPermissionMessage({
+          conversationId: parsed.conversationId,
+          requestId: parsed.requestId,
+        }, resolved.decision === 'timeout' ? 'timeout' : resolved.decision));
+      } catch {
+        await interaction.reply({
+          content: 'This permission request is no longer pending.',
+          ephemeral: true,
+        });
+      }
     }
   } catch (error) {
     const errorText = toErrorMessage(error);

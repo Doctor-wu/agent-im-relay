@@ -195,36 +195,50 @@ describe('extractEvents', () => {
     });
   });
 
-  it('supports normalized permission lifecycle events', () => {
-    const requested: AgentStreamEvent = {
-      type: 'permission-requested',
-      requestId: 'perm-1',
-      backend: 'claude',
-      tool: 'Bash',
-      reason: 'Run pwd',
-      expiresAt: '2026-03-15T00:00:00.000Z',
-    };
-    const resolved: AgentStreamEvent = {
-      type: 'permission-resolved',
-      requestId: 'perm-1',
-      backend: 'claude',
-      decision: 'approved',
+  it('passes through normalized permission lifecycle events from a backend stream', async () => {
+    const backend: AgentBackend = {
+      name: 'permission-test-backend',
+      isAvailable: () => true,
+      async *stream() {
+        yield {
+          type: 'permission-requested',
+          requestId: 'perm-1',
+          backend: 'claude',
+          tool: 'Bash',
+          reason: 'Run pwd',
+          expiresAt: '2026-03-15T00:00:00.000Z',
+        } as const;
+        yield {
+          type: 'permission-resolved',
+          requestId: 'perm-1',
+          backend: 'claude',
+          decision: 'approved',
+        } as const;
+      },
     };
 
-    expect(requested).toEqual({
-      type: 'permission-requested',
-      requestId: 'perm-1',
-      backend: 'claude',
-      tool: 'Bash',
-      reason: 'Run pwd',
-      expiresAt: '2026-03-15T00:00:00.000Z',
-    });
-    expect(resolved).toEqual({
-      type: 'permission-resolved',
-      requestId: 'perm-1',
-      backend: 'claude',
-      decision: 'approved',
-    });
+    registerBackend(backend);
+
+    await expect(collect(streamAgentSession({
+      mode: 'code',
+      prompt: 'test prompt',
+      backend: 'permission-test-backend',
+    }))).resolves.toEqual([
+      {
+        type: 'permission-requested',
+        requestId: 'perm-1',
+        backend: 'claude',
+        tool: 'Bash',
+        reason: 'Run pwd',
+        expiresAt: '2026-03-15T00:00:00.000Z',
+      },
+      {
+        type: 'permission-resolved',
+        requestId: 'perm-1',
+        backend: 'claude',
+        decision: 'approved',
+      },
+    ]);
   });
 });
 

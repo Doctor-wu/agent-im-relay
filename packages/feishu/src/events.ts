@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import {
   applyMessageControlDirectives,
   initState,
+  maybeUnrefTimer,
   persistState,
   preprocessConversationMessage,
   processedEventIds,
@@ -140,12 +141,6 @@ type DedupClaim = {
   duplicate: boolean;
   complete(succeeded: boolean): void;
 };
-
-function maybeUnrefTimer(timer: ReturnType<typeof setTimeout>): void {
-  if (typeof (timer as { unref?: () => void }).unref === 'function') {
-    (timer as { unref: () => void }).unref();
-  }
-}
 
 function scheduleProcessedKey(
   store: ProcessedKeyStore,
@@ -760,25 +755,29 @@ export function createFeishuEventRouter(
           return;
         }
 
-        const resolved = resolvePermissionRequest({
-          conversationId,
-          requestId,
-          decision: actionType === 'permission-approve' ? 'approved' : 'denied',
-        });
-        await transport.updateCard(
-          target,
-          target.replyToMessageId,
-          buildFeishuPermissionCardPayload(
-            buildPermissionRequestCard(
-              conversationId,
-              requestId,
-              typeof action.tool === 'string' ? action.tool : undefined,
-              typeof action.reason === 'string' ? action.reason : undefined,
+        try {
+          const resolved = resolvePermissionRequest({
+            conversationId,
+            requestId,
+            decision: actionType === 'permission-approve' ? 'approved' : 'denied',
+          });
+          await transport.updateCard(
+            target,
+            target.replyToMessageId,
+            buildFeishuPermissionCardPayload(
+              buildPermissionRequestCard(
+                conversationId,
+                requestId,
+                typeof action.tool === 'string' ? action.tool : undefined,
+                typeof action.reason === 'string' ? action.reason : undefined,
+              ),
+              buildFeishuCardContext(conversationId, target),
+              resolved.decision,
             ),
-            buildFeishuCardContext(conversationId, target),
-            resolved.decision,
-          ),
-        );
+          );
+        } catch {
+          await transport.sendText(target, 'This permission request is no longer pending.');
+        }
         succeeded = true;
         return;
       }

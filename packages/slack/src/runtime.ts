@@ -134,7 +134,6 @@ function hasReactionTransport(
 ): transport is SlackRuntimeTransport & Required<Pick<SlackRuntimeTransport, 'addReaction' | 'removeReaction'>> {
   return typeof transport.addReaction === 'function' && typeof transport.removeReaction === 'function';
 }
-
 function clearPendingTimer(conversationId: string): void {
   const timer = pendingModelTimers.get(conversationId);
   if (!timer) {
@@ -791,21 +790,28 @@ export function createSlackRuntime(options: SlackRuntimeOptions): SlackRuntime {
         };
       }
 
-      const resolved = resolvePermissionRequest({
-        conversationId,
-        requestId: payload['requestId'],
-        decision: payload['decision'],
-      });
-      await updatePermissionState(
-        options.transport,
-        conversationId,
-        payload['requestId'],
-        resolved.decision,
-      );
-      return {
-        kind: 'resolved' as const,
-        conversationId,
-      };
+      try {
+        const resolved = resolvePermissionRequest({
+          conversationId,
+          requestId: payload['requestId'],
+          decision: payload['decision'],
+        });
+        await updatePermissionState(
+          options.transport,
+          conversationId,
+          payload['requestId'],
+          resolved.decision,
+        );
+        return {
+          kind: 'resolved' as const,
+          conversationId,
+        };
+      } catch {
+        return {
+          kind: 'error' as const,
+          message: 'This permission request is no longer pending.',
+        };
+      }
     }
 
     return {
@@ -927,7 +933,7 @@ export function createSlackRuntime(options: SlackRuntimeOptions): SlackRuntime {
     });
     app.action(/.*/, async ({ body, ack, action }: any) => {
       await ack();
-      await handleAction({
+      const result = await handleAction({
         channel: { id: body.channel.id },
         message: {
           ts: body.message.ts,
@@ -936,6 +942,22 @@ export function createSlackRuntime(options: SlackRuntimeOptions): SlackRuntime {
         actions: [action],
         user: { id: body.user.id },
       });
+      if (result.kind === 'error') {
+        const threadTs = body.message.thread_ts ?? body.message.ts;
+        const postEphemeral = (app as any).client?.chat?.postEphemeral;
+        if (typeof postEphemeral === 'function') {
+          await postEphemeral({
+            channel: body.channel.id,
+            user: body.user.id,
+            text: result.message,
+            ...(threadTs ? { thread_ts: threadTs } : {}),
+          }).catch(async () => {
+            await options.transport.sendText({ channelId: body.channel.id, threadTs }, result.message);
+          });
+          return;
+        }
+        await options.transport.sendText({ channelId: body.channel.id, threadTs }, result.message);
+      }
     });
     app.event('app_mention', async ({ event }: any) => {
       await handleAppMention(event as SlackMessageEvent);

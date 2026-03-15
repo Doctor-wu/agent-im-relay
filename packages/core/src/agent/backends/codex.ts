@@ -37,6 +37,26 @@ function formatCommandSummary(command: string): string {
   return `running Bash ${safeJson({ command }).slice(0, 600)}`;
 }
 
+function writeCodexPrompt(
+  stdin: NodeJS.WritableStream | null | undefined,
+  prompt: string,
+  keepOpen: boolean,
+): void {
+  if (!stdin) {
+    return;
+  }
+
+  if (keepOpen) {
+    stdin.write(prompt);
+    if (!prompt.endsWith('\n')) {
+      stdin.write('\n');
+    }
+    return;
+  }
+
+  stdin.end(prompt);
+}
+
 type ExtractedPermissionRequest = {
   requestId: string;
   tool?: string;
@@ -138,7 +158,7 @@ export function createCodexArgs(
     args.push('--cd', options.cwd);
   }
 
-  args.push(permissionMode === 'safe' ? options.prompt : '-');
+  args.push('-');
   return args;
 }
 
@@ -271,9 +291,7 @@ async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentS
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 
-  if (permissionMode !== 'safe') {
-    child.stdin?.end(prompt);
-  }
+  writeCodexPrompt(child.stdin, prompt, permissionMode === 'safe');
 
   const closePromise = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
     (resolve, reject) => {
@@ -310,36 +328,52 @@ async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentS
   try {
     if (!stdoutReader) throw new Error('Codex CLI stdout is unavailable');
 
-    if (permissionMode === 'safe' && options.conversationId && child.stdin) {
-      const {
-        registerConversationPermissionResponder,
-        registerPermissionRequest,
-      } = await import('../runtime.js');
+    let registerPermissionRequest:
+      | ((options: {
+        conversationId: string;
+        requestId: string;
+        backend: string;
+        tool?: string;
+        reason?: string;
+        timeoutMs: number;
+      }) => {
+        requestId: string;
+        backend: string;
+        tool?: string;
+        reason?: string;
+        expiresAt: string;
+      })
+      | undefined;
 
-      registerConversationPermissionResponder(options.conversationId, {
+    if (permissionMode === 'safe' && options.conversationId && child.stdin) {
+      const runtime = await import('../runtime.js');
+      runtime.registerConversationPermissionResponder(options.conversationId, {
         backend: 'codex',
         respond(requestId, decision) {
           child.stdin?.write(formatCodexPermissionDecision(requestId, decision));
         },
       });
+      registerPermissionRequest = runtime.registerPermissionRequest;
+    }
 
-      for await (const rawLine of stdoutReader) {
-        const line = rawLine.trimEnd();
-        if (!line) continue;
-        if (LOG_LINE_PATTERN.test(line)) {
-          stderrLines.push(line);
-          continue;
-        }
+    for await (const rawLine of stdoutReader) {
+      const line = rawLine.trimEnd();
+      if (!line) continue;
+      if (LOG_LINE_PATTERN.test(line)) {
+        stderrLines.push(line);
+        continue;
+      }
 
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(line);
-        } catch {
-          continue;
-        }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        continue;
+      }
 
-        sessionId = extractCodexSessionId(parsed) ?? sessionId;
+      sessionId = extractCodexSessionId(parsed) ?? sessionId;
 
+      if (registerPermissionRequest && options.conversationId) {
         const permissionRequest = extractCodexPermissionRequest(parsed);
         if (permissionRequest) {
           const request = registerPermissionRequest({
@@ -360,72 +394,30 @@ async function* streamCodex(options: AgentSessionOptions): AsyncGenerator<AgentS
           };
           continue;
         }
-
-        for (const event of extractCodexEvents(parsed, { resumeSessionId: options.resumeSessionId })) {
-          if (event.type === 'text') {
-            fullOutput += event.delta;
-
-            for (const textLine of event.delta.split('\n')) {
-              const cwdMatch = WORKING_DIR_PATTERN.exec(textLine.trim());
-              if (cwdMatch?.[1]) {
-                const detectedCwd = cwdMatch[1].trim();
-                yield { type: 'status', status: `cwd:${detectedCwd}` };
-                if (environmentCwd !== detectedCwd || environmentSource !== 'auto-detected') {
-                  environmentCwd = detectedCwd;
-                  environmentSource = 'auto-detected';
-                  yield {
-                    type: 'environment',
-                    environment: buildEnvironment('codex', options, environmentCwd, environmentSource, options.model),
-                  };
-                }
-              }
-            }
-          }
-
-          yield event;
-        }
       }
-    } else {
-      for await (const rawLine of stdoutReader) {
-        const line = rawLine.trimEnd();
-        if (!line) continue;
-        if (LOG_LINE_PATTERN.test(line)) {
-          stderrLines.push(line);
-          continue;
-        }
 
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(line);
-        } catch {
-          continue;
-        }
+      for (const event of extractCodexEvents(parsed, { resumeSessionId: options.resumeSessionId })) {
+        if (event.type === 'text') {
+          fullOutput += event.delta;
 
-        sessionId = extractCodexSessionId(parsed) ?? sessionId;
-
-        for (const event of extractCodexEvents(parsed, { resumeSessionId: options.resumeSessionId })) {
-          if (event.type === 'text') {
-            fullOutput += event.delta;
-
-            for (const textLine of event.delta.split('\n')) {
-              const cwdMatch = WORKING_DIR_PATTERN.exec(textLine.trim());
-              if (cwdMatch?.[1]) {
-                const detectedCwd = cwdMatch[1].trim();
-                yield { type: 'status', status: `cwd:${detectedCwd}` };
-                if (environmentCwd !== detectedCwd || environmentSource !== 'auto-detected') {
-                  environmentCwd = detectedCwd;
-                  environmentSource = 'auto-detected';
-                  yield {
-                    type: 'environment',
-                    environment: buildEnvironment('codex', options, environmentCwd, environmentSource, options.model),
-                  };
-                }
+          for (const textLine of event.delta.split('\n')) {
+            const cwdMatch = WORKING_DIR_PATTERN.exec(textLine.trim());
+            if (cwdMatch?.[1]) {
+              const detectedCwd = cwdMatch[1].trim();
+              yield { type: 'status', status: `cwd:${detectedCwd}` };
+              if (environmentCwd !== detectedCwd || environmentSource !== 'auto-detected') {
+                environmentCwd = detectedCwd;
+                environmentSource = 'auto-detected';
+                yield {
+                  type: 'environment',
+                  environment: buildEnvironment('codex', options, environmentCwd, environmentSource, options.model),
+                };
               }
             }
           }
-
-          yield event;
         }
+
+        yield event;
       }
     }
 

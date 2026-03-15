@@ -280,6 +280,30 @@ describe('handleDiscordMessageCreate', () => {
     }));
   });
 
+  it('replies ephemerally when a permission button click is stale', async () => {
+    vi.mocked(resolvePermissionRequest).mockImplementationOnce(() => {
+      throw new Error('Permission request is not pending: perm-1');
+    });
+
+    const interaction = {
+      channel: { id: 'thread-1', isThread: () => true, parentId: 'channel-1' },
+      isChatInputCommand: () => false,
+      isAutocomplete: () => false,
+      isButton: () => true,
+      customId: 'permission:approved:thread-1:perm-1',
+      reply: vi.fn(async () => undefined),
+      update: vi.fn(async () => undefined),
+    } as any;
+
+    await interactionCreateHandler?.(interaction);
+
+    expect(interaction.update).not.toHaveBeenCalled();
+    expect(interaction.reply).toHaveBeenCalledWith({
+      content: 'This permission request is no longer pending.',
+      ephemeral: true,
+    });
+  });
+
   it('applies control tags before starting a new thread run', async () => {
     const message = createBaseMessage();
     message.content = '<@relay-bot> <set-backend>codex</set-backend>\nship it';

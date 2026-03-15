@@ -77,6 +77,8 @@ describe('codex backend', () => {
 
     expect(autoArgs).toContain('--full-auto');
     expect(safeArgs).not.toContain('--full-auto');
+    expect(autoArgs.at(-1)).toBe('-');
+    expect(safeArgs.at(-1)).toBe('-');
   });
 
   it('builds resume arguments when resuming a session', () => {

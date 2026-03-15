@@ -19,6 +19,7 @@ const coreMocks = vi.hoisted(() => ({
   ]),
   getAvailableBackendNames: vi.fn(async () => ['claude', 'opencode']),
   initState: vi.fn(async () => undefined),
+  maybeUnrefTimer: vi.fn(),
   persistState: vi.fn(async () => undefined),
   resolvePermissionRequest: vi.fn(({ conversationId, requestId, decision }: any) => ({
     conversationId,
@@ -42,6 +43,7 @@ vi.mock('@agent-im-relay/core', async (importOriginal) => {
     getAvailableBackendCapabilities: coreMocks.getAvailableBackendCapabilities,
     getAvailableBackendNames: coreMocks.getAvailableBackendNames,
     initState: coreMocks.initState,
+    maybeUnrefTimer: coreMocks.maybeUnrefTimer,
     persistState: coreMocks.persistState,
     resolvePermissionRequest: coreMocks.resolvePermissionRequest,
   };
@@ -121,6 +123,7 @@ afterEach(async () => {
     },
   ]);
   coreMocks.getAvailableBackendNames.mockResolvedValue(['claude', 'opencode']);
+  coreMocks.maybeUnrefTimer.mockClear();
   coreMocks.persistState.mockClear();
   coreMocks.resolvePermissionRequest.mockClear();
   runtimeMocks.handleFeishuControlAction.mockReset();
@@ -302,6 +305,46 @@ describe('Feishu long-connection events', () => {
         }),
       }),
     );
+  });
+
+  it('sends a friendly message when a permission card action is stale', async () => {
+    coreMocks.resolvePermissionRequest.mockImplementationOnce(() => {
+      throw new Error('Permission request is not pending: perm-1');
+    });
+
+    const replyMessage = vi.fn(async () => undefined);
+    const sendMessage = vi.fn(async () => undefined);
+    const router = createFeishuEventRouter(baseConfig, {
+      client: {
+        replyMessage,
+        sendMessage,
+        sendCard: vi.fn(async () => undefined),
+        updateCardMessage: vi.fn(async () => undefined),
+        uploadFileContent: vi.fn(async () => 'file-key'),
+        sendFileMessage: vi.fn(async () => undefined),
+        downloadMessageResource: vi.fn(async () => new Response()),
+      } as never,
+    });
+
+    await router.handleCardActionEvent({
+      open_message_id: 'open-message-1',
+      action: {
+        value: {
+          conversationId: 'conv-1',
+          chatId: 'chat-1',
+          action: 'permission-deny',
+          requestId: 'perm-1',
+          replyToMessageId: 'open-message-1',
+        },
+      },
+    });
+
+    expect(replyMessage).toHaveBeenCalledWith(expect.objectContaining({
+      messageId: 'open-message-1',
+      msgType: 'post',
+      content: expect.stringContaining('This permission request is no longer pending.'),
+    }));
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
   it('applies standalone backend control tags without prompting for missing text', async () => {

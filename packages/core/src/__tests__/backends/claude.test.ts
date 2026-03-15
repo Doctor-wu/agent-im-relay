@@ -85,6 +85,25 @@ describe('claude backend', () => {
       tool: 'Edit',
       reason: 'Apply patch',
     });
+
+    expect(extractClaudePermissionRequest({
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'text', text: 'Need approval' },
+          {
+            type: 'permission_request',
+            request_id: 'perm-3',
+            tool_name: 'Read',
+            description: 'Open secrets.json',
+          },
+        ],
+      },
+    })).toEqual({
+      requestId: 'perm-3',
+      tool: 'Read',
+      reason: 'Open secrets.json',
+    });
   });
 
   it('formats Claude permission decisions as stream-json stdin messages', () => {
