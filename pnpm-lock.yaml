@@ -64,13 +64,13 @@ importers:
 
   packages/discord:
     dependencies:
-      '@agent-im-relay/core':
-        specifier: workspace:*
-        version: link:../core
       discord.js:
         specifier: ^14.18.0
         version: 14.25.1
     devDependencies:
+      '@agent-im-relay/core':
+        specifier: workspace:*
+        version: link:../core
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.13
@@ -83,13 +83,13 @@ importers:
 
   packages/feishu:
     dependencies:
-      '@agent-im-relay/core':
-        specifier: workspace:*
-        version: link:../core
       '@larksuiteoapi/node-sdk':
         specifier: ^1.50.0
         version: 1.59.0
     devDependencies:
+      '@agent-im-relay/core':
+        specifier: workspace:*
+        version: link:../core
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.13
@@ -102,13 +102,13 @@ importers:
 
   packages/slack:
     dependencies:
-      '@agent-im-relay/core':
-        specifier: workspace:*
-        version: link:../core
       '@slack/bolt':
         specifier: ^4.6.0
         version: 4.6.0(@types/express@5.0.6)
     devDependencies:
+      '@agent-im-relay/core':
+        specifier: workspace:*
+        version: link:../core
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.13

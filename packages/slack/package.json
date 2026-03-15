@@ -4,6 +4,9 @@
   "type": "module",
   "main": "dist/index.mjs",
   "types": "dist/index.d.mts",
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
       "import": "./dist/index.mjs",
@@ -12,16 +15,17 @@
   },
   "scripts": {
     "build": "vp pack",
+    "prepack": "pnpm run build",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@agent-im-relay/core": "workspace:*",
     "@slack/bolt": "^4.6.0"
   },
   "devDependencies": {
+    "@agent-im-relay/core": "workspace:*",
     "@types/node": "^22.10.0",
     "tsx": "^4.19.2",
     "vitest": "^3.2.4"
