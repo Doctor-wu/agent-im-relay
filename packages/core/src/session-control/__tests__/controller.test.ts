@@ -3,11 +3,11 @@ import {
   registerBackend,
   resetBackendRegistryForTests,
   type AgentBackend,
-} from '../../agent/backend.js';
+} from '../../agent/backend';
 import {
   resetConversationRuntimeForTests,
   runConversationSession,
-} from '../../agent/runtime.js';
+} from '../../agent/runtime';
 import {
   conversationBackend,
   conversationEffort,
@@ -16,9 +16,9 @@ import {
   pendingBackendChanges,
   threadContinuationSnapshots,
   threadSessionBindings,
-} from '../../state.js';
-import { openThreadSessionBinding, updateThreadContinuationSnapshot } from '../../thread-session/manager.js';
-import { applySessionControlCommand } from '../controller.js';
+} from '../../state';
+import { openThreadSessionBinding, updateThreadContinuationSnapshot } from '../../thread-session/manager';
+import { applySessionControlCommand } from '../controller';
 
 function createBackend(events: Array<unknown>): AgentBackend {
   return {

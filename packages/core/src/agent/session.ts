@@ -1,8 +1,8 @@
-import './backends/claude.js';
-import './backends/codex.js';
-import './backends/opencode.js';
-import { getBackend, type BackendName } from './backend.js';
-import type { AgentMode } from './tools.js';
+import './backends/claude';
+import './backends/codex';
+import './backends/opencode';
+import { getBackend, type BackendName } from './backend';
+import type { AgentMode } from './tools';
 
 export type AgentStreamEvent =
   | { type: 'environment'; environment: AgentEnvironment }
@@ -15,8 +15,8 @@ export type AgentStreamEvent =
   | { type: 'error'; error: string };
 
 export type AgentEnvironment = {
-  backend: import('./backend.js').BackendName;
-  mode: import('./tools.js').AgentMode;
+  backend: import('./backend').BackendName;
+  mode: import('./tools').AgentMode;
   model: {
     requested?: string;
     resolved?: string;
@@ -75,4 +75,4 @@ export async function* streamAgentSession(
 }
 
 // Re-export helpers for backward compatibility
-export { extractEvents, createClaudeArgs } from './backends/claude.js';
+export { extractEvents, createClaudeArgs } from './backends/claude';

@@ -1,7 +1,7 @@
 import { SlashCommandBuilder, type ChatInputCommandInteraction } from 'discord.js';
-import { runMentionConversation } from '../conversation.js';
-import { collectInteractionAttachments } from '../files.js';
-import { ensureCodeThread } from '../thread.js';
+import { runMentionConversation } from '../conversation';
+import { collectInteractionAttachments } from '../files';
+import { ensureCodeThread } from '../thread';
 
 export const codeCommand = new SlashCommandBuilder()
   .setName('code')

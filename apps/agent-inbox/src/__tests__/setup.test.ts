@@ -38,7 +38,7 @@ vi.mock('@clack/prompts', () => {
 });
 
 import * as prompts from '@clack/prompts';
-import { runSetup } from '../setup.js';
+import { runSetup } from '../setup';
 
 describe('setup flow', () => {
   beforeEach(() => {

@@ -8,12 +8,12 @@ import {
   processedMessages,
   type BackendName,
 } from '@agent-im-relay/core';
-import { createFeishuClient } from './api.js';
-import type { FeishuConfig } from './config.js';
+import { createFeishuClient } from './api';
+import type { FeishuConfig } from './config';
 import {
   buildFeishuBackendConfirmationCardPayload,
-} from './cards.js';
-import { formatFeishuTextMessages } from './formatting.js';
+} from './cards';
+import { formatFeishuTextMessages } from './formatting';
 import {
   extractFeishuAttachmentInfos,
   extractFeishuMessageText,
@@ -25,19 +25,19 @@ import {
   type FeishuActionPayload,
   type FeishuMessagePayload,
   type FeishuRawEvent,
-} from './conversation.js';
+} from './conversation';
 import {
   buildFeishuSessionChatRecord,
   findFeishuSessionChatBySourceMessage,
   initializeFeishuSessionChats,
   persistFeishuSessionChats,
   resolveFeishuChatSessionKind,
-} from './session-chat.js';
+} from './session-chat';
 import {
   rememberMirroredFeishuMessageId,
   consumeMirroredFeishuMessageId,
-} from './launch-state.js';
-import { launchFeishuSessionFromPrivateChat } from './launcher.js';
+} from './launch-state';
+import { launchFeishuSessionFromPrivateChat } from './launcher';
 import {
   buildFeishuCardContext,
   drainPendingFeishuAttachments,
@@ -49,9 +49,9 @@ import {
   resolveFeishuMessageRequest,
   type FeishuRuntimeTransport,
   type FeishuTarget,
-} from './runtime.js';
-import { runFeishuSessionFlow } from './session-flow.js';
-import { describeError } from './utils.js';
+} from './runtime';
+import { runFeishuSessionFlow } from './session-flow';
+import { describeError } from './utils';
 
 type FeishuClient = ReturnType<typeof createFeishuClient>;
 

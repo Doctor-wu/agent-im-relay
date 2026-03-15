@@ -3,8 +3,8 @@ import {
   streamAgentSession,
   type AgentSessionOptions,
   type AgentStreamEvent,
-} from './session.js';
-import type { AgentBackend, BackendName } from './backend.js';
+} from './session';
+import type { AgentBackend, BackendName } from './backend';
 
 type RuntimeSessionOptions = AgentSessionOptions & {
   backend?: BackendName | AgentBackend;

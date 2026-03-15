@@ -21,8 +21,8 @@ async function loadThreadSessionModules(tempRootDir: string) {
   ].join('\n'), 'utf-8');
 
   const [state, manager] = await Promise.all([
-    import('../../state.js'),
-    import('../manager.js'),
+    import('../../state'),
+    import('../manager'),
   ]);
 
   return { state, manager };

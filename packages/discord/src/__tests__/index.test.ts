@@ -90,62 +90,62 @@ vi.mock('@agent-im-relay/core', () => ({
   Orchestrator: class {},
 }));
 
-vi.mock('../adapter.js', () => ({
+vi.mock('../adapter', () => ({
   createDiscordAdapter: vi.fn(() => ({ name: 'discord' })),
 }));
 
-vi.mock('../conversation.js', () => ({
+vi.mock('../conversation', () => ({
   hasOpenStickyThreadSession: vi.fn(() => false),
   runMentionConversation: vi.fn(async () => true),
 }));
 
-vi.mock('../files.js', () => ({
+vi.mock('../files', () => ({
   collectMessageAttachments: vi.fn(() => []),
 }));
 
-vi.mock('../thread.js', () => ({
+vi.mock('../thread', () => ({
   ensureMentionThread: vi.fn(),
 }));
 
-vi.mock('../commands/ask.js', () => ({
+vi.mock('../commands/ask', () => ({
   askCommand: { toJSON: () => ({}) },
   handleAskCommand: vi.fn(),
 }));
 
-vi.mock('../commands/code.js', () => ({
+vi.mock('../commands/code', () => ({
   codeCommand: { toJSON: () => ({}) },
   handleCodeCommand: vi.fn(),
 }));
 
-vi.mock('../commands/done.js', () => ({
+vi.mock('../commands/done', () => ({
   doneCommand: { toJSON: () => ({}) },
   handleDoneCommand: vi.fn(),
 }));
 
-vi.mock('../commands/interrupt.js', () => ({
+vi.mock('../commands/interrupt', () => ({
   interruptCommand: { toJSON: () => ({}) },
   handleInterruptCommand: vi.fn(),
 }));
 
-vi.mock('../commands/agent-control.js', () => ({
+vi.mock('../commands/agent-control', () => ({
   agentControlCommandHandlers: new Map(),
   agentControlCommands: [],
 }));
 
-vi.mock('../commands/skill.js', () => ({
+vi.mock('../commands/skill', () => ({
   handleSkillAutocomplete: vi.fn(),
   handleSkillCommand: vi.fn(),
   skillCommand: { toJSON: () => ({}) },
 }));
 
-vi.mock('../commands/thread-setup.js', () => ({
+vi.mock('../commands/thread-setup', () => ({
   promptThreadSetup: vi.fn(async () => ({ kind: 'skip' })),
   applySetupResult: vi.fn(async () => {}),
 }));
 
-import { handleDiscordMessageCreate } from '../index.js';
-import { handleSkillAutocomplete } from '../commands/skill.js';
-import { config as discordConfig } from '../config.js';
+import { handleDiscordMessageCreate } from '../index';
+import { handleSkillAutocomplete } from '../commands/skill';
+import { config as discordConfig } from '../config';
 import {
   applyMessageControlDirectives,
   getAvailableBackendCapabilities,

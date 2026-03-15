@@ -1,16 +1,16 @@
 import { ChannelType } from 'discord.js';
 import { describe, expect, it, vi } from 'vitest';
-import { askCommand } from '../commands/ask.js';
-import { codeCommand } from '../commands/code.js';
-import { doneCommand } from '../commands/done.js';
+import { askCommand } from '../commands/ask';
+import { codeCommand } from '../commands/code';
+import { doneCommand } from '../commands/done';
 import {
   compactCommand,
   effortCommand,
   modelCommand,
   sessionsCommand,
-} from '../commands/agent-control.js';
-import { skillCommand } from '../commands/skill.js';
-import { ensureCodeThread, ensureMentionThread } from '../thread.js';
+} from '../commands/agent-control';
+import { skillCommand } from '../commands/skill';
+import { ensureCodeThread, ensureMentionThread } from '../thread';
 
 describe('discord copy', () => {
   it('uses Agent wording in user-facing command descriptions', () => {

@@ -19,16 +19,16 @@ export type {
   InteractiveUI,
   MarkdownFormatter,
   PlatformAdapter,
-} from './types.js';
+} from './types';
 
 // Orchestrator
-export { Orchestrator } from './orchestrator.js';
-export type { AgentSessionFactory, OrchestratorOptions } from './orchestrator.js';
+export { Orchestrator } from './orchestrator';
+export type { AgentSessionFactory, OrchestratorOptions } from './orchestrator';
 
 // Agent
-export { buildAgentPrompt, streamAgentSession, extractEvents, createClaudeArgs } from './agent/session.js';
-export { runConversationSession, interruptConversationRun, isConversationRunning, resetConversationRuntimeForTests } from './agent/runtime.js';
-export type { AgentEnvironment, AgentStreamEvent, AgentSessionOptions } from './agent/session.js';
+export { buildAgentPrompt, streamAgentSession, extractEvents, createClaudeArgs } from './agent/session';
+export { runConversationSession, interruptConversationRun, isConversationRunning, resetConversationRuntimeForTests } from './agent/runtime';
+export type { AgentEnvironment, AgentStreamEvent, AgentSessionOptions } from './agent/session';
 export {
   getAvailableBackendCapabilities,
   getAvailableBackendNames,
@@ -42,42 +42,42 @@ export {
   resolveBackendModelId,
   registerBackend,
   resetBackendRegistryForTests,
-} from './agent/backend.js';
+} from './agent/backend';
 export type {
   AgentBackend,
   AgentBackendCapability,
   BackendModel,
   BackendName,
-} from './agent/backend.js';
-export { toolsForMode } from './agent/tools.js';
-export type { AgentMode } from './agent/tools.js';
-export { runConversationWithRenderer } from './runtime/conversation-runner.js';
-export type { ConversationRunPhase } from './runtime/conversation-runner.js';
+} from './agent/backend';
+export { toolsForMode } from './agent/tools';
+export type { AgentMode } from './agent/tools';
+export { runConversationWithRenderer } from './runtime/conversation-runner';
+export type { ConversationRunPhase } from './runtime/conversation-runner';
 export {
   applyConversationControlAction,
   applyMessageControlDirectives,
   evaluateConversationRunRequest,
   preprocessConversationMessage,
   runPlatformConversation,
-} from './platform/conversation.js';
+} from './platform/conversation';
 export type {
   ConversationControlAction,
   ConversationControlResult,
   ConversationRunEvaluation,
-} from './platform/conversation.js';
+} from './platform/conversation';
 export type {
   MessageControlDirective,
   PreprocessedConversationMessage,
-} from './platform/message-preprocessing.js';
-export { applySessionControlCommand } from './session-control/controller.js';
-export type { SessionControlCommand, SessionControlResult } from './session-control/types.js';
+} from './platform/message-preprocessing';
+export { applySessionControlCommand } from './session-control/controller';
+export type { SessionControlCommand, SessionControlResult } from './session-control/types';
 export {
   buildAttachmentPromptContext,
   downloadIncomingAttachments,
   prepareAttachmentPrompt,
   stageOutgoingArtifacts,
-} from './runtime/files.js';
-export type { DownloadedAttachment, RemoteAttachmentLike, StagedArtifactsResult } from './runtime/files.js';
+} from './runtime/files';
+export type { DownloadedAttachment, RemoteAttachmentLike, StagedArtifactsResult } from './runtime/files';
 export type {
   ClientHeartbeatEvent,
   ClientHelloEvent,
@@ -92,7 +92,7 @@ export type {
   ConversationTextEvent,
   GatewayToClientCommand,
   ManagedBridgeTarget,
-} from './bridge/protocol.js';
+} from './bridge/protocol';
 
 // State
 export {
@@ -115,7 +115,7 @@ export {
   initState,
   persistConversationArtifactMetadata,
   persistState,
-} from './state.js';
+} from './state';
 export {
   closeThreadSession,
   confirmThreadSessionBinding,
@@ -123,14 +123,14 @@ export {
   openThreadSessionBinding,
   resolveThreadResumeMode,
   updateThreadContinuationSnapshot,
-} from './thread-session/manager.js';
+} from './thread-session/manager';
 export type {
   ThreadContinuationSnapshot,
   ThreadContinuationStopReason,
   ThreadNativeSessionStatus,
   ThreadResumeMode,
   ThreadSessionBinding,
-} from './thread-session/types.js';
+} from './thread-session/types';
 
 // Artifacts
 export {
@@ -140,13 +140,13 @@ export {
   getConversationArtifactPaths,
   readArtifactMetadata,
   writeArtifactMetadata,
-} from './artifacts/store.js';
+} from './artifacts/store';
 export {
   parseArtifactManifest,
   resolveArtifactCandidatePaths,
   resolveArtifactPath,
   stripArtifactManifest,
-} from './artifacts/protocol.js';
+} from './artifacts/protocol';
 export type {
   ArtifactKind,
   ArtifactRecord,
@@ -154,16 +154,16 @@ export type {
   ArtifactManifestFile,
   ConversationArtifactMetadata,
   ConversationArtifactPaths,
-} from './artifacts/types.js';
+} from './artifacts/types';
 
 // Skills
-export { listSkills, refreshSkills, readSkillsFromDirectory, parseSkillFrontmatter } from './skills.js';
-export type { SkillInfo } from './skills.js';
+export { listSkills, refreshSkills, readSkillsFromDirectory, parseSkillFrontmatter } from './skills';
+export type { SkillInfo } from './skills';
 
 // Config
-export { config } from './config.js';
-export { readCoreConfig } from './config.js';
-export { applyCoreConfigEnvironment } from './config.js';
+export { config } from './config';
+export { readCoreConfig } from './config';
+export { applyCoreConfigEnvironment } from './config';
 export {
   ensureDefaultRecords,
   loadRelayConfig,
@@ -178,7 +178,7 @@ export {
   saveRelayConfig,
   serializeConfigRecords,
   upsertRecord,
-} from './config.js';
+} from './config';
 export type {
   AvailableIm,
   CoreConfig,
@@ -197,8 +197,8 @@ export type {
   SlackImConfig,
   SlackImRecord,
   SlackRelayConfig,
-} from './config.js';
-export { resolveRelayHomeDir, resolveRelayPaths, resolveRelayPlatformStateDir } from './paths.js';
-export type { RelayPaths } from './paths.js';
-export { relayPlatforms, isRelayPlatform, inferRelayPlatformFromConversationId } from './relay-platform.js';
-export type { RelayPlatform } from './relay-platform.js';
+} from './config';
+export { resolveRelayHomeDir, resolveRelayPaths, resolveRelayPlatformStateDir } from './paths';
+export type { RelayPaths } from './paths';
+export { relayPlatforms, isRelayPlatform, inferRelayPlatformFromConversationId } from './relay-platform';
+export type { RelayPlatform } from './relay-platform';

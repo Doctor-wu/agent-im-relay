@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { runConversationSession } from '../agent/runtime.js';
+import { runConversationSession } from '../agent/runtime';
 import {
   getBackendSupportedModels,
   isBackendModelSupported,
   resolveBackendModelId,
-} from '../agent/backend.js';
+} from '../agent/backend';
 import {
   activeConversations,
   conversationBackend,
@@ -14,18 +14,18 @@ import {
   conversationSessions,
   persistState,
   threadSessionBindings,
-} from '../state.js';
-import type { AgentMode } from '../agent/tools.js';
-import type { AgentBackend, BackendName } from '../agent/backend.js';
-import type { AgentStreamEvent } from '../agent/session.js';
+} from '../state';
+import type { AgentMode } from '../agent/tools';
+import type { AgentBackend, BackendName } from '../agent/backend';
+import type { AgentStreamEvent } from '../agent/session';
 import {
   confirmThreadSessionBinding,
   invalidateThreadSessionBinding,
   openThreadSessionBinding,
   resolveThreadResumeMode,
   updateThreadContinuationSnapshot,
-} from '../thread-session/manager.js';
-import type { ThreadContinuationSnapshot, ThreadContinuationStopReason } from '../thread-session/types.js';
+} from '../thread-session/manager';
+import type { ThreadContinuationSnapshot, ThreadContinuationStopReason } from '../thread-session/types';
 
 export type ConversationRunPhase = 'thinking' | 'tools' | 'done' | 'error';
 
@@ -303,8 +303,10 @@ export async function runConversationWithRenderer<TTarget, TTrigger = unknown>(
       });
     }
 
-    if (phase !== 'error') {
-      await options.onPhaseChange?.('done', phase, options.trigger);
+    const previousPhase = phase as ConversationRunPhase;
+    const endedWithError = stopReason === 'error';
+    if (!endedWithError) {
+      await options.onPhaseChange?.('done', previousPhase, options.trigger);
     }
 
     if (finalBinding.nativeSessionStatus === 'confirmed' && finalBinding.nativeSessionId) {

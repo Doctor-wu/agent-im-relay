@@ -25,25 +25,25 @@ import {
   type IncomingMessage,
   preprocessConversationMessage,
 } from '@agent-im-relay/core';
-import { config } from './config.js';
-import { createDiscordAdapter } from './adapter.js';
-import { buildDiscordReplyPayload, createDiscordReplyContext, type DiscordReplyContext } from './reply-context.js';
-import type { StreamTargetChannel } from './stream.js';
-import { hasOpenStickyThreadSession, runMentionConversation } from './conversation.js';
-import { collectMessageAttachments } from './files.js';
-import { resolveInboundDiscordMessage } from './message-routing.js';
-import { ensureMentionThread } from './thread.js';
-import { askCommand, handleAskCommand } from './commands/ask.js';
-import { codeCommand, handleCodeCommand } from './commands/code.js';
-import { doneCommand, handleDoneCommand } from './commands/done.js';
-import { interruptCommand, handleInterruptCommand } from './commands/interrupt.js';
-import { agentControlCommandHandlers, agentControlCommands } from './commands/agent-control.js';
+import { config } from './config';
+import { createDiscordAdapter } from './adapter';
+import { buildDiscordReplyPayload, createDiscordReplyContext, type DiscordReplyContext } from './reply-context';
+import type { StreamTargetChannel } from './stream';
+import { hasOpenStickyThreadSession, runMentionConversation } from './conversation';
+import { collectMessageAttachments } from './files';
+import { resolveInboundDiscordMessage } from './message-routing';
+import { ensureMentionThread } from './thread';
+import { askCommand, handleAskCommand } from './commands/ask';
+import { codeCommand, handleCodeCommand } from './commands/code';
+import { doneCommand, handleDoneCommand } from './commands/done';
+import { interruptCommand, handleInterruptCommand } from './commands/interrupt';
+import { agentControlCommandHandlers, agentControlCommands } from './commands/agent-control';
 import {
   handleSkillAutocomplete,
   handleSkillCommand,
   skillCommand,
-} from './commands/skill.js';
-import { promptThreadSetup, applySetupResult } from './commands/thread-setup.js';
+} from './commands/skill';
+import { promptThreadSetup, applySetupResult } from './commands/thread-setup';
 
 function isChannelAllowed(channelId: string, parentId: string | null): boolean {
   if (config.allowedChannelIds.length === 0) return true;
@@ -53,6 +53,12 @@ function isChannelAllowed(channelId: string, parentId: string | null): boolean {
 
 type CommandHandler = (interaction: ChatInputCommandInteraction) => Promise<void>;
 type AutocompleteHandler = (interaction: AutocompleteInteraction) => Promise<void>;
+
+function canSendToChannel(channel: Message['channel']): channel is Message['channel'] & {
+  send(payload: string | ReturnType<typeof buildDiscordReplyPayload>): Promise<unknown>;
+} {
+  return 'send' in channel;
+}
 
 // --- Command registry ---
 const commandHandlers = new Map<string, CommandHandler>([
@@ -226,9 +232,11 @@ export async function handleDiscordMessageCreate(
     }
 
     if (!prompt && preprocessed.directives.length === 0) {
-      await message.channel.send(
-        buildDiscordReplyPayload('Please include a prompt after mentioning me.', replyContext),
-      ).catch(() => {});
+      if (canSendToChannel(message.channel)) {
+        await message.channel.send(
+          buildDiscordReplyPayload('Please include a prompt after mentioning me.', replyContext),
+        ).catch(() => {});
+      }
       return;
     }
 
@@ -279,7 +287,9 @@ export async function handleDiscordMessageCreate(
     }
   } catch (error) {
     const errorText = toErrorMessage(error);
-    await message.channel.send(buildDiscordReplyPayload(`❌ ${errorText}`, replyContext)).catch(() => {});
+    if (canSendToChannel(message.channel)) {
+      await message.channel.send(buildDiscordReplyPayload(`❌ ${errorText}`, replyContext)).catch(() => {});
+    }
   }
 }
 

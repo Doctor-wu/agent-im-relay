@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as core from '@agent-im-relay/core';
-import * as streamModule from '../stream.js';
-import { agentControlCommandHandlers, agentControlCommands } from '../commands/agent-control.js';
+import * as streamModule from '../stream';
+import { agentControlCommandHandlers, agentControlCommands } from '../commands/agent-control';
 
 beforeEach(() => {
   core.activeConversations.clear();

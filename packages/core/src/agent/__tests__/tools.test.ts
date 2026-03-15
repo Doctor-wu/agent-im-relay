@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toolsForMode } from '../tools.js';
+import { toolsForMode } from '../tools';
 
 describe('toolsForMode', () => {
   it('returns code mode arguments', () => {

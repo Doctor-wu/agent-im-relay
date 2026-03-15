@@ -43,7 +43,7 @@ describe('artifact store', () => {
     const tempRootDir = await createTempArtifactsDir();
     const { artifactsBaseDir } = await setupRelayHome(tempRootDir);
 
-    const { ensureConversationArtifactPaths } = await import('../artifacts/store.js');
+    const { ensureConversationArtifactPaths } = await import('../artifacts/store');
 
     const paths = await ensureConversationArtifactPaths('conv-123');
 
@@ -57,7 +57,7 @@ describe('artifact store', () => {
     const tempRootDir = await createTempArtifactsDir();
     const { artifactsBaseDir } = await setupRelayHome(tempRootDir);
 
-    const { ensureConversationArtifactPaths, readArtifactMetadata, writeArtifactMetadata } = await import('../artifacts/store.js');
+    const { ensureConversationArtifactPaths, readArtifactMetadata, writeArtifactMetadata } = await import('../artifacts/store');
 
     const paths = await ensureConversationArtifactPaths('conv-meta');
     const metadata = {
@@ -104,7 +104,7 @@ describe('artifact store', () => {
       lastUpdatedAt: '2026-03-07T00:00:01.000Z',
     };
 
-    const state = await import('../state.js');
+    const state = await import('../state');
     state.conversationSessions.set('conv-meta', 'session-1');
 
     await state.persistConversationArtifactMetadata('conv-meta', metadata);
@@ -140,7 +140,7 @@ describe('artifact store', () => {
     const expiredAt = new Date(Date.now() - (3 * 24 * 60 * 60 * 1000));
     await utimes(expiredDir, expiredAt, expiredAt);
 
-    const { ensureConversationArtifactPaths } = await import('../artifacts/store.js');
+    const { ensureConversationArtifactPaths } = await import('../artifacts/store');
     await ensureConversationArtifactPaths('fresh-conversation');
 
     await expect(access(expiredDir)).rejects.toMatchObject({ code: 'ENOENT' });
@@ -149,7 +149,7 @@ describe('artifact store', () => {
 
 describe('artifact protocol', () => {
   it('parses the last valid artifacts fenced block', async () => {
-    const { parseArtifactManifest } = await import('../artifacts/protocol.js');
+    const { parseArtifactManifest } = await import('../artifacts/protocol');
 
     const text = [
       'ignore this block',
@@ -185,7 +185,7 @@ describe('artifact protocol', () => {
   });
 
   it('rejects paths that escape the allowed root', async () => {
-    const { resolveArtifactPath } = await import('../artifacts/protocol.js');
+    const { resolveArtifactPath } = await import('../artifacts/protocol');
 
     const rootDir = path.join('/tmp', 'artifact-root');
 
@@ -195,7 +195,7 @@ describe('artifact protocol', () => {
   });
 
   it('removes artifacts fenced blocks from rendered output', async () => {
-    const { stripArtifactManifest } = await import('../artifacts/protocol.js');
+    const { stripArtifactManifest } = await import('../artifacts/protocol');
 
     const text = [
       'Here is your summary.',
@@ -226,7 +226,7 @@ describe('artifact state integration', () => {
       savedCwdList: [],
     }, null, 2), 'utf-8');
 
-    const state = await import('../state.js');
+    const state = await import('../state');
 
     await expect(state.initState()).resolves.toBeUndefined();
     await expect(state.getConversationArtifactMetadata('conv-missing')).resolves.toEqual({

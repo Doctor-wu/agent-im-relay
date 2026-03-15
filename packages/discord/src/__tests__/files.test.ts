@@ -48,7 +48,7 @@ describe('attachment downloads', () => {
     const tempRoot = await createTempArtifactsDir();
     const artifactsBaseDir = await setupDiscordRelayHome(tempRoot);
 
-    const { downloadAttachments } = await import('../files.js');
+    const { downloadAttachments } = await import('../files');
     const { getConversationArtifactMetadata } = await import('@agent-im-relay/core');
     const fetchImpl = vi.fn(async () => new Response('# Spec\n\nFirst line\nSecond line\nThird line\n', { status: 200 }));
 
@@ -99,7 +99,7 @@ describe('attachment downloads', () => {
     const tempRoot = await createTempArtifactsDir();
     const artifactsBaseDir = await setupDiscordRelayHome(tempRoot);
 
-    const { prepareAttachmentPrompt } = await import('../files.js');
+    const { prepareAttachmentPrompt } = await import('../files');
     const fetchImpl = vi.fn(async () => new Response('alpha\nbeta\ngamma\n', { status: 200 }));
 
     const prepared = await prepareAttachmentPrompt({
@@ -132,7 +132,7 @@ describe('attachment downloads', () => {
       artifactMaxSizeBytes: 8,
     });
 
-    const { downloadAttachments } = await import('../files.js');
+    const { downloadAttachments } = await import('../files');
 
     await expect(downloadAttachments({
       conversationId: 'thread-big',

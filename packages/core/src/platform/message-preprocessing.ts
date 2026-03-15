@@ -1,6 +1,6 @@
-import { isRegisteredBackendName, type BackendName } from '../agent/backend.js';
-import { applySessionControlCommand } from '../session-control/controller.js';
-import type { SessionControlResult } from '../session-control/types.js';
+import { isRegisteredBackendName, type BackendName } from '../agent/backend';
+import { applySessionControlCommand } from '../session-control/controller';
+import type { SessionControlResult } from '../session-control/types';
 
 export type MessageControlDirective = {
   type: 'backend';

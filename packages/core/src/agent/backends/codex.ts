@@ -3,15 +3,15 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
-import { config } from '../../config.js';
+import { config } from '../../config';
 import {
   isBackendCommandAvailable,
   registerBackend,
   type AgentBackend,
   type BackendModel,
-} from '../backend.js';
-import { buildEnvironment } from '../environment.js';
-import type { AgentSessionOptions, AgentStreamEvent } from '../session.js';
+} from '../backend';
+import { buildEnvironment } from '../environment';
+import type { AgentSessionOptions, AgentStreamEvent } from '../session';
 
 const WORKING_DIR_PATTERN = /^Working directory:\s*(.+)$/;
 const LOG_LINE_PATTERN = /^\d{4}-\d{2}-\d{2}T/;

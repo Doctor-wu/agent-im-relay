@@ -11,7 +11,7 @@ describe('core config', () => {
   it('does not expose relay-level model config', async () => {
     vi.stubEnv('CLAUDE_MODEL', 'sonnet');
 
-    const { readCoreConfig } = await import('../config.js');
+    const { readCoreConfig } = await import('../config');
     const config = readCoreConfig();
 
     expect('claudeModel' in config).toBe(false);
@@ -22,7 +22,7 @@ describe('core config', () => {
     vi.stubEnv('HOME', homeDir);
     vi.stubEnv('INIT_CWD', '');
 
-    const { readCoreConfig } = await import('../config.js');
+    const { readCoreConfig } = await import('../config');
     const config = readCoreConfig(homeDir);
 
     expect(config.stateFile).toBe(join(homeDir, '.agent-inbox', 'state', 'sessions.json'));
@@ -33,7 +33,7 @@ describe('core config', () => {
     vi.stubEnv('HOME', '/definitely/missing-home');
     vi.stubEnv('INIT_CWD', '');
 
-    const { readCoreConfig } = await import('../config.js');
+    const { readCoreConfig } = await import('../config');
     const config = readCoreConfig(process.cwd());
 
     expect(config.stateFile).toBe(join(process.cwd(), '.agent-inbox', 'state', 'sessions.json'));
@@ -45,7 +45,7 @@ describe('core config', () => {
     vi.stubEnv('HOME', '/definitely/missing-home');
     vi.stubEnv('INIT_CWD', initCwd);
 
-    const { readCoreConfig } = await import('../config.js');
+    const { readCoreConfig } = await import('../config');
     const config = readCoreConfig(initCwd);
 
     expect(config.stateFile).toBe(join(initCwd, '.agent-inbox', 'state', 'sessions.json'));
@@ -73,7 +73,7 @@ describe('core config', () => {
       readDiscordRelayConfig,
       readFeishuRelayConfig,
       readSlackRelayConfig,
-    } = await import('../config.js');
+    } = await import('../config');
 
     const loaded = readRelayConfig(homeDir);
     const coreConfig = readCoreConfig(homeDir);
@@ -117,7 +117,7 @@ describe('core config', () => {
 
   it('resolves platform-specific state directories for Slack', async () => {
     const baseDir = await mkdtemp('/tmp/agent-inbox-platform-state-');
-    const { resolveRelayPlatformStateDir } = await import('../paths.js');
+    const { resolveRelayPlatformStateDir } = await import('../paths');
 
     expect(resolveRelayPlatformStateDir('slack', baseDir)).toBe(
       join(baseDir, '.agent-inbox', 'state', 'slack'),
@@ -127,7 +127,7 @@ describe('core config', () => {
 
 describe('relay platform inference', () => {
   it('recognizes Slack thread timestamps as Slack conversations', async () => {
-    const { inferRelayPlatformFromConversationId, relayPlatforms } = await import('../relay-platform.js');
+    const { inferRelayPlatformFromConversationId, relayPlatforms } = await import('../relay-platform');
 
     expect(relayPlatforms).toContain('slack');
     expect(inferRelayPlatformFromConversationId('1741766400.123456')).toBe('slack');

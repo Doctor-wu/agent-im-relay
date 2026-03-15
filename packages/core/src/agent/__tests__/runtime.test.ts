@@ -1,16 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { registerBackend, type AgentBackend } from '../backend.js';
+import { registerBackend, type AgentBackend } from '../backend';
 import {
   interruptConversationRun,
   isConversationRunning,
   resetConversationRuntimeForTests,
   runConversationSession,
-} from '../runtime.js';
+} from '../runtime';
 import {
   interruptConversationRun as interruptConversationRunFromRoot,
   isConversationRunning as isConversationRunningFromRoot,
   runConversationSession as runConversationSessionFromRoot,
-} from '../../index.js';
+} from '../../index';
 
 function createBackend(events: Array<unknown>): AgentBackend {
   return {

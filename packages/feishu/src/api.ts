@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import type { FeishuConfig } from './config.js';
+import type { FeishuConfig } from './config';
 
 export type FeishuReceiveIdType = 'chat_id' | 'open_id' | 'union_id' | 'email' | 'user_id';
 export type FeishuMessageType = 'text' | 'post' | 'interactive' | 'file' | 'share_chat';

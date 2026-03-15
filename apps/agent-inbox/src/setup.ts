@@ -7,8 +7,8 @@ import type {
   FeishuImRecord,
   SlackImRecord,
   LoadedAppConfig,
-} from './config.js';
-import { loadAppConfig, saveAppConfig, upsertRecord } from './config.js';
+} from './config';
+import { loadAppConfig, saveAppConfig, upsertRecord } from './config';
 
 const ALL_PLATFORM_IDS = ['discord', 'feishu', 'slack'] as const;
 type PlatformId = (typeof ALL_PLATFORM_IDS)[number];
@@ -28,18 +28,26 @@ function getUnconfiguredPlatforms(availableIms: AvailableIm[]): PlatformId[] {
   return ALL_PLATFORM_IDS.filter(id => !configured.has(id));
 }
 
+function requireText(value: string | symbol | undefined): string {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error('Prompt input was cancelled or left empty.');
+  }
+
+  return value;
+}
+
 async function buildDiscordRecord(): Promise<DiscordImRecord> {
   const result = await p.group(
     {
       token: () =>
         p.password({
           message: 'Discord bot token',
-          validate: v => (v.length === 0 ? 'Required' : undefined),
+          validate: v => (!v ? 'Required' : undefined),
         }),
       clientId: () =>
         p.text({
           message: 'Application client ID',
-          validate: v => (v.length === 0 ? 'Required' : undefined),
+          validate: v => (!v ? 'Required' : undefined),
         }),
       guildIds: () =>
         p.text({
@@ -62,8 +70,8 @@ async function buildDiscordRecord(): Promise<DiscordImRecord> {
     enabled: true,
     note: 'Discord bot',
     config: {
-      token: result.token,
-      clientId: result.clientId,
+      token: requireText(result.token),
+      clientId: requireText(result.clientId),
       guildIds: result.guildIds
         ? result.guildIds
             .split(',')
@@ -80,22 +88,20 @@ async function buildFeishuRecord(): Promise<FeishuImRecord> {
       appId: () =>
         p.text({
           message: 'Feishu app ID',
-          validate: v => (v.length === 0 ? 'Required' : undefined),
+          validate: v => (!v ? 'Required' : undefined),
         }),
       appSecret: () =>
         p.password({
           message: 'Feishu app secret',
-          validate: v => (v.length === 0 ? 'Required' : undefined),
+          validate: v => (!v ? 'Required' : undefined),
         }),
       verificationToken: () =>
         p.password({
           message: 'Verification token (optional)',
-          defaultValue: '',
         }),
       encryptKey: () =>
         p.password({
           message: 'Encrypt key (optional)',
-          defaultValue: '',
         }),
       port: () =>
         p.text({
@@ -117,10 +123,14 @@ async function buildFeishuRecord(): Promise<FeishuImRecord> {
     enabled: true,
     note: 'Feishu app',
     config: {
-      appId: result.appId,
-      appSecret: result.appSecret,
-      verificationToken: result.verificationToken || undefined,
-      encryptKey: result.encryptKey || undefined,
+      appId: requireText(result.appId),
+      appSecret: requireText(result.appSecret),
+      verificationToken: typeof result.verificationToken === 'string' && result.verificationToken.length > 0
+        ? result.verificationToken
+        : undefined,
+      encryptKey: typeof result.encryptKey === 'string' && result.encryptKey.length > 0
+        ? result.encryptKey
+        : undefined,
       port: result.port ? Number.parseInt(result.port, 10) : undefined,
     },
   };
@@ -132,17 +142,17 @@ async function buildSlackRecord(): Promise<SlackImRecord> {
       botToken: () =>
         p.password({
           message: 'Slack bot token',
-          validate: v => (v.length === 0 ? 'Required' : undefined),
+          validate: v => (!v ? 'Required' : undefined),
         }),
       appToken: () =>
         p.password({
           message: 'Slack app token',
-          validate: v => (v.length === 0 ? 'Required' : undefined),
+          validate: v => (!v ? 'Required' : undefined),
         }),
       signingSecret: () =>
         p.password({
           message: 'Slack signing secret',
-          validate: v => (v.length === 0 ? 'Required' : undefined),
+          validate: v => (!v ? 'Required' : undefined),
         }),
       socketMode: () =>
         p.select({
@@ -167,9 +177,9 @@ async function buildSlackRecord(): Promise<SlackImRecord> {
     enabled: true,
     note: 'Slack app',
     config: {
-      botToken: result.botToken,
-      appToken: result.appToken,
-      signingSecret: result.signingSecret,
+      botToken: requireText(result.botToken),
+      appToken: requireText(result.appToken),
+      signingSecret: requireText(result.signingSecret),
       socketMode: result.socketMode,
     },
   };

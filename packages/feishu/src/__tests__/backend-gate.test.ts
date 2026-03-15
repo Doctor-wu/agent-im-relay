@@ -43,7 +43,7 @@ import {
   confirmBackendChange,
   dispatchFeishuCardAction,
   requestBackendChange,
-} from '../runtime.js';
+} from '../runtime';
 
 describe('Feishu backend gate', () => {
   beforeEach(() => {

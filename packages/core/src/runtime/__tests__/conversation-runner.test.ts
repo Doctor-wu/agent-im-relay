@@ -3,14 +3,14 @@ import {
   registerBackend,
   resetBackendRegistryForTests,
   type AgentBackend,
-} from '../../agent/backend.js';
+} from '../../agent/backend';
 
 const { runConversationSession } = vi.hoisted(() => ({
   runConversationSession: vi.fn(),
 }));
 
-vi.mock('../../agent/runtime.js', async () => {
-  const actual = await vi.importActual<typeof import('../../agent/runtime.js')>('../../agent/runtime.js');
+vi.mock('../../agent/runtime', async () => {
+  const actual = await vi.importActual<typeof import('../../agent/runtime')>('../../agent/runtime');
   return {
     ...actual,
     runConversationSession,
@@ -30,8 +30,8 @@ import {
   threadContinuationSnapshots,
   threadSessionBindings,
   updateThreadContinuationSnapshot,
-} from '../../index.js';
-import { runConversationWithRenderer } from '../conversation-runner.js';
+} from '../../index';
+import { runConversationWithRenderer } from '../conversation-runner';
 
 async function drainEvents(events: AsyncIterable<unknown>): Promise<void> {
   for await (const _event of events) {

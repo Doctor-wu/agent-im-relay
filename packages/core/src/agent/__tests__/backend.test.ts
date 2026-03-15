@@ -9,7 +9,7 @@ import {
   resetBackendRegistryForTests,
   resolveBackendModelId,
   type AgentBackend,
-} from '../backend.js';
+} from '../backend';
 
 function createBackend(
   name: string,

@@ -1,8 +1,8 @@
 import { Readable } from 'node:stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { registerBackend, type AgentBackend } from '../backend.js';
-import type { AgentStreamEvent } from '../session.js';
-import { createClaudeArgs, extractEvents, streamAgentSession } from '../session.js';
+import { registerBackend, type AgentBackend } from '../backend';
+import type { AgentStreamEvent } from '../session';
+import { createClaudeArgs, extractEvents, streamAgentSession } from '../session';
 import { spawn } from 'node:child_process';
 
 vi.mock('node:child_process', () => ({

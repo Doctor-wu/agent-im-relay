@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { runCli } from './cli.js';
+import { runCli } from './cli';
 
 void runCli().catch((error) => {
   console.error('[agent-inbox] failed to start:', error);

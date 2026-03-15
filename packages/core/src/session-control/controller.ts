@@ -1,13 +1,13 @@
-import { isBackendModelSupported, resolveBackendModelId } from '../agent/backend.js';
-import { interruptConversationRun } from '../agent/runtime.js';
-import { closeThreadSession } from '../thread-session/manager.js';
+import { isBackendModelSupported, resolveBackendModelId } from '../agent/backend';
+import { interruptConversationRun } from '../agent/runtime';
+import { closeThreadSession } from '../thread-session/manager';
 import {
   conversationBackend,
   conversationEffort,
   conversationModels,
   pendingBackendChanges,
-} from '../state.js';
-import type { SessionControlCommand, SessionControlResult } from './types.js';
+} from '../state';
+import type { SessionControlCommand, SessionControlResult } from './types';
 
 function updateStringMap(
   store: Map<string, string>,

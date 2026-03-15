@@ -1,9 +1,22 @@
 {
-  "references": [
-    { "path": "packages/core" },
-    { "path": "packages/discord" },
-    { "path": "packages/feishu" },
-    { "path": "apps/agent-inbox" }
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@agent-im-relay/core": ["packages/core/src/index.ts"],
+      "@agent-im-relay/discord": ["packages/discord/src/index.ts"],
+      "@agent-im-relay/feishu": ["packages/feishu/src/index.ts"],
+      "@agent-im-relay/slack": ["packages/slack/src/index.ts"]
+    }
+  },
+  "include": [
+    "packages/*/src/**/*.ts",
+    "apps/agent-inbox/src/**/*.ts"
   ],
-  "files": []
+  "exclude": [
+    "**/dist/**",
+    "**/node_modules/**",
+    "**/__tests__/**"
+  ]
 }

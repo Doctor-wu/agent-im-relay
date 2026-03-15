@@ -9,8 +9,8 @@ import {
   threadSessionBindings,
 } from '@agent-im-relay/core';
 import type { AgentBackend } from '@agent-im-relay/core';
-import { runMentionConversation } from '../conversation.js';
-import { sanitizeThreadName } from '../thread.js';
+import { runMentionConversation } from '../conversation';
+import { sanitizeThreadName } from '../thread';
 
 function createBackend(): AgentBackend {
   return {

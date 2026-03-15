@@ -16,27 +16,27 @@ import {
   type BackendName,
   type AgentMode,
 } from '@agent-im-relay/core';
-import { buildSlackBackendSelectionBlocks, buildSlackModelSelectionBlocks, type SlackBlock } from './cards.js';
-import { parseSlackAskCommand } from './commands/ask.js';
-import { parseSlackCodeCommand } from './commands/code.js';
-import { resolveSlackDoneTarget } from './commands/done.js';
-import { resolveSlackInterruptTarget } from './commands/interrupt.js';
-import { parseSlackSkillCommand } from './commands/skill.js';
+import { buildSlackBackendSelectionBlocks, buildSlackModelSelectionBlocks, type SlackBlock } from './cards';
+import { parseSlackAskCommand } from './commands/ask';
+import { parseSlackCodeCommand } from './commands/code';
+import { resolveSlackDoneTarget } from './commands/done';
+import { resolveSlackInterruptTarget } from './commands/interrupt';
+import { parseSlackSkillCommand } from './commands/skill';
 import {
   buildSlackConversationId,
   isSlackDirectMessage,
   resolveSlackConversationIdForMessage,
   shouldProcessSlackMessage,
   type SlackMessageEvent,
-} from './conversation.js';
-import { readSlackConfig, type SlackConfig } from './config.js';
-import { applySlackReaction, type SlackReactionPhase, type SlackReactionTarget } from './presentation.js';
+} from './conversation';
+import { readSlackConfig, type SlackConfig } from './config';
+import { applySlackReaction, type SlackReactionPhase, type SlackReactionTarget } from './presentation';
 import {
   findSlackConversationByThreadTs,
   rememberSlackConversation,
   type SlackConversationRecord,
-} from './state.js';
-import { streamSlackMessages } from './stream.js';
+} from './state';
+import { streamSlackMessages } from './stream';
 
 export interface SlackCommandPayload {
   command: '/code' | '/ask' | '/interrupt' | '/done' | '/skill';
@@ -116,6 +116,12 @@ type SlackPendingRun = {
 const pendingRuns = new Map<string, SlackPendingRun>();
 const pendingModelTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+function hasReactionTransport(
+  transport: SlackRuntimeTransport,
+): transport is SlackRuntimeTransport & Required<Pick<SlackRuntimeTransport, 'addReaction' | 'removeReaction'>> {
+  return typeof transport.addReaction === 'function' && typeof transport.removeReaction === 'function';
+}
+
 function maybeUnrefTimer(timer: ReturnType<typeof setTimeout>): void {
   if (typeof (timer as { unref?: () => void }).unref === 'function') {
     (timer as { unref: () => void }).unref();
@@ -180,7 +186,7 @@ async function maybeMarkSlackMessageReceived(
   transport: SlackRuntimeTransport,
   target: SlackReactionTarget | undefined,
 ): Promise<void> {
-  if (!target || !transport.addReaction || !transport.removeReaction) {
+  if (!target || !hasReactionTransport(transport)) {
     return;
   }
 
@@ -463,7 +469,7 @@ async function continuePendingRun(
   clearPendingTimer(pendingRun.conversationId);
   pendingRuns.delete(pendingRun.conversationId);
   const reactionTarget = resolveReactionTarget(pendingRun);
-  if (reactionTarget && options.transport.addReaction && options.transport.removeReaction) {
+  if (reactionTarget && hasReactionTransport(options.transport)) {
     await applySlackReaction(options.transport, reactionTarget, 'thinking', 'received');
   }
   const started = await runPlatformConversation({
@@ -481,7 +487,7 @@ async function continuePendingRun(
       updateIntervalMs: options.config?.streamUpdateIntervalMs ?? 1_000,
     }, events),
     onPhaseChange: async (phase, previousPhase, trigger) => {
-      if (!trigger || !options.transport.addReaction || !options.transport.removeReaction) {
+      if (!trigger || !hasReactionTransport(options.transport)) {
         return;
       }
 
@@ -678,10 +684,16 @@ export function createSlackRuntime(options: SlackRuntimeOptions): SlackRuntime {
     const value = payload['value'];
 
     if (actionType === 'backend' || actionType === 'model') {
+      if (typeof value !== 'string') {
+        return {
+          kind: 'error' as const,
+          message: 'Invalid Slack action value.',
+        };
+      }
       applySessionControlCommand({
         conversationId,
         type: actionType,
-        value: typeof value === 'string' ? value : undefined,
+        value,
       });
       const pendingRun = pendingRuns.get(conversationId);
       if (!pendingRun) {

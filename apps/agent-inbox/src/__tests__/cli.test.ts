@@ -29,8 +29,8 @@ vi.mock('@agent-im-relay/core', async (importOriginal) => {
   };
 });
 
-vi.mock('../config.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../config.js')>();
+vi.mock('../config', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../config')>();
   return {
     ...actual,
     loadAppConfig: mocks.loadAppConfig,
@@ -38,7 +38,7 @@ vi.mock('../config.js', async (importOriginal) => {
   };
 });
 
-vi.mock('../setup.js', () => ({
+vi.mock('../setup', () => ({
   runSetup: mocks.runSetup,
   getUnconfiguredPlatforms: mocks.getUnconfiguredPlatforms,
   PLATFORM_LABELS: {
@@ -48,11 +48,11 @@ vi.mock('../setup.js', () => ({
   ALL_PLATFORM_IDS: ['discord', 'feishu'],
 }));
 
-vi.mock('../runtime.js', () => ({
+vi.mock('../runtime', () => ({
   startSelectedIm: mocks.startSelectedIm,
 }));
 
-vi.mock('../pid-lock.js', () => ({
+vi.mock('../pid-lock', () => ({
   acquirePidLock: mocks.acquirePidLock,
   registerPidCleanup: mocks.registerPidCleanup,
 }));
@@ -67,7 +67,7 @@ vi.mock('@clack/prompts', () => ({
   isCancel: mocks.clackIsCancel,
 }));
 
-import { runCli } from '../cli.js';
+import { runCli } from '../cli';
 
 describe('cli', () => {
   beforeEach(() => {

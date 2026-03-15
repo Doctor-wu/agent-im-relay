@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { resetFeishuLaunchStateForTests } from '../index.js';
+import { resetFeishuLaunchStateForTests } from '../index';
 import {
   presentFeishuBusyNotice,
   presentFeishuErrorOutput,
   presentFeishuFinalOutput,
   presentFeishuInterruptCard,
-} from '../presentation.js';
+} from '../presentation';
 
 describe('Feishu presentation', () => {
   beforeEach(() => {

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 describe('Slack reactions', () => {
   it('switches reactions as the conversation phase changes', async () => {
-    const { applySlackReaction } = await import('../presentation.js');
+    const { applySlackReaction } = await import('../presentation');
     const transport = {
       addReaction: vi.fn(async () => undefined),
       removeReaction: vi.fn(async () => undefined),
@@ -18,7 +18,7 @@ describe('Slack reactions', () => {
   });
 
   it('ignores Slack reaction API failures', async () => {
-    const { applySlackReaction } = await import('../presentation.js');
+    const { applySlackReaction } = await import('../presentation');
     const transport = {
       addReaction: vi.fn(async () => {
         throw new Error('denied');

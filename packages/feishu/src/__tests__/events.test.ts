@@ -40,8 +40,8 @@ vi.mock('@agent-im-relay/core', async (importOriginal) => {
   };
 });
 
-vi.mock('../runtime.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../runtime.js')>();
+vi.mock('../runtime', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../runtime')>();
   return {
     ...actual,
     handleFeishuControlAction: runtimeMocks.handleFeishuControlAction,
@@ -60,15 +60,15 @@ import {
   normalizeFeishuCardActionTriggerEvent,
   normalizeFeishuMenuActionTriggerEvent,
   normalizeFeishuMessageReceiveEvent,
-} from '../events.js';
-import { normalizeFeishuEvent } from '../conversation.js';
-import { resolveFeishuSessionChatStateFile } from '../config.js';
+} from '../events';
+import { normalizeFeishuEvent } from '../conversation';
+import { resolveFeishuSessionChatStateFile } from '../config';
 import {
   buildFeishuSessionChatRecord,
   persistFeishuSessionChats,
   rememberFeishuSessionChat,
   resetFeishuSessionChatsForTests,
-} from '../session-chat.js';
+} from '../session-chat';
 
 const baseConfig = {
   agentTimeoutMs: 1_000,

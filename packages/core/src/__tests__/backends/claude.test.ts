@@ -28,7 +28,7 @@ describe('claude backend', () => {
       .mockReturnValueOnce(JSON.stringify({ model: 'claude-opus-4-6' }))
       .mockReturnValueOnce(JSON.stringify({ model: 'claude-sonnet-4-5' }));
 
-    const { claudeBackend } = await import('../../agent/backends/claude.js');
+    const { claudeBackend } = await import('../../agent/backends/claude');
 
     expect(claudeBackend.listModels?.()).toEqual([
       { id: 'sonnet', label: 'sonnet' },

@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
-import type { RelayPaths } from './paths.js';
-import { resolveRelayPaths } from './paths.js';
+import type { RelayPaths } from './paths';
+import { resolveRelayPaths } from './paths';
 
 export type RuntimeConfig = {
   agentTimeoutMs?: number;
@@ -149,6 +149,7 @@ export interface SlackRelayConfig extends CoreConfig {
   slackAppToken: string;
   slackSigningSecret: string;
   slackSocketMode: boolean;
+  streamUpdateIntervalMs: number;
 }
 
 const DEFAULT_META_RECORD: MetaRecord = {
@@ -641,6 +642,7 @@ export function readSlackRelayConfig(baseDir?: string): SlackRelayConfig {
     slackAppToken: selected.config.appToken,
     slackSigningSecret: selected.config.signingSecret,
     slackSocketMode: selected.config.socketMode ?? true,
+    streamUpdateIntervalMs: loaded.runtime.streamUpdateIntervalMs ?? DEFAULT_RUNTIME_RECORD.config.streamUpdateIntervalMs!,
   };
 }
 

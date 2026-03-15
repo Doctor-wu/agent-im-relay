@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { resolveFeishuSessionChatStateFile } from './config.js';
+import { resolveFeishuSessionChatStateFile } from './config';
 
 const sessionChats = new Map<string, FeishuSessionChatRecord>();
 let initializedStatePath: string | null = null;
@@ -62,12 +62,12 @@ function readFeishuSessionChatRecord(value: unknown): FeishuSessionChatRecord | 
   }
 
   return {
-    sourceP2pChatId: record.sourceP2pChatId,
-    sourceMessageId: record.sourceMessageId,
-    sessionChatId: record.sessionChatId,
-    creatorOpenId: record.creatorOpenId,
-    createdAt: record.createdAt,
-    promptPreview: record.promptPreview,
+    sourceP2pChatId: record.sourceP2pChatId as string,
+    sourceMessageId: record.sourceMessageId as string,
+    sessionChatId: record.sessionChatId as string,
+    creatorOpenId: record.creatorOpenId as string,
+    createdAt: record.createdAt as string,
+    promptPreview: record.promptPreview as string,
   };
 }
 

@@ -25,11 +25,11 @@ vi.mock('@agent-im-relay/core', async () => {
   };
 });
 
-vi.mock('../stream.js', () => ({
+vi.mock('../stream', () => ({
   streamAgentToDiscord,
 }));
 
-vi.mock('../artifacts.js', () => ({
+vi.mock('../artifacts', () => ({
   publishConversationArtifacts,
 }));
 
@@ -43,7 +43,7 @@ import {
   openThreadSessionBinding,
   threadSessionBindings,
 } from '@agent-im-relay/core';
-import { hasOpenStickyThreadSession, runMentionConversation } from '../conversation.js';
+import { hasOpenStickyThreadSession, runMentionConversation } from '../conversation';
 
 describe('runMentionConversation', () => {
   beforeEach(() => {

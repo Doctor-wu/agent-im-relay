@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 describe('Slack markdown formatting', () => {
   it('converts headings, links, and lists into readable mrkdwn', async () => {
-    const { convertMarkdownToSlackMrkdwn } = await import('../formatting.js');
+    const { convertMarkdownToSlackMrkdwn } = await import('../formatting');
 
     const formatted = convertMarkdownToSlackMrkdwn([
       '# Release plan',
@@ -19,7 +19,7 @@ describe('Slack markdown formatting', () => {
   });
 
   it('keeps code fences and downgrades tables into preformatted text', async () => {
-    const { convertMarkdownToSlackMrkdwn } = await import('../formatting.js');
+    const { convertMarkdownToSlackMrkdwn } = await import('../formatting');
 
     const formatted = convertMarkdownToSlackMrkdwn([
       '| name | value |',

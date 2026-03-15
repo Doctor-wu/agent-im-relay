@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type { ArtifactManifest, ArtifactManifestFile } from './types.js';
+import type { ArtifactManifest, ArtifactManifestFile } from './types';
 
 const ARTIFACT_BLOCK_PATTERN = /```artifacts\s*([\s\S]*?)```/g;
 

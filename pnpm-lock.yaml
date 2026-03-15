@@ -6,7 +6,17 @@ settings:
 
 importers:
 
-  .: {}
+  .:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.13
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.19.13)(tsx@4.21.0)
 
   apps/agent-inbox:
     dependencies:
@@ -2811,8 +2821,7 @@ snapshots:
       media-typer: 1.1.0
       mime-types: 3.0.2
 
-  typescript@5.9.3:
-    optional: true
+  typescript@5.9.3: {}
 
   unconfig-core@7.5.0:
     dependencies:

@@ -1,4 +1,5 @@
-import { convertMarkdownToSlackMrkdwn } from './formatting.js';
+import type { AgentStreamEvent } from '@agent-im-relay/core';
+import { convertMarkdownToSlackMrkdwn } from './formatting';
 
 type SlackStreamTransport = {
   sendMessage(payload: { channelId: string; threadTs?: string; text: string; blocks?: unknown }): Promise<{ ts: string }>;
@@ -11,6 +12,7 @@ type SlackStreamTarget = {
 };
 
 type SlackStreamEvent =
+  | AgentStreamEvent
   | { type: 'environment'; environment: unknown }
   | { type: 'text'; delta: string }
   | { type: 'tool'; summary: string }

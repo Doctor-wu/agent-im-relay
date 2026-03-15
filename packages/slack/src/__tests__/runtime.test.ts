@@ -109,8 +109,8 @@ function createMockApp() {
 
 afterEach(async () => {
   vi.useRealTimers();
-  const { resetSlackRuntimeForTests } = await import('../runtime.js');
-  const { resetSlackStateForTests } = await import('../state.js');
+  const { resetSlackRuntimeForTests } = await import('../runtime');
+  const { resetSlackStateForTests } = await import('../state');
   resetSlackRuntimeForTests();
   resetSlackStateForTests();
 });
@@ -188,7 +188,7 @@ describe('Slack runtime', () => {
   });
 
   it('registers Socket Mode handlers for commands, actions, and messages', async () => {
-    const { createSlackRuntime } = await import('../runtime.js');
+    const { createSlackRuntime } = await import('../runtime');
     const transport = createMockTransport();
     const app = createMockApp();
 
@@ -213,7 +213,7 @@ describe('Slack runtime', () => {
   });
 
   it('sets Slack presence to auto when the runtime starts', async () => {
-    const { createSlackRuntime } = await import('../runtime.js');
+    const { createSlackRuntime } = await import('../runtime');
     const transport = createMockTransport();
     const app = createMockApp();
     (app as any).client = {
@@ -235,8 +235,8 @@ describe('Slack runtime', () => {
   });
 
   it('starts a new conversation from a channel root app mention without creating a seed thread', async () => {
-    const { createSlackRuntime } = await import('../runtime.js');
-    const { getSlackConversation } = await import('../state.js');
+    const { createSlackRuntime } = await import('../runtime');
+    const { getSlackConversation } = await import('../state');
     const transport = createMockTransport();
     const app = createMockApp();
     const runtime = createSlackRuntime({
@@ -271,8 +271,8 @@ describe('Slack runtime', () => {
   });
 
   it('routes app mentions inside a mapped thread back into the existing conversation', async () => {
-    const { createSlackRuntime } = await import('../runtime.js');
-    const { rememberSlackConversation } = await import('../state.js');
+    const { createSlackRuntime } = await import('../runtime');
+    const { rememberSlackConversation } = await import('../state');
     const transport = createMockTransport();
     const app = createMockApp();
     const runtime = createSlackRuntime({
@@ -313,7 +313,7 @@ describe('Slack runtime', () => {
   });
 
   it('throws on start when no Slack config is provided from options or ~/.agent-inbox/config.jsonl', async () => {
-    const { createSlackRuntime } = await import('../runtime.js');
+    const { createSlackRuntime } = await import('../runtime');
     const transport = createMockTransport();
     const app = {
       command: vi.fn(),
@@ -334,7 +334,7 @@ describe('Slack runtime', () => {
   });
 
   it('always creates a fresh thread for /code and starts the run there', async () => {
-    const { createSlackRuntime } = await import('../runtime.js');
+    const { createSlackRuntime } = await import('../runtime');
     const transport = createMockTransport();
     const runtime = createSlackRuntime({
       transport,
@@ -370,7 +370,7 @@ describe('Slack runtime', () => {
   });
 
   it('uses a DM root message instead of createThread for /code in direct messages', async () => {
-    const { createSlackRuntime } = await import('../runtime.js');
+    const { createSlackRuntime } = await import('../runtime');
     const transport = createMockTransport();
     const runtime = createSlackRuntime({
       transport,
@@ -404,7 +404,7 @@ describe('Slack runtime', () => {
   });
 
   it('rejects control commands outside mapped conversation threads', async () => {
-    const { createSlackRuntime } = await import('../runtime.js');
+    const { createSlackRuntime } = await import('../runtime');
     const transport = createMockTransport();
     const runtime = createSlackRuntime({
       transport,
@@ -431,7 +431,7 @@ describe('Slack runtime', () => {
   });
 
   it('stores blocked runs and resumes them after backend selection', async () => {
-    const { createSlackRuntime } = await import('../runtime.js');
+    const { createSlackRuntime } = await import('../runtime');
     const transport = createMockTransport();
     const runtime = createSlackRuntime({
       transport,
@@ -498,7 +498,7 @@ describe('Slack runtime', () => {
 
   it('auto-selects a model after timeout and resumes the pending run', async () => {
     vi.useFakeTimers();
-    const { createSlackRuntime } = await import('../runtime.js');
+    const { createSlackRuntime } = await import('../runtime');
     const transport = createMockTransport();
     const runtime = createSlackRuntime({
       transport,
@@ -539,7 +539,7 @@ describe('Slack runtime', () => {
 
   it('clears the pending run when model auto-selection cannot choose a fallback', async () => {
     vi.useFakeTimers();
-    const { createSlackRuntime, hasPendingSlackRun } = await import('../runtime.js');
+    const { createSlackRuntime, hasPendingSlackRun } = await import('../runtime');
     const transport = createMockTransport();
     const runtime = createSlackRuntime({
       transport,
@@ -587,8 +587,8 @@ describe('Slack runtime', () => {
   });
 
   it('routes active-thread user messages back into the mapped conversation', async () => {
-    const { createSlackRuntime } = await import('../runtime.js');
-    const { rememberSlackConversation } = await import('../state.js');
+    const { createSlackRuntime } = await import('../runtime');
+    const { rememberSlackConversation } = await import('../state');
     const transport = createMockTransport();
     const runtime = createSlackRuntime({
       transport,
@@ -624,8 +624,8 @@ describe('Slack runtime', () => {
   });
 
   it('starts a DM conversation from the first direct message without creating a thread', async () => {
-    const { createSlackRuntime } = await import('../runtime.js');
-    const { getSlackConversation } = await import('../state.js');
+    const { createSlackRuntime } = await import('../runtime');
+    const { getSlackConversation } = await import('../state');
     const transport = createMockTransport();
     const runtime = createSlackRuntime({
       transport,

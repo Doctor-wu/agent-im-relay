@@ -1,15 +1,15 @@
-import type { BackendName } from './agent/backend.js';
+import type { BackendName } from './agent/backend';
 import {
   createEmptyArtifactMetadata,
   ensureConversationArtifactPaths,
   getConversationArtifactPaths,
   readArtifactMetadata,
   writeArtifactMetadata,
-} from './artifacts/store.js';
-import type { ConversationArtifactMetadata } from './artifacts/types.js';
-import { loadState, saveState } from './persist.js';
-import type { RelayPlatform } from './relay-platform.js';
-import type { ThreadContinuationSnapshot, ThreadSessionBinding } from './thread-session/types.js';
+} from './artifacts/store';
+import type { ConversationArtifactMetadata } from './artifacts/types';
+import { loadState, saveState } from './persist';
+import type { RelayPlatform } from './relay-platform';
+import type { ThreadContinuationSnapshot, ThreadSessionBinding } from './thread-session/types';
 
 // Generalized keys: "conversation" instead of "thread"
 export const conversationSessions = new Map<string, string>();

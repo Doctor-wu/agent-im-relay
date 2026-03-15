@@ -1,7 +1,7 @@
 import type { Message } from 'discord.js';
 import { stripArtifactManifest, type AgentEnvironment, type AgentStreamEvent } from '@agent-im-relay/core';
-import { config } from './config.js';
-import { buildDiscordReplyPayload, type DiscordReplyContext } from './reply-context.js';
+import { config } from './config';
+import { buildDiscordReplyPayload, type DiscordReplyContext } from './reply-context';
 
 export type StreamTargetChannel = {
   send(content: string | { content: string; embeds?: any[]; allowedMentions?: { users: string[] } }): Promise<Message<boolean>>;

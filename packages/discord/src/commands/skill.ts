@@ -7,7 +7,7 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import { listSkills, type SkillInfo } from '@agent-im-relay/core';
-import { runMentionConversation } from '../conversation.js';
+import { runMentionConversation } from '../conversation';
 
 const MAX_AUTOCOMPLETE_CHOICES = 25;
 const MAX_AUTOCOMPLETE_NAME = 100;

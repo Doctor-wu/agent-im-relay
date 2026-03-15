@@ -28,9 +28,9 @@ import {
   type BackendSelectionCard,
   FeishuCardContext,
   type ModelSelectionCard,
-} from './cards.js';
-import { parseAskCommand } from './commands/ask.js';
-import { getFeishuSessionChat } from './session-chat.js';
+} from './cards';
+import { parseAskCommand } from './commands/ask';
+import { getFeishuSessionChat } from './session-chat';
 
 export type FeishuTarget = {
   chatId: string;

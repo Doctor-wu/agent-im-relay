@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { resolveRelayPaths } from '@agent-im-relay/core';
-import { startSelectedIm } from '../runtime.js';
-import type { AvailableIm } from '../config.js';
+import { startSelectedIm } from '../runtime';
+import type { AvailableIm } from '../config';
 
 describe('runtime dispatch', () => {
   it('dispatches to the matching IM runtime and applies env vars', async () => {

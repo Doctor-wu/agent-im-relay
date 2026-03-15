@@ -7,8 +7,8 @@ vi.mock('node:child_process', () => ({
 }));
 
 import { spawn, spawnSync } from 'node:child_process';
-import type { AgentStreamEvent } from '../../agent/session.js';
-import { createCodexArgs, extractCodexEvents } from '../../agent/backends/codex.js';
+import type { AgentStreamEvent } from '../../agent/session';
+import { createCodexArgs, extractCodexEvents } from '../../agent/backends/codex';
 
 async function collect(gen: AsyncGenerator<AgentStreamEvent>): Promise<AgentStreamEvent[]> {
   const events: AgentStreamEvent[] = [];
@@ -159,7 +159,7 @@ describe('codex backend', () => {
       ].join('\n')) as any,
     );
 
-    const { codexBackend } = await import('../../agent/backends/codex.js');
+    const { codexBackend } = await import('../../agent/backends/codex');
     const events = await collect(codexBackend.stream({
       mode: 'code',
       prompt: 'test',
@@ -208,7 +208,7 @@ describe('codex backend', () => {
       })) as any,
     );
 
-    const { codexBackend } = await import('../../agent/backends/codex.js');
+    const { codexBackend } = await import('../../agent/backends/codex');
     const events = await collect(codexBackend.stream({ mode: 'code', prompt: 'test' }));
 
     const status = events.find(e => e.type === 'status' && e.status.startsWith('cwd:'));
@@ -249,7 +249,7 @@ describe('codex backend', () => {
       .mockReturnValueOnce({ status: 0, stdout: '/tmp/project\n' } as any)
       .mockReturnValueOnce({ status: 0, stdout: 'feature/demo\n' } as any);
 
-    const { codexBackend } = await import('../../agent/backends/codex.js');
+    const { codexBackend } = await import('../../agent/backends/codex');
     const events = await collect(codexBackend.stream({
       mode: 'code',
       prompt: 'test',
@@ -282,7 +282,7 @@ describe('codex backend', () => {
   it('emits error event on non-zero exit', async () => {
     vi.mocked(spawn).mockReturnValue(makeProcess('', 'command not found', 1) as any);
 
-    const { codexBackend } = await import('../../agent/backends/codex.js');
+    const { codexBackend } = await import('../../agent/backends/codex');
     const events = await collect(codexBackend.stream({ mode: 'code', prompt: 'test' }));
 
     expect(events.some(e => e.type === 'error')).toBe(true);
@@ -307,7 +307,7 @@ describe('codex backend', () => {
       ].join('\n')) as any,
     );
 
-    const { codexBackend } = await import('../../agent/backends/codex.js');
+    const { codexBackend } = await import('../../agent/backends/codex');
     const events = await collect(codexBackend.stream({ mode: 'code', prompt: 'test' }));
 
     expect(events).toEqual([

@@ -12,15 +12,15 @@ import type {
   ConversationManager,
   InteractiveUI,
 } from '@agent-im-relay/core';
-import { buildSlackConversationId, resolveSlackConversationIdForMessage, type SlackMessageEvent } from './conversation.js';
-import { convertMarkdownToSlackMrkdwn } from './formatting.js';
+import { buildSlackConversationId, resolveSlackConversationIdForMessage, type SlackMessageEvent } from './conversation';
+import { convertMarkdownToSlackMrkdwn } from './formatting';
 import {
   consumeSlackTriggerContext,
   getSlackConversation,
   rememberSlackConversation,
   updateSlackStatusMessageTs,
   waitForSlackInteractiveValue,
-} from './state.js';
+} from './state';
 
 type SlackMessagePayload = {
   channelId: string;

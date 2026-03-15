@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 describe('streamSlackMessages', () => {
   it('streams agent output by updating one Slack message in place', async () => {
-    const { streamSlackMessages } = await import('../stream.js');
+    const { streamSlackMessages } = await import('../stream');
     const transport = {
       sendMessage: vi.fn(async () => ({ ts: '1741766700.000001' })),
       updateMessage: vi.fn(async () => undefined),
@@ -29,7 +29,7 @@ describe('streamSlackMessages', () => {
   });
 
   it('falls back to posting a new Slack message when updates fail', async () => {
-    const { streamSlackMessages } = await import('../stream.js');
+    const { streamSlackMessages } = await import('../stream');
     const transport = {
       sendMessage: vi.fn(async () => ({ ts: '1741766700.000001' })),
       updateMessage: vi.fn(async () => {

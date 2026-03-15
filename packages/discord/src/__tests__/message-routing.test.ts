@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractMentionPrompt, resolveInboundDiscordMessage } from '../message-routing.js';
+import { extractMentionPrompt, resolveInboundDiscordMessage } from '../message-routing';
 
 describe('extractMentionPrompt', () => {
   it('strips relay mentions and normalizes whitespace', () => {

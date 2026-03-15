@@ -1,9 +1,9 @@
-import { conversationSessions, threadContinuationSnapshots, threadSessionBindings } from '../state.js';
+import { conversationSessions, threadContinuationSnapshots, threadSessionBindings } from '../state';
 import type {
   ThreadContinuationSnapshot,
   ThreadResumeMode,
   ThreadSessionBinding,
-} from './types.js';
+} from './types';
 
 function resolveTimestamp(now?: string): string {
   return now ?? new Date().toISOString();
@@ -25,8 +25,9 @@ export function openThreadSessionBinding(
   const lastSeenAt = resolveTimestamp(input.now);
 
   if (existing && !existing.closedAt) {
-    if (existing.nativeSessionStatus === 'confirmed' && existing.nativeSessionId) {
-      conversationSessions.set(input.conversationId, existing.nativeSessionId);
+    const nativeSessionId = existing.nativeSessionId;
+    if (existing.nativeSessionStatus === 'confirmed' && nativeSessionId) {
+      conversationSessions.set(input.conversationId, nativeSessionId);
     } else {
       conversationSessions.delete(input.conversationId);
     }
@@ -53,19 +54,20 @@ export function openThreadSessionBinding(
 }
 
 export function confirmThreadSessionBinding(
-  input: Pick<ThreadSessionBinding, 'conversationId' | 'nativeSessionId'> & { now?: string },
+  input: { conversationId: string; nativeSessionId: string; now?: string },
 ): ThreadSessionBinding {
   const existing = requireThreadSessionBinding(input.conversationId);
+  const nativeSessionId = input.nativeSessionId;
   const binding = {
     ...existing,
-    nativeSessionId: input.nativeSessionId,
+    nativeSessionId,
     nativeSessionStatus: 'confirmed',
     lastSeenAt: resolveTimestamp(input.now),
     closedAt: undefined,
   } satisfies ThreadSessionBinding;
 
   threadSessionBindings.set(input.conversationId, binding);
-  conversationSessions.set(input.conversationId, input.nativeSessionId);
+  conversationSessions.set(input.conversationId, nativeSessionId);
   return binding;
 }
 

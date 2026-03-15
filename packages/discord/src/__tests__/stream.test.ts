@@ -6,7 +6,7 @@ import {
   formatToolLine,
   getToolIcon,
   streamAgentToDiscord,
-} from '../stream.js';
+} from '../stream';
 
 describe('chunkForDiscord', () => {
   it('splits text at sensible boundaries', () => {

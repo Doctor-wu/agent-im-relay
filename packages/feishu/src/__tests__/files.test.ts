@@ -34,7 +34,7 @@ describe('Feishu files adapter', () => {
     vi.stubEnv('HOME', homeDir);
     await writeRelayConfig(homeDir);
 
-    const { ingestFeishuFiles } = await import('../files.js');
+    const { ingestFeishuFiles } = await import('../files');
 
     const downloaded = await ingestFeishuFiles({
       conversationId: 'feishu-conv',
@@ -74,7 +74,7 @@ describe('Feishu files adapter', () => {
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error('upload failed'));
 
-    const { uploadFeishuArtifacts } = await import('../files.js');
+    const { uploadFeishuArtifacts } = await import('../files');
     const result = await uploadFeishuArtifacts({
       conversationId: 'feishu-out',
       cwd,

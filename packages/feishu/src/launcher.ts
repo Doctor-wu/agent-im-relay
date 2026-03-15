@@ -1,8 +1,8 @@
 import type { AgentMode } from '@agent-im-relay/core';
-import { formatFeishuTextMessages } from './formatting.js';
-import { buildFeishuSessionChatRecord, rememberFeishuSessionChat } from './session-chat.js';
-import { buildFeishuSessionChatName } from './naming.js';
-import { describeError } from './utils.js';
+import { formatFeishuTextMessages } from './formatting';
+import { buildFeishuSessionChatRecord, rememberFeishuSessionChat } from './session-chat';
+import { buildFeishuSessionChatName } from './naming';
+import { describeError } from './utils';
 
 export type FeishuLauncherClient = {
   createSessionChat(options: {

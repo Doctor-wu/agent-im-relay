@@ -13,7 +13,7 @@ import {
   buildSessionControlCard,
   createBackendConfirmationCard,
   createBackendSelectionCard,
-} from '../cards.js';
+} from '../cards';
 
 const context = {
   conversationId: 'session-chat-1',
