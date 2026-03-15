@@ -322,6 +322,43 @@ describe('runConversationWithRenderer', () => {
     expect(resolveThreadResumeMode(`conv-${whyStopped}`).type).toBe('snapshot-resume');
   });
 
+  it.each([
+    ['Agent request timed out'],
+    ['Agent request aborted'],
+  ] as const)('does not emit a terminal done phase after %s', async (error) => {
+    const onPhaseChange = vi.fn(async () => {});
+
+    runConversationSession.mockImplementation(async function* () {
+      yield {
+        type: 'environment',
+        environment: {
+          backend: 'claude',
+          mode: 'code',
+          model: {},
+          cwd: { value: '/tmp/workspace', source: 'explicit' },
+          git: { isRepo: false },
+        },
+      };
+      yield { type: 'error', error };
+    });
+
+    const render = vi.fn(async (_options, events) => {
+      await drainEvents(events);
+    });
+
+    await runConversationWithRenderer({
+      conversationId: `conv-phase-${error}`,
+      target: { id: `channel-phase-${error}` },
+      prompt: 'resume later',
+      defaultCwd: '/tmp/workspace',
+      onPhaseChange,
+      render,
+    });
+
+    expect(onPhaseChange).toHaveBeenCalledTimes(1);
+    expect(onPhaseChange).toHaveBeenCalledWith('error', 'thinking', undefined);
+  });
+
   it('uses snapshot fallback on the next message when native resume is unavailable', async () => {
     openThreadSessionBinding({
       conversationId: 'conv-snapshot',

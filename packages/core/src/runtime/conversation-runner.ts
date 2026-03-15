@@ -214,6 +214,7 @@ export async function runConversationWithRenderer<TTarget, TTrigger = unknown>(
     let finalResult = '';
     let assistantOutput = '';
     let stopReason: ThreadContinuationStopReason | undefined;
+    let sawTerminalError = false;
     let nativeResumeReconfirmed = false;
 
     await options.render(
@@ -255,6 +256,7 @@ export async function runConversationWithRenderer<TTarget, TTrigger = unknown>(
         } else if (event.type === 'error') {
           const previousPhase = phase;
           phase = 'error';
+          sawTerminalError = true;
           stopReason = inferStopReason(event.error);
           void options.onPhaseChange?.('error', previousPhase, options.trigger);
         }
@@ -303,12 +305,9 @@ export async function runConversationWithRenderer<TTarget, TTrigger = unknown>(
       });
     }
 
-    const previousPhase = phase as ConversationRunPhase;
-    const endedWithError = stopReason === 'error';
-    if (!endedWithError) {
-      await options.onPhaseChange?.('done', previousPhase, options.trigger);
+    if (!sawTerminalError) {
+      await options.onPhaseChange?.('done', phase, options.trigger);
     }
-
     if (finalBinding.nativeSessionStatus === 'confirmed' && finalBinding.nativeSessionId) {
       conversationSessions.set(conversationId, finalBinding.nativeSessionId);
     }
