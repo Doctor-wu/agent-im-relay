@@ -37,6 +37,9 @@ const coreMocks = vi.hoisted(() => ({
     decision,
     backend: 'claude',
   })),
+  readSlackRelayConfig: vi.fn(() => {
+    throw new Error('Missing required slack configuration in ~/.agent-inbox/config.jsonl');
+  }),
   runPlatformConversation: vi.fn(async () => true),
 }));
 
@@ -50,6 +53,7 @@ vi.mock('@agent-im-relay/core', async (importOriginal) => {
     getAvailableBackendNames: coreMocks.getAvailableBackendNames,
     listSkills: coreMocks.listSkills,
     maybeUnrefTimer: coreMocks.maybeUnrefTimer,
+    readSlackRelayConfig: coreMocks.readSlackRelayConfig,
     resolveBackendModelId: coreMocks.resolveBackendModelId,
     resolvePermissionRequest: coreMocks.resolvePermissionRequest,
     runPlatformConversation: coreMocks.runPlatformConversation,
