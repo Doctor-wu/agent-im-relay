@@ -17,12 +17,12 @@ type PermissionResolutionDecision = PermissionDecision | 'timeout';
 
 type PermissionResponder = {
   backend: string;
-  respond(requestId: string, decision: PermissionDecision): void;
+  respond(requestId: string | number, decision: PermissionDecision): void;
 };
 
 export type PendingPermissionRequest = {
   conversationId: string;
-  requestId: string;
+  requestId: string | number;
   backend: string;
   tool?: string;
   reason?: string;
@@ -58,16 +58,17 @@ function getOrCreatePermissionState(conversationId: string): ConversationPermiss
 
 function clearPermissionRequest(
   conversationId: string,
-  requestId: string,
+  requestId: string | number,
 ): PendingPermissionRequest | undefined {
   const state = permissionState.get(conversationId);
-  const entry = state?.requests.get(requestId);
+  const key = String(requestId);
+  const entry = state?.requests.get(key);
   if (!entry) {
     return undefined;
   }
 
   clearTimeout(entry.timer);
-  state!.requests.delete(requestId);
+  state!.requests.delete(key);
   return entry.request;
 }
 
@@ -99,16 +100,16 @@ function waitForPermissionEvent(conversationId: string): Promise<AgentStreamEven
 
 function resolvePermissionRequestInternal(options: {
   conversationId: string;
-  requestId: string;
+  requestId: string | number;
   decision: PermissionResolutionDecision;
 }): {
-  requestId: string;
+  requestId: string | number;
   backend: string;
   decision: PermissionResolutionDecision;
 } {
   const request = clearPermissionRequest(options.conversationId, options.requestId);
   if (!request) {
-    throw new Error(`Permission request is not pending: ${options.requestId}`);
+    throw new Error(`Permission request is not pending: ${String(options.requestId)}`);
   }
 
   const state = permissionState.get(options.conversationId);
@@ -118,7 +119,7 @@ function resolvePermissionRequestInternal(options: {
   }
 
   responder.respond(
-    options.requestId,
+    request.requestId,
     options.decision === 'approved' ? 'approved' : 'denied',
   );
 
@@ -170,7 +171,7 @@ export function registerConversationPermissionResponder(
 
 export function registerPermissionRequest(options: {
   conversationId: string;
-  requestId: string;
+  requestId: string | number;
   backend: string;
   tool?: string;
   reason?: string;
@@ -200,7 +201,7 @@ export function registerPermissionRequest(options: {
     });
   }, options.timeoutMs);
   maybeUnrefTimer(timer);
-  state.requests.set(options.requestId, { request, timer });
+  state.requests.set(String(options.requestId), { request, timer });
   return request;
 }
 
@@ -211,10 +212,10 @@ export function getPendingPermissionRequests(conversationId: string): PendingPer
 
 export function resolvePermissionRequest(options: {
   conversationId: string;
-  requestId: string;
+  requestId: string | number;
   decision: PermissionDecision;
 }): {
-  requestId: string;
+  requestId: string | number;
   backend: string;
   decision: PermissionResolutionDecision;
 } {

@@ -411,14 +411,14 @@ async function publishPermissionRequest(
     'Permission Required',
     buildSlackPermissionBlocks({
       conversationId: pendingRun.conversationId,
-      requestId: event.requestId,
+      requestId: String(event.requestId),
       tool: event.tool,
       reason: event.reason,
     }),
   );
 
   if (messageTs) {
-    pendingPermissions.set(permissionKey(pendingRun.conversationId, event.requestId), {
+    pendingPermissions.set(permissionKey(pendingRun.conversationId, String(event.requestId)), {
       target: pendingRun.target,
       messageTs,
       tool: event.tool,
@@ -554,7 +554,7 @@ async function continuePendingRun(
         await updatePermissionState(
           options.transport,
           pendingRun.conversationId,
-          event.requestId,
+          String(event.requestId),
           event.decision,
         );
       },

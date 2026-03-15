@@ -377,13 +377,13 @@ async function* streamClaude(options: AgentSessionOptions): AsyncGenerator<Agent
     let registerPermissionRequest:
       | ((options: {
         conversationId: string;
-        requestId: string;
+        requestId: string | number;
         backend: string;
         tool?: string;
         reason?: string;
         timeoutMs: number;
       }) => {
-        requestId: string;
+        requestId: string | number;
         backend: string;
         tool?: string;
         reason?: string;
@@ -400,7 +400,7 @@ async function* streamClaude(options: AgentSessionOptions): AsyncGenerator<Agent
       registerConversationPermissionResponder(options.conversationId, {
         backend: 'claude',
         respond(requestId, decision) {
-          child.stdin?.write(formatClaudePermissionDecision(requestId, decision));
+          child.stdin?.write(formatClaudePermissionDecision(String(requestId), decision));
         },
       });
       registerPermissionRequest = registerPermissionRequestWithRuntime;

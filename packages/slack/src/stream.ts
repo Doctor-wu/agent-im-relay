@@ -86,6 +86,14 @@ export async function streamSlackMessages(
 
     if (event.type === 'permission-resolved') {
       await options.onPermissionResolved?.(event);
+
+      // Reset message tracking so post-approval output goes to new messages
+      if (buffer.trim()) {
+        await flush();
+      }
+      buffer = '';
+      messageTs = undefined;
+      lastRenderedText = undefined;
       continue;
     }
 

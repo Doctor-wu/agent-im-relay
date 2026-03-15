@@ -483,7 +483,7 @@ async function streamAgentToFeishu(
     if (event.type === 'permission-requested') {
       const card = buildPermissionRequestCard(
         conversationId,
-        event.requestId,
+        String(event.requestId),
         event.tool,
         event.reason,
       );
@@ -492,7 +492,7 @@ async function streamAgentToFeishu(
         buildFeishuPermissionCardPayload(card, buildFeishuCardContext(conversationId, target)),
       );
       if (messageId) {
-        pendingPermissionCards.set(permissionCardKey(conversationId, event.requestId), {
+        pendingPermissionCards.set(permissionCardKey(conversationId, String(event.requestId)), {
           target,
           messageId,
           card,
@@ -502,7 +502,7 @@ async function streamAgentToFeishu(
     }
 
     if (event.type === 'permission-resolved') {
-      const pendingCard = pendingPermissionCards.get(permissionCardKey(conversationId, event.requestId));
+      const pendingCard = pendingPermissionCards.get(permissionCardKey(conversationId, String(event.requestId)));
       if (pendingCard) {
         await transport.updateCard(
           pendingCard.target,
@@ -513,8 +513,15 @@ async function streamAgentToFeishu(
             event.decision,
           ),
         );
-        pendingPermissionCards.delete(permissionCardKey(conversationId, event.requestId));
+        pendingPermissionCards.delete(permissionCardKey(conversationId, String(event.requestId)));
       }
+
+      // Flush accumulated chunks so post-approval output goes to new messages
+      const accumulated = chunks.join('').trim();
+      if (accumulated) {
+        await transport.sendText(target, accumulated);
+      }
+      chunks.length = 0;
       continue;
     }
 

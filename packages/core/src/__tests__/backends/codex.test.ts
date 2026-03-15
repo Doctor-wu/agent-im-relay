@@ -285,7 +285,49 @@ describe('codex backend', () => {
       id: 'perm-2',
       tool: 'Bash',
       reason: 'Run rm -rf build',
-    })).toBeUndefined();
+    })).toEqual({
+      requestId: 'perm-2',
+      tool: 'Bash',
+      reason: 'Run rm -rf build',
+    });
+  });
+
+  it('preserves numeric id type in extracted permission requests', () => {
+    expect(extractCodexPermissionRequest({
+      method: 'item/commandExecution/requestApproval',
+      id: 0,
+      params: {
+        command: ['ls'],
+        reason: 'List files',
+      },
+    })).toEqual({
+      requestId: 0,
+      tool: 'Bash',
+      reason: 'List files',
+    });
+
+    expect(extractCodexPermissionRequest({
+      method: 'item/fileChange/requestApproval',
+      id: 42,
+      params: {
+        reason: 'Edit file',
+      },
+    })).toEqual({
+      requestId: 42,
+      tool: 'Patch',
+      reason: 'Edit file',
+    });
+
+    expect(extractCodexPermissionRequest({
+      type: 'permission.requested',
+      id: 7,
+      tool: 'Bash',
+      reason: 'Run command',
+    })).toEqual({
+      requestId: 7,
+      tool: 'Bash',
+      reason: 'Run command',
+    });
   });
 
   it('formats Codex permission decisions as JSON-RPC responses', () => {
@@ -317,6 +359,15 @@ describe('codex backend', () => {
     expect(events).toEqual([
       { type: 'error', error: 'Codex CLI exited with code 1' },
     ]);
+  });
+
+  it('preserves numeric id type in formatted permission decisions', () => {
+    expect(formatCodexPermissionDecision(0, 'approved')).toBe(
+      '{"jsonrpc":"2.0","id":0,"result":{"decision":"accept"}}\n',
+    );
+    expect(formatCodexPermissionDecision(42, 'denied')).toBe(
+      '{"jsonrpc":"2.0","id":42,"result":{"decision":"cancel"}}\n',
+    );
   });
 
   it('emits a structured invalidation event for authoritative resume failures', () => {

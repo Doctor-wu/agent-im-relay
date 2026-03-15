@@ -86,7 +86,7 @@ describe('conversation runtime', () => {
   });
 
   it('tracks and resolves pending permission requests', async () => {
-    const decisions: Array<{ requestId: string; decision: 'approved' | 'denied' }> = [];
+    const decisions: Array<{ requestId: string | number; decision: 'approved' | 'denied' }> = [];
 
     registerConversationPermissionResponder('conv-perm', {
       backend: 'claude',
@@ -122,7 +122,7 @@ describe('conversation runtime', () => {
   });
 
   it('auto-denies timed out permission requests and rejects duplicate resolution', () => {
-    const decisions: Array<{ requestId: string; decision: 'approved' | 'denied' }> = [];
+    const decisions: Array<{ requestId: string | number; decision: 'approved' | 'denied' }> = [];
 
     registerConversationPermissionResponder('conv-timeout', {
       backend: 'codex',
@@ -148,6 +148,39 @@ describe('conversation runtime', () => {
       requestId: 'perm-timeout',
       decision: 'approved',
     })).toThrow(/not pending/i);
+  });
+
+  it('preserves numeric requestId type through the resolve roundtrip', async () => {
+    const decisions: Array<{ requestId: string | number; decision: 'approved' | 'denied' }> = [];
+
+    registerConversationPermissionResponder('conv-num', {
+      backend: 'codex',
+      respond(requestId, decision) {
+        decisions.push({ requestId, decision });
+      },
+    });
+
+    registerPermissionRequest({
+      conversationId: 'conv-num',
+      requestId: 0,
+      backend: 'codex',
+      tool: 'Bash',
+      reason: 'Run ls',
+      timeoutMs: 120000,
+    });
+
+    const resolved = resolvePermissionRequest({
+      conversationId: 'conv-num',
+      requestId: '0',
+      decision: 'approved',
+    });
+
+    expect(resolved).toMatchObject({
+      requestId: 0,
+      backend: 'codex',
+      decision: 'approved',
+    });
+    expect(decisions).toEqual([{ requestId: 0, decision: 'approved' }]);
   });
 
   it('appends the artifacts block contract for code-mode runs', async () => {

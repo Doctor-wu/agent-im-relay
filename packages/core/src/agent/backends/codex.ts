@@ -27,6 +27,10 @@ function asString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+function asStringOrNumber(value: unknown): string | number | undefined {
+  return typeof value === 'string' || typeof value === 'number' ? value : undefined;
+}
+
 function safeJson(value: unknown): string {
   try {
     return JSON.stringify(value);
@@ -60,7 +64,7 @@ function writeCodexPrompt(
 }
 
 type ExtractedPermissionRequest = {
-  requestId: string;
+  requestId: string | number;
   tool?: string;
   reason?: string;
 };
@@ -105,10 +109,20 @@ function isAuthoritativeCodexResumeFailure(error: string): boolean {
 export function extractCodexPermissionRequest(payload: unknown): ExtractedPermissionRequest | undefined {
   if (!isRecord(payload)) return undefined;
 
+  const legacyType = asString(payload.type);
+  if (legacyType === 'permission.requested') {
+    const requestId = asStringOrNumber(payload.id);
+    if (requestId == null) return undefined;
+    return {
+      requestId,
+      tool: asString(payload.tool),
+      reason: asString(payload.reason),
+    };
+  }
+
   const method = asString(payload.method);
-  const id = payload.id;
-  const requestId = typeof id === 'string' || typeof id === 'number' ? String(id) : undefined;
-  if (!method || !requestId) return undefined;
+  const requestId = asStringOrNumber(payload.id);
+  if (!method || requestId == null) return undefined;
 
   const params = isRecord(payload.params) ? payload.params : {};
   if (method === 'item/commandExecution/requestApproval') {
@@ -134,7 +148,7 @@ export function extractCodexPermissionRequest(payload: unknown): ExtractedPermis
 }
 
 export function formatCodexPermissionDecision(
-  requestId: string,
+  requestId: string | number,
   decision: 'approved' | 'denied',
 ): string {
   return `${JSON.stringify({
@@ -251,7 +265,7 @@ export function createCodexArgs(
     ? ['exec', 'resume', options.resumeSessionId, '--json', '--skip-git-repo-check']
     : ['exec', '--json', '--skip-git-repo-check'];
 
-  if (options.mode === 'code' && permissionMode !== 'safe') {
+  if (options.mode === 'code') {
     args.push('--full-auto');
   }
 
@@ -498,13 +512,13 @@ function attachPermissionResponder(
   let registerPermissionRequest:
     | ((options: {
       conversationId: string;
-      requestId: string;
+      requestId: string | number;
       backend: string;
       tool?: string;
       reason?: string;
       timeoutMs: number;
     }) => {
-      requestId: string;
+      requestId: string | number;
       backend: string;
       tool?: string;
       reason?: string;

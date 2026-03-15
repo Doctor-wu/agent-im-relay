@@ -12,7 +12,7 @@ export type AgentStreamEvent =
   | { type: 'tool'; summary: string }
   | {
     type: 'permission-requested';
-    requestId: string;
+    requestId: string | number;
     backend: string;
     tool?: string;
     reason?: string;
@@ -20,7 +20,7 @@ export type AgentStreamEvent =
   }
   | {
     type: 'permission-resolved';
-    requestId: string;
+    requestId: string | number;
     backend: string;
     decision: 'approved' | 'denied' | 'timeout';
   }

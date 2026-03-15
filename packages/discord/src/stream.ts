@@ -530,25 +530,35 @@ export async function streamAgentToDiscord(
       const permissionMessage = await options.channel.send(
         buildDiscordPermissionMessage({
           conversationId: options.conversationId,
-          requestId: event.requestId,
+          requestId: String(event.requestId),
           tool: event.tool,
           reason: event.reason,
         }),
       );
-      permissionMessages.set(event.requestId, permissionMessage);
+      permissionMessages.set(String(event.requestId), permissionMessage);
     } else if (event.type === 'permission-resolved') {
       if (!options.conversationId) {
         continue;
       }
 
-      const permissionMessage = permissionMessages.get(event.requestId);
+      const permissionMessage = permissionMessages.get(String(event.requestId));
       if (permissionMessage) {
         await permissionMessage.edit(buildDiscordPermissionMessage({
           conversationId: options.conversationId,
-          requestId: event.requestId,
+          requestId: String(event.requestId),
         }, event.decision)).catch(() => {});
-        permissionMessages.delete(event.requestId);
+        permissionMessages.delete(String(event.requestId));
       }
+
+      // Reset message tracking so post-approval output goes to new messages
+      if (buffer.trim()) {
+        await flush();
+      }
+      buffer = '';
+      messages.length = 0;
+      renderedChunks = [];
+      renderedEmbedsSignature = '[]';
+      isThinking = false;
     } else if (event.type === 'error') {
       if (event.error === 'Agent request aborted') {
         buffer += '\n\n⏹️ 当前任务已中断。\n';
