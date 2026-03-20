@@ -2,7 +2,7 @@ export type AgentMode = 'code' | 'ask';
 export type PermissionMode = 'auto' | 'safe';
 
 const codeModeArgs = ['--dangerously-skip-permissions'];
-const askModeArgs = ['--allowedTools', ''];
+const askModeArgs: string[] = [];
 
 export function toolsForMode(
   mode: AgentMode,
