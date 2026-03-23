@@ -1,4 +1,4 @@
-export const relayPlatforms = ['discord', 'feishu', 'slack'] as const;
+export const relayPlatforms = ['discord', 'feishu', 'slack', 'wechat'] as const;
 
 export type RelayPlatform = (typeof relayPlatforms)[number];
 
@@ -13,6 +13,10 @@ export function inferRelayPlatformFromConversationId(conversationId: string): Re
 
   if (/^\d+\.\d+$/.test(conversationId)) {
     return 'slack';
+  }
+
+  if (conversationId.startsWith('wechat:')) {
+    return 'wechat';
   }
 
   return 'feishu';
