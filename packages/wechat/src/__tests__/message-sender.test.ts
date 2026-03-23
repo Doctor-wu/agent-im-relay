@@ -3,9 +3,9 @@ import type { ILinkSendResult } from '../types';
 
 import { WeChatMessageSender } from '../message-sender';
 import { ContextTokenCache } from '../message-handler';
-import type { ILinkFetch } from '../qr-auth';
+import type { ILinkFetch } from '../types';
 
-function makeSendResponse(msgId = 'sent_001'): ILinkSendResult {
+function makeSendResponse(msgId = 'sent_001') {
   return { msgId };
 }
 
@@ -50,6 +50,8 @@ describe('WeChatMessageSender', () => {
     expect(body.contextToken).toBe('ctx_abc');
     expect(body.content).toBe('Hello!');
     expect(body.type).toBe('text');
+    // Verify Bearer auth header
+    expect(init?.headers).toEqual(expect.objectContaining({ Authorization: 'Bearer tok_session' }));
   });
 
   it('returns empty messageId when contextToken is missing (no crash)', async () => {

@@ -23,7 +23,7 @@ export class SegmentedOutput {
     this.buffer += text;
 
     if (this.buffer.length >= this.config.charThreshold) {
-      this.doFlush();
+      this.doFlush().catch(() => {});
     } else {
       this.resetTimer();
     }
@@ -48,13 +48,13 @@ export class SegmentedOutput {
     this.clearTimer();
   }
 
-  private doFlush(): void {
+  private async doFlush(): Promise<void> {
     if (this.buffer.length === 0) return;
 
     this.clearTimer();
     const content = this.buffer;
     this.buffer = '';
-    this.flushCallback(content);
+    await this.flushCallback(content);
   }
 
   private resetTimer(): void {
@@ -62,7 +62,7 @@ export class SegmentedOutput {
 
     if (this.buffer.length > 0) {
       this.timer = setTimeout(() => {
-        this.doFlush();
+        this.doFlush().catch(() => {});
       }, this.config.timeThresholdMs);
     }
   }

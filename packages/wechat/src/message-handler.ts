@@ -30,6 +30,8 @@ export function convertIncomingMessage(msg: ILinkMessage, _botName: string): Inc
   };
 }
 
+const MAX_CACHE_SIZE = 10_000;
+
 export class ContextTokenCache {
   private tokens = new Map<string, string>();
 
@@ -38,10 +40,15 @@ export class ContextTokenCache {
   }
 
   set(userId: string, token: string): void {
+    if (this.tokens.size >= MAX_CACHE_SIZE && !this.tokens.has(userId)) {
+      // Evict oldest entry (first inserted key)
+      const oldest = this.tokens.keys().next().value;
+      if (oldest != null) this.tokens.delete(oldest);
+    }
     this.tokens.set(userId, token);
   }
 
   updateFromMessage(msg: ILinkMessage): void {
-    this.tokens.set(msg.fromUser, msg.contextToken);
+    this.set(msg.fromUser, msg.contextToken);
   }
 }

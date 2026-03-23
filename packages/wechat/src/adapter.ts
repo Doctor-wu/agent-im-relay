@@ -9,8 +9,7 @@ import type {
   PromptInputOptions,
 } from '@agent-im-relay/core';
 import type { WeChatConfig } from './config';
-import type { ILinkFetch } from './qr-auth';
-import type { ILinkClientEvent } from './types';
+import type { ILinkFetch, ILinkClientEvent } from './types';
 import { ILinkClient } from './ilink-client';
 import { WeChatMessageSender } from './message-sender';
 import { convertIncomingMessage, ContextTokenCache } from './message-handler';
@@ -83,9 +82,11 @@ export class WeChatAdapter implements PlatformAdapter {
   private handleClientEvent(event: ILinkClientEvent): void {
     switch (event.type) {
       case 'connected':
+        console.log('[wechat] connected');
         this.emitStatus('connected');
         break;
       case 'disconnected':
+        console.warn('[wechat] disconnected:', event.reason ?? 'unknown');
         this.emitStatus('disconnected');
         break;
       case 'message': {
@@ -105,6 +106,7 @@ export class WeChatAdapter implements PlatformAdapter {
         break;
       }
       case 'error':
+        console.error('[wechat] error:', event.error);
         this.emitStatus('error');
         break;
     }

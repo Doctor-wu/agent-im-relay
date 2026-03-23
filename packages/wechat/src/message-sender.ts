@@ -1,10 +1,11 @@
 import type { MessageSender } from '@agent-im-relay/core';
-import type { ILinkFetch } from './qr-auth';
+import type { ILinkFetch } from './types';
+import { ILINK_BASE_URL } from './types';
 import type { ContextTokenCache } from './message-handler';
 
-const ILINK_BASE_URL = 'https://api.ilink.bot/v1';
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_RETRIES = 2; // 2 retries = 3 total attempts
+const RETRY_DELAY_MS = 1_000;
 
 export class WeChatMessageSender implements MessageSender {
   readonly maxMessageLength = MAX_MESSAGE_LENGTH;
@@ -24,6 +25,7 @@ export class WeChatMessageSender implements MessageSender {
     const contextToken = this.contextTokenCache.get(userId);
 
     if (!contextToken) {
+      console.warn(`[wechat] send skipped: no contextToken for user ${userId}`);
       return '';
     }
 
@@ -46,10 +48,13 @@ export class WeChatMessageSender implements MessageSender {
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
         const response = await this.fetch(
-          `${ILINK_BASE_URL}/messages/send?sessionToken=${encodeURIComponent(this.sessionToken)}`,
+          `${ILINK_BASE_URL}/messages/send`,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${this.sessionToken}`,
+            },
             body: JSON.stringify({
               toUser,
               contextToken,
@@ -69,10 +74,13 @@ export class WeChatMessageSender implements MessageSender {
         }
 
         return body.data?.msgId ?? '';
-      } catch {
+      } catch (error) {
         if (attempt === MAX_RETRIES) {
+          console.warn(`[wechat] sendSegment failed after ${MAX_RETRIES + 1} attempts:`, error);
           return '';
         }
+        // Spec requires 1s delay between retries
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
       }
     }
 

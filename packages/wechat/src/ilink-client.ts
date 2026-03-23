@@ -1,8 +1,7 @@
 import type { WeChatConfig } from './config';
-import type { ILinkClientEvent, ILinkEventHandler, ILinkMessage } from './types';
-import { requestQRCode, waitForScan, type ILinkFetch } from './qr-auth';
-
-const ILINK_BASE_URL = 'https://api.ilink.bot/v1';
+import type { ILinkClientEvent, ILinkEventHandler, ILinkMessage, ILinkFetch } from './types';
+import { ILINK_BASE_URL } from './types';
+import { requestQRCode, waitForScan } from './qr-auth';
 
 export class ILinkClient {
   private config: WeChatConfig;
@@ -78,8 +77,11 @@ export class ILinkClient {
       try {
         const response = await Promise.race([
           this.fetch(
-            `${ILINK_BASE_URL}/messages/poll?sessionToken=${encodeURIComponent(this.sessionToken!)}`,
-            { method: 'GET' },
+            `${ILINK_BASE_URL}/messages/poll`,
+            {
+              method: 'GET',
+              headers: { Authorization: `Bearer ${this.sessionToken}` },
+            },
           ),
           this.disconnectPromise!,
         ]);
@@ -117,8 +119,11 @@ export class ILinkClient {
     this.heartbeatTimer = setInterval(() => {
       if (!this.running || !this.sessionToken) return;
       this.fetch(
-        `${ILINK_BASE_URL}/heartbeat?sessionToken=${encodeURIComponent(this.sessionToken)}`,
-        { method: 'POST' },
+        `${ILINK_BASE_URL}/heartbeat`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${this.sessionToken}` },
+        },
       ).catch(() => {});
     }, this.config.heartbeatIntervalMs);
   }

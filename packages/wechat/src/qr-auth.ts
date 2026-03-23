@@ -1,8 +1,7 @@
 import type { QRCodeData } from './types';
+import { ILINK_BASE_URL, type ILinkFetch } from './types';
 
-const ILINK_BASE_URL = 'https://api.ilink.bot/v1';
-
-export type ILinkFetch = (url: string, init?: RequestInit) => Promise<Response>;
+export type { ILinkFetch } from './types';
 
 interface ILinkResponse<T = unknown> {
   code: number;

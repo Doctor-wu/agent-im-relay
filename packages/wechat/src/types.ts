@@ -1,3 +1,12 @@
+/** iLink API base URL — single source of truth */
+export const ILINK_BASE_URL = 'https://api.ilink.bot/v1';
+
+/** Allowed domains for media download (prevent sessionToken leaking to external URLs) */
+export const ILINK_ALLOWED_HOSTS = new Set(['api.ilink.bot', 'media.ilink.bot', 'ilink.bot']);
+
+/** Fetch function type injected for testability */
+export type ILinkFetch = (url: string, init?: RequestInit) => Promise<Response>;
+
 /** iLink Bot API message types */
 export interface ILinkMessage {
   msgId: string;
@@ -12,9 +21,11 @@ export interface ILinkMessage {
 }
 
 export interface ILinkMediaInfo {
+  mediaId?: string;
   url: string;
   fileName?: string;
   fileSize?: number;
+  size?: number;
   mimeType?: string;
 }
 
@@ -27,9 +38,9 @@ export interface ILinkSendPayload {
 }
 
 export interface ILinkSendResult {
-  success: boolean;
-  msgId?: string;
-  error?: string;
+  code: number;
+  data?: { msgId: string };
+  message?: string;
 }
 
 /** QR auth flow types */

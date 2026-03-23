@@ -23,11 +23,15 @@ describe('downloadMedia', () => {
       { ok: true, arrayBuffer: imageData },
     ]);
 
-    const result = await downloadMedia(mockFetch, 'https://ilink.bot/media/img.jpg', 'tok_session');
+    const result = await downloadMedia(mockFetch, 'https://api.ilink.bot/media/img.jpg', 'tok_session');
 
     expect(result).toBeDefined();
     expect(result!.data.byteLength).toBe(4);
     expect(mockFetch).toHaveBeenCalledOnce();
+
+    // Verify Bearer header is used instead of query param
+    const [, init] = mockFetch.mock.calls[0];
+    expect(init?.headers).toEqual(expect.objectContaining({ Authorization: 'Bearer tok_session' }));
   });
 
   it('returns null on download failure', async () => {
@@ -35,7 +39,7 @@ describe('downloadMedia', () => {
       { ok: false },
     ]);
 
-    const result = await downloadMedia(mockFetch, 'https://ilink.bot/media/fail.jpg', 'tok_session');
+    const result = await downloadMedia(mockFetch, 'https://api.ilink.bot/media/fail.jpg', 'tok_session');
 
     expect(result).toBeNull();
   });
@@ -43,9 +47,28 @@ describe('downloadMedia', () => {
   it('returns null when fetch throws', async () => {
     const mockFetch = vi.fn().mockRejectedValue(new Error('network error'));
 
-    const result = await downloadMedia(mockFetch, 'https://ilink.bot/media/err.jpg', 'tok_session');
+    const result = await downloadMedia(mockFetch, 'https://api.ilink.bot/media/err.jpg', 'tok_session');
 
     expect(result).toBeNull();
+  });
+
+  it('blocks download from external URLs (prevents token leaking)', async () => {
+    const mockFetch = vi.fn();
+
+    const result = await downloadMedia(mockFetch, 'https://evil.com/steal-token', 'tok_session');
+
+    expect(result).toBeNull();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('allows download from ilink.bot subdomains', async () => {
+    const imageData = new Uint8Array([1, 2, 3]).buffer;
+    const mockFetch = createMockFetch([{ ok: true, arrayBuffer: imageData }]);
+
+    const result = await downloadMedia(mockFetch, 'https://media.ilink.bot/files/img.jpg', 'tok_session');
+
+    expect(result).toBeDefined();
+    expect(mockFetch).toHaveBeenCalledOnce();
   });
 });
 
