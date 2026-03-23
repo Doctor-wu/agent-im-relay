@@ -1,0 +1,31 @@
+{
+  "name": "@agent-im-relay/wechat",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "types": "dist/index.d.mts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "types": "./dist/index.d.mts"
+    }
+  },
+  "scripts": {
+    "build": "vp pack",
+    "prepack": "pnpm run build",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@agent-im-relay/core": "workspace:*",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "vitest": "^3.2.4"
+  }
+}

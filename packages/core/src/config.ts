@@ -41,6 +41,16 @@ export type SlackImConfig = {
   socketMode?: boolean;
 };
 
+export type WechatImConfig = {
+  sessionToken?: string;
+  name?: string;
+  reconnectMaxDelayMs?: number;
+  heartbeatIntervalMs?: number;
+  streamingCharThreshold?: number;
+  streamingTimeThresholdMs?: number;
+  selectionTimeoutMs?: number;
+};
+
 export type MetaRecord = {
   type: 'meta';
   version: number;
@@ -54,7 +64,7 @@ export type RuntimeRecord = {
 
 export type LocalPreferencesRecord = {
   type: 'local-preferences';
-  lastUsedPlatform?: 'discord' | 'feishu' | 'slack';
+  lastUsedPlatform?: 'discord' | 'feishu' | 'slack' | 'wechat';
 };
 
 export type DiscordImRecord = {
@@ -81,13 +91,22 @@ export type SlackImRecord = {
   config: SlackImConfig;
 };
 
+export type WechatImRecord = {
+  type: 'im';
+  id: 'wechat';
+  enabled: boolean;
+  note?: string;
+  config: WechatImConfig;
+};
+
 export type RelayConfigRecord =
   | MetaRecord
   | RuntimeRecord
   | LocalPreferencesRecord
   | DiscordImRecord
   | FeishuImRecord
-  | SlackImRecord;
+  | SlackImRecord
+  | WechatImRecord;
 
 export type AvailableIm =
   | {
@@ -104,6 +123,11 @@ export type AvailableIm =
     id: 'slack';
     note?: string;
     config: Required<Pick<SlackImConfig, 'botToken' | 'appToken' | 'signingSecret'>> & Pick<SlackImConfig, 'socketMode'>;
+  }
+  | {
+    id: 'wechat';
+    note?: string;
+    config: WechatImConfig;
   };
 
 export interface LoadedRelayConfig {
@@ -215,7 +239,7 @@ function asPositiveNumber(value: unknown): number | undefined {
 }
 
 function asPlatformId(value: unknown): AvailableIm['id'] | undefined {
-  return value === 'discord' || value === 'feishu' || value === 'slack'
+  return value === 'discord' || value === 'feishu' || value === 'slack' || value === 'wechat'
     ? value
     : undefined;
 }
@@ -305,6 +329,26 @@ function normalizeSlackImRecord(value: Record<string, unknown>): SlackImRecord {
   };
 }
 
+function normalizeWechatImRecord(value: Record<string, unknown>): WechatImRecord {
+  const config = isRecord(value.config) ? value.config : {};
+
+  return {
+    type: 'im',
+    id: 'wechat',
+    enabled: asBoolean(value.enabled, true),
+    note: asString(value.note),
+    config: {
+      sessionToken: asString(config.sessionToken),
+      name: asString(config.name),
+      reconnectMaxDelayMs: asPositiveNumber(config.reconnectMaxDelayMs),
+      heartbeatIntervalMs: asPositiveNumber(config.heartbeatIntervalMs),
+      streamingCharThreshold: asPositiveNumber(config.streamingCharThreshold),
+      streamingTimeThresholdMs: asPositiveNumber(config.streamingTimeThresholdMs),
+      selectionTimeoutMs: asPositiveNumber(config.selectionTimeoutMs),
+    },
+  };
+}
+
 function parseConfigRecord(value: unknown, lineNumber: number): {
   record?: RelayConfigRecord;
   error?: string;
@@ -345,6 +389,10 @@ function parseConfigRecord(value: unknown, lineNumber: number): {
 
     if (value.id === 'slack') {
       return { record: normalizeSlackImRecord(value) };
+    }
+
+    if (value.id === 'wechat') {
+      return { record: normalizeWechatImRecord(value) };
     }
 
     return { error: `Line ${lineNumber}: unsupported im id "${String(value.id)}".` };
@@ -440,7 +488,7 @@ export function resolveLastUsedPlatform(
 
 export function resolveAvailableIms(records: RelayConfigRecord[]): AvailableIm[] {
   const ims = records.filter(
-    (record): record is DiscordImRecord | FeishuImRecord | SlackImRecord => record.type === 'im',
+    (record): record is DiscordImRecord | FeishuImRecord | SlackImRecord | WechatImRecord => record.type === 'im',
   );
 
   return ims.flatMap((record): AvailableIm[] => {
@@ -485,20 +533,32 @@ export function resolveAvailableIms(records: RelayConfigRecord[]): AvailableIm[]
       }];
     }
 
-    if (!record.config.botToken || !record.config.appToken || !record.config.signingSecret) {
-      return [];
+    if (record.id === 'slack') {
+      if (!record.config.botToken || !record.config.appToken || !record.config.signingSecret) {
+        return [];
+      }
+
+      return [{
+        id: 'slack',
+        note: record.note,
+        config: {
+          botToken: record.config.botToken,
+          appToken: record.config.appToken,
+          signingSecret: record.config.signingSecret,
+          socketMode: record.config.socketMode,
+        },
+      }];
     }
 
-    return [{
-      id: 'slack',
-      note: record.note,
-      config: {
-        botToken: record.config.botToken,
-        appToken: record.config.appToken,
-        signingSecret: record.config.signingSecret,
-        socketMode: record.config.socketMode,
-      },
-    }];
+    if (record.id === 'wechat') {
+      return [{
+        id: 'wechat',
+        note: record.note,
+        config: record.config,
+      }];
+    }
+
+    return [];
   });
 }
 

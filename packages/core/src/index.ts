@@ -209,6 +209,8 @@ export type {
   SlackImConfig,
   SlackImRecord,
   SlackRelayConfig,
+  WechatImConfig,
+  WechatImRecord,
 } from './config';
 export { resolveRelayHomeDir, resolveRelayPaths, resolveRelayPlatformStateDir } from './paths';
 export type { RelayPaths } from './paths';

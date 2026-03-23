@@ -1,6 +1,6 @@
 # Agent Inbox
 
-> Let local AI agents such as Claude Code and Codex receive tasks and reply with results directly inside Discord, Feishu, Slack, and other IM platforms, without any server. Everything runs on your own machine.
+> Let local AI agents such as Claude Code and Codex receive tasks and reply with results directly inside Discord, Feishu, Slack, WeChat, and other IM platforms, without any server. Everything runs on your own machine.
 
 [![npm version](https://img.shields.io/npm/v/@doctorwu/agent-inbox)](https://www.npmjs.com/package/@doctorwu/agent-inbox)
 [![GitHub release](https://img.shields.io/github/v/release/Doctor-wu/agent-im-relay)](https://github.com/Doctor-wu/agent-im-relay/releases)
@@ -9,13 +9,14 @@
 [![Discord](https://img.shields.io/badge/platform-Discord-5865F2)](https://discord.com)
 [![Feishu](https://img.shields.io/badge/platform-Feishu-00B96B)](https://open.feishu.cn)
 [![Slack](https://img.shields.io/badge/platform-Slack-4A154B)](https://slack.com)
+[![WeChat](https://img.shields.io/badge/platform-WeChat-07C160)](https://ilink.bot)
 
 ---
 
 ## Why Agent Inbox
 
 - **Inbox-first workflow** - Send a message to the bot in your IM app, let the agent open a session automatically, execute the task, and send the result back with file upload and download support.
-- **Multiple IM platforms** - Discord, Feishu, and Slack are supported today, and the architecture is designed to extend cleanly to additional platforms.
+- **Multiple IM platforms** - Discord, Feishu, Slack, and WeChat are supported today, and the architecture is designed to extend cleanly to additional platforms.
 - **Multiple agent backends** - Switch between Claude Code and OpenAI Codex depending on the task.
 - **Runs locally with full data control** - Configuration and runtime state live in `~/.agent-inbox/`, with no cloud deployment required.
 - **Persistent sessions** - Keep context across messages, interrupt and resume work, and isolate each session in its own working directory.
@@ -43,6 +44,7 @@ Configuration is stored in `~/.agent-inbox/config.jsonl`. Example:
 {"type":"meta","version":1}
 {"type":"im","id":"discord","enabled":true,"config":{"token":"your-bot-token","clientId":"your-client-id"}}
 {"type":"im","id":"feishu","enabled":false,"config":{"appId":"","appSecret":""}}
+{"type":"im","id":"wechat","enabled":false,"config":{"name":"wechat","sessionToken":""}}
 {"type":"im","id":"slack","enabled":false,"config":{"botToken":"","appToken":"","signingSecret":"","socketMode":true}}
 {"type":"runtime","config":{"agentTimeoutMs":600000,"permissionMode":"auto","permissionRequestTimeoutMs":120000,"claudeBin":"claude","codexBin":"codex","opencodeBin":"opencode"}}
 ```
@@ -67,6 +69,7 @@ Only one running instance is allowed per platform on the same machine.
 | **Discord** ⭐ Recommended | ✅ Supported | Slash commands + mention-driven thread sessions, attachment ingest and artifact upload, streaming output |
 | **Feishu (Lark)** | ✅ Supported | Long-connection mode, private-chat launcher, session/group chat continuation, interactive control cards |
 | **Slack** | ✅ Supported | Slash commands + app mentions + DM/thread continuation, backend/model selection blocks, safe-mode approval blocks |
+| **WeChat (微信)** | ✅ Supported | iLink WebSocket bridge, QR code auth, streaming output, text-based interactive menus |
 
 ## Platform Features
 
@@ -75,6 +78,7 @@ Only one running instance is allowed per platform on the same machine.
 | **Discord** | `/code`, `/ask`, `/skill`, or `@mention` | `/interrupt`, `/done`, `/model`, `/effort`, `/sessions`, `/cwd`, `/compact`; backend/model selection cards on first run | Slash commands accept attachment options (up to 3) and mention messages ingest message attachments; outgoing artifacts are uploaded back |
 | **Feishu** | Send a message in session/group chat, or use private chat launcher; `/ask <prompt>` for ask mode | Interactive cards for interrupt/backend/model/effort/done, plus backend switch confirmation | Message files are ingested and usable in run context; generated files can be uploaded back |
 | **Slack** | `/code`, `/ask`, `/skill`, app mention, DM message, or thread reply | `/interrupt`, `/done`; backend/model picked via Block Kit buttons; safe-mode approval buttons | Text-first workflow (no built-in Slack file ingest/upload pipeline yet) |
+| **WeChat** | Send a message to the linked WeChat account | Text-based selection menus for controls | Media upload/download via iLink API |
 
 ### Discord Setup
 
@@ -101,6 +105,14 @@ Create a self-built enterprise application in the [Feishu Open Platform](https:/
 ### Slack Setup
 
 Create a Slack app with slash commands and Socket Mode, then collect `botToken`, `appToken`, and `signingSecret`.
+
+### WeChat Setup
+
+WeChat integration uses the [iLink](https://ilink.bot) WebSocket bridge. You need an iLink session token to authenticate.
+
+1. Obtain an iLink session token from the iLink platform.
+2. Add the token to your `~/.agent-inbox/config.jsonl` as the `sessionToken` field in the WeChat config.
+3. On first connect, the adapter performs QR code authentication — scan the QR code with your WeChat mobile app to link the account.
 
 ## Inline Backend Control Tag
 
@@ -228,6 +240,7 @@ packages/
   discord/            @agent-im-relay/discord - Discord adapter
   feishu/             @agent-im-relay/feishu  - Feishu adapter
   slack/              @agent-im-relay/slack   - Slack adapter
+  wechat/             @agent-im-relay/wechat  - WeChat adapter (via iLink)
 ```
 
 Architecture design document: [docs/agent-inbox-architecture.md](docs/agent-inbox-architecture.md)
@@ -253,6 +266,7 @@ pnpm start
 pnpm dev:discord
 pnpm dev:feishu
 pnpm dev:slack
+pnpm dev:wechat
 ```
 
 All adapter development commands load configuration from `~/.agent-inbox/config.jsonl`.

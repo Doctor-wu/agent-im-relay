@@ -5,6 +5,7 @@ type RuntimeLoaders = {
   discord?: () => Promise<{ startDiscordRuntime: () => Promise<unknown> }>;
   feishu?: () => Promise<{ startFeishuRuntime: () => Promise<unknown> }>;
   slack?: () => Promise<{ startSlackRuntime: () => Promise<unknown> }>;
+  wechat?: () => Promise<{ startWechatRuntime: () => Promise<unknown> }>;
 };
 
 function setOptionalEnv(key: string, value: string | undefined): void {
@@ -48,6 +49,13 @@ export function applyRuntimeEnvironment(
   delete process.env['SLACK_APP_TOKEN'];
   delete process.env['SLACK_SIGNING_SECRET'];
   delete process.env['SLACK_SOCKET_MODE'];
+  delete process.env['WECHAT_NAME'];
+  delete process.env['WECHAT_SESSION_TOKEN'];
+  delete process.env['WECHAT_RECONNECT_MAX_DELAY_MS'];
+  delete process.env['WECHAT_HEARTBEAT_INTERVAL_MS'];
+  delete process.env['WECHAT_STREAMING_CHAR_THRESHOLD'];
+  delete process.env['WECHAT_STREAMING_TIME_THRESHOLD_MS'];
+  delete process.env['WECHAT_SELECTION_TIMEOUT_MS'];
 
   if (selectedIm.id === 'discord') {
     process.env['DISCORD_TOKEN'] = selectedIm.config.token;
@@ -68,10 +76,24 @@ export function applyRuntimeEnvironment(
     return;
   }
 
-  process.env['SLACK_BOT_TOKEN'] = selectedIm.config.botToken;
-  process.env['SLACK_APP_TOKEN'] = selectedIm.config.appToken;
-  process.env['SLACK_SIGNING_SECRET'] = selectedIm.config.signingSecret;
-  setOptionalEnv('SLACK_SOCKET_MODE', String(selectedIm.config.socketMode ?? true));
+  if (selectedIm.id === 'slack') {
+    process.env['SLACK_BOT_TOKEN'] = selectedIm.config.botToken;
+    process.env['SLACK_APP_TOKEN'] = selectedIm.config.appToken;
+    process.env['SLACK_SIGNING_SECRET'] = selectedIm.config.signingSecret;
+    setOptionalEnv('SLACK_SOCKET_MODE', String(selectedIm.config.socketMode ?? true));
+    return;
+  }
+
+  if (selectedIm.id === 'wechat') {
+    setOptionalEnv('WECHAT_NAME', selectedIm.config.name);
+    setOptionalEnv('WECHAT_SESSION_TOKEN', selectedIm.config.sessionToken);
+    setNumericEnv('WECHAT_RECONNECT_MAX_DELAY_MS', selectedIm.config.reconnectMaxDelayMs);
+    setNumericEnv('WECHAT_HEARTBEAT_INTERVAL_MS', selectedIm.config.heartbeatIntervalMs);
+    setNumericEnv('WECHAT_STREAMING_CHAR_THRESHOLD', selectedIm.config.streamingCharThreshold);
+    setNumericEnv('WECHAT_STREAMING_TIME_THRESHOLD_MS', selectedIm.config.streamingTimeThresholdMs);
+    setNumericEnv('WECHAT_SELECTION_TIMEOUT_MS', selectedIm.config.selectionTimeoutMs);
+    return;
+  }
 }
 
 export async function startSelectedIm(
@@ -93,6 +115,13 @@ export async function startSelectedIm(
     const loadFeishu = loaders.feishu ?? (() => import('@agent-im-relay/feishu'));
     const feishu = await loadFeishu();
     await feishu.startFeishuRuntime();
+    return;
+  }
+
+  if (selectedIm.id === 'wechat') {
+    const loadWechat = loaders.wechat ?? (() => import('@agent-im-relay/wechat'));
+    const wechat = await loadWechat();
+    await wechat.startWechatRuntime();
     return;
   }
 

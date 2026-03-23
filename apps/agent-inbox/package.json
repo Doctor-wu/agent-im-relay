@@ -1,6 +1,6 @@
 {
   "name": "@doctorwu/agent-inbox",
-  "version": "1.2.5",
+  "version": "1.3.0",
   "type": "module",
   "main": "dist/index.mjs",
   "types": "dist/index.d.mts",
@@ -14,7 +14,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "pnpm --filter @agent-im-relay/core build && pnpm --filter @agent-im-relay/discord build && pnpm --filter @agent-im-relay/feishu build && pnpm --filter @agent-im-relay/slack build && vp pack",
+    "build": "pnpm --filter @agent-im-relay/core build && pnpm --filter @agent-im-relay/discord build && pnpm --filter @agent-im-relay/feishu build && pnpm --filter @agent-im-relay/slack build && pnpm --filter @agent-im-relay/wechat build && vp pack",
     "prepack": "pnpm run build",
     "start": "node dist/index.mjs",
     "test": "vp test run",
@@ -29,6 +29,7 @@
     "@agent-im-relay/discord": "workspace:*",
     "@agent-im-relay/feishu": "workspace:*",
     "@agent-im-relay/slack": "workspace:*",
+    "@agent-im-relay/wechat": "workspace:*",
     "@types/node": "^22.10.0",
     "vitest": "^3.2.4"
   },
