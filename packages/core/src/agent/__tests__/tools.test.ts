@@ -6,8 +6,8 @@ describe('toolsForMode', () => {
     expect(toolsForMode('code')).toEqual(['--dangerously-skip-permissions']);
   });
 
-  it('returns ask mode arguments', () => {
-    expect(toolsForMode('ask')).toEqual(['--allowedTools', '']);
+  it('returns ask mode arguments (no tool flags)', () => {
+    expect(toolsForMode('ask')).toEqual([]);
   });
 
   it('returns new arrays per call', () => {

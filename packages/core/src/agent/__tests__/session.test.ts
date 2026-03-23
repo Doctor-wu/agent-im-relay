@@ -71,8 +71,7 @@ describe('createClaudeArgs', () => {
       resumeSessionId: 'resume-456',
     });
 
-    expect(args).toContain('--allowedTools');
-    expect(args).toContain('');
+    expect(args).not.toContain('--allowedTools');
     expect(args).toContain('--resume');
     expect(args).toContain('resume-456');
     expect(args).not.toContain('--session-id');
